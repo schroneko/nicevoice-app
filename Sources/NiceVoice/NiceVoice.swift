@@ -15,9 +15,10 @@ struct NiceVoiceApp: App {
         }
         .menuBarExtraStyle(.menu)
 
-        Settings {
+        Window("Nice Voice 設定", id: "settings") {
             SettingsView()
         }
+        .windowResizability(.contentSize)
     }
 }
 
@@ -70,12 +71,19 @@ final class AppState {
     var isReady = false
     var statusMessage = "初期化中..."
     var history: [TranscriptionRecord] = []
+    var isConverting = false
+
+    @ObservationIgnored
+    @AppStorage("useGemini") var useGemini = true
+    @ObservationIgnored
+    @AppStorage("geminiApiKey") var geminiApiKey = ""
 
     private var speechService: SpeechRecognitionService?
     private var fnKeyMonitor: FnKeyMonitor?
     private var floatingPanel: FloatingPanel?
     private var waitingForFinalResult = false
     private var finalResultTimer: DispatchWorkItem?
+    private var sfSpeechResult = ""
 
     init() {
         setupServices()
@@ -167,20 +175,56 @@ final class AppState {
             return
         }
         isRecording = false
-        floatingPanel?.hide()
         speechService?.stopRecording()
-        debugLog("🎙️ Recording stopped, waiting for final result...")
+        debugLog("🎙️ Recording stopped")
 
-        waitingForFinalResult = true
+        sfSpeechResult = currentTranscription
 
-        finalResultTimer?.cancel()
-        let timer = DispatchWorkItem { [weak self] in
-            guard let self, self.waitingForFinalResult else { return }
-            debugLog("⏱️ Timeout - using current transcription: '\(self.currentTranscription)'")
-            self.performPaste(self.currentTranscription)
+        if useGemini && !geminiApiKey.isEmpty {
+            isConverting = true
+            debugLog("🔄 Starting Gemini conversion...")
+
+            Task {
+                do {
+                    let geminiResult = try await processWithGemini()
+                    await MainActor.run {
+                        isConverting = false
+                        floatingPanel?.hide()
+                        performPaste(geminiResult)
+                        speechService?.clearAudioBuffers()
+                    }
+                } catch {
+                    debugLog("❌ Gemini error: \(error), falling back to SFSpeech")
+                    await MainActor.run {
+                        isConverting = false
+                        floatingPanel?.hide()
+                        performPaste(sfSpeechResult)
+                        speechService?.clearAudioBuffers()
+                    }
+                }
+            }
+        } else {
+            floatingPanel?.hide()
+            waitingForFinalResult = true
+
+            finalResultTimer?.cancel()
+            let timer = DispatchWorkItem { [weak self] in
+                guard let self, self.waitingForFinalResult else { return }
+                debugLog("⏱️ Timeout - using current transcription: '\(self.currentTranscription)'")
+                self.performPaste(self.currentTranscription)
+            }
+            finalResultTimer = timer
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0, execute: timer)
         }
-        finalResultTimer = timer
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0, execute: timer)
+    }
+
+    private func processWithGemini() async throws -> String {
+        guard let audioData = speechService?.getRecordedAudioData(), !audioData.isEmpty else {
+            throw GeminiError.audioDataEmpty
+        }
+
+        let geminiService = GeminiService(apiKey: geminiApiKey)
+        return try await geminiService.transcribe(audioData: audioData)
     }
 
     private func handleFinalResult(_ text: String) {
@@ -338,6 +382,9 @@ final class SpeechRecognitionService {
     private var currentSegmentText = ""
     private var lastResultTime = Date()
 
+    private var audioBuffers: [AVAudioPCMBuffer] = []
+    private var recordingFormat: AVAudioFormat?
+
     init(onTranscription: @escaping (String, Bool) -> Void, onRealtimeInput: @escaping (String, String) -> Void) {
         self.onTranscription = onTranscription
         self.onRealtimeInput = onRealtimeInput
@@ -350,6 +397,7 @@ final class SpeechRecognitionService {
         accumulatedText = ""
         currentSegmentText = ""
         lastResultTime = Date()
+        audioBuffers = []
 
         recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
         guard let recognitionRequest else {
@@ -360,10 +408,14 @@ final class SpeechRecognitionService {
         recognitionRequest.requiresOnDeviceRecognition = true
 
         let inputNode = audioEngine.inputNode
-        let recordingFormat = inputNode.outputFormat(forBus: 0)
+        let format = inputNode.outputFormat(forBus: 0)
+        recordingFormat = format
 
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
             recognitionRequest.append(buffer)
+            if let copy = self?.copyBuffer(buffer) {
+                self?.audioBuffers.append(copy)
+            }
         }
 
         audioEngine.prepare()
@@ -418,6 +470,181 @@ final class SpeechRecognitionService {
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)
         recognitionRequest?.endAudio()
+    }
+
+    private func copyBuffer(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        guard let copy = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: buffer.frameCapacity) else {
+            return nil
+        }
+        copy.frameLength = buffer.frameLength
+
+        if let srcFloatData = buffer.floatChannelData, let dstFloatData = copy.floatChannelData {
+            for channel in 0..<Int(buffer.format.channelCount) {
+                memcpy(dstFloatData[channel], srcFloatData[channel], Int(buffer.frameLength) * MemoryLayout<Float>.size)
+            }
+        }
+        return copy
+    }
+
+    func getRecordedAudioData() -> Data? {
+        guard let format = recordingFormat, !audioBuffers.isEmpty else {
+            debugLog("❌ No audio buffers to convert")
+            return nil
+        }
+
+        let totalFrames = audioBuffers.reduce(0) { $0 + Int($1.frameLength) }
+        guard totalFrames > 0 else {
+            debugLog("❌ Audio buffers are empty")
+            return nil
+        }
+
+        debugLog("🎵 Converting \(audioBuffers.count) buffers (\(totalFrames) frames) to WAV")
+
+        let wavHeader = createWAVHeader(
+            sampleRate: UInt32(format.sampleRate),
+            channels: UInt16(format.channelCount),
+            bitsPerSample: 16,
+            dataSize: UInt32(totalFrames * Int(format.channelCount) * 2)
+        )
+
+        var audioData = Data()
+        audioData.append(wavHeader)
+
+        for buffer in audioBuffers {
+            if let floatData = buffer.floatChannelData {
+                for frame in 0..<Int(buffer.frameLength) {
+                    for channel in 0..<Int(format.channelCount) {
+                        let sample = floatData[channel][frame]
+                        let clampedSample = max(-1.0, min(1.0, sample))
+                        var int16Sample = Int16(clampedSample * Float(Int16.max))
+                        withUnsafeBytes(of: &int16Sample) { audioData.append(contentsOf: $0) }
+                    }
+                }
+            }
+        }
+
+        debugLog("🎵 WAV data created: \(audioData.count) bytes")
+        return audioData
+    }
+
+    private func createWAVHeader(sampleRate: UInt32, channels: UInt16, bitsPerSample: UInt16, dataSize: UInt32) -> Data {
+        var header = Data()
+
+        header.append(contentsOf: "RIFF".utf8)
+        var fileSize = dataSize + 36
+        withUnsafeBytes(of: &fileSize) { header.append(contentsOf: $0) }
+
+        header.append(contentsOf: "WAVE".utf8)
+
+        header.append(contentsOf: "fmt ".utf8)
+        var fmtSize: UInt32 = 16
+        withUnsafeBytes(of: &fmtSize) { header.append(contentsOf: $0) }
+        var audioFormat: UInt16 = 1
+        withUnsafeBytes(of: &audioFormat) { header.append(contentsOf: $0) }
+        var numChannels = channels
+        withUnsafeBytes(of: &numChannels) { header.append(contentsOf: $0) }
+        var sampleRateVal = sampleRate
+        withUnsafeBytes(of: &sampleRateVal) { header.append(contentsOf: $0) }
+        var byteRate = sampleRate * UInt32(channels) * UInt32(bitsPerSample / 8)
+        withUnsafeBytes(of: &byteRate) { header.append(contentsOf: $0) }
+        var blockAlign = channels * bitsPerSample / 8
+        withUnsafeBytes(of: &blockAlign) { header.append(contentsOf: $0) }
+        var bitsPerSampleVal = bitsPerSample
+        withUnsafeBytes(of: &bitsPerSampleVal) { header.append(contentsOf: $0) }
+
+        header.append(contentsOf: "data".utf8)
+        var dataSizeVal = dataSize
+        withUnsafeBytes(of: &dataSizeVal) { header.append(contentsOf: $0) }
+
+        return header
+    }
+
+    func clearAudioBuffers() {
+        audioBuffers = []
+    }
+}
+
+enum GeminiError: Error {
+    case apiKeyMissing
+    case audioDataEmpty
+    case apiError(statusCode: Int, message: String)
+    case parseError
+    case timeout
+}
+
+final class GeminiService {
+    private let apiKey: String
+    private let modelName = "gemini-3-flash-preview"
+    private let baseURL = "https://generativelanguage.googleapis.com/v1beta/models"
+
+    init(apiKey: String) {
+        self.apiKey = apiKey
+    }
+
+    func transcribe(audioData: Data) async throws -> String {
+        guard !apiKey.isEmpty else {
+            throw GeminiError.apiKeyMissing
+        }
+        guard !audioData.isEmpty else {
+            throw GeminiError.audioDataEmpty
+        }
+
+        let base64Audio = audioData.base64EncodedString()
+        let url = URL(string: "\(baseURL)/\(modelName):generateContent")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30
+
+        let body: [String: Any] = [
+            "contents": [[
+                "parts": [
+                    ["text": "音声を書き起こしてください。句読点を入れてください。書き起こしのみ返してください。"],
+                    [
+                        "inlineData": [
+                            "mimeType": "audio/wav",
+                            "data": base64Audio
+                        ]
+                    ]
+                ]
+            ]],
+            "generationConfig": [
+                "maxOutputTokens": 1024,
+                "thinkingConfig": [
+                    "thinkingLevel": "minimal"
+                ]
+            ]
+        ]
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        debugLog("🌐 Sending request to Gemini API...")
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw GeminiError.apiError(statusCode: -1, message: "Invalid response")
+        }
+
+        if httpResponse.statusCode != 200 {
+            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+            debugLog("❌ Gemini API error: \(httpResponse.statusCode) - \(errorMessage)")
+            throw GeminiError.apiError(statusCode: httpResponse.statusCode, message: errorMessage)
+        }
+
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let candidates = json["candidates"] as? [[String: Any]],
+              let content = candidates.first?["content"] as? [String: Any],
+              let parts = content["parts"] as? [[String: Any]],
+              let text = parts.first?["text"] as? String else {
+            debugLog("❌ Failed to parse Gemini response")
+            throw GeminiError.parseError
+        }
+
+        let result = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        debugLog("✅ Gemini transcription: '\(result)'")
+        return result
     }
 }
 
@@ -653,6 +880,7 @@ final class FloatingPanel {
 struct FloatingPanelView: View {
     var appState: AppState
     @State private var isPulsing = false
+    @State private var rotationAngle = 0.0
 
     private var panelWidth: CGFloat {
         (NSScreen.main?.frame.width ?? 1600) * 0.35
@@ -660,16 +888,41 @@ struct FloatingPanelView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 16) {
-            Circle()
-                .fill(.red)
-                .frame(width: 14, height: 14)
-                .scaleEffect(isPulsing ? 1.3 : 1.0)
-                .opacity(isPulsing ? 0.7 : 1.0)
-                .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: isPulsing)
-                .onAppear { isPulsing = true }
-                .padding(.top, 5)
+            if appState.isConverting {
+                Image(systemName: "arrow.trianglehead.2.clockwise")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.blue)
+                    .rotationEffect(.degrees(rotationAngle))
+                    .onAppear {
+                        withAnimation(.linear(duration: 1).repeatForever(autoreverses: false)) {
+                            rotationAngle = 360
+                        }
+                    }
+                    .padding(.top, 5)
+            } else {
+                Circle()
+                    .fill(.red)
+                    .frame(width: 14, height: 14)
+                    .scaleEffect(isPulsing ? 1.3 : 1.0)
+                    .opacity(isPulsing ? 0.7 : 1.0)
+                    .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: isPulsing)
+                    .onAppear { isPulsing = true }
+                    .padding(.top, 5)
+            }
 
-            if appState.currentTranscription.isEmpty {
+            if appState.isConverting {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("変換中...")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(.blue)
+                    if !appState.currentTranscription.isEmpty {
+                        Text(appState.currentTranscription)
+                            .font(.system(size: 14))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                }
+            } else if appState.currentTranscription.isEmpty {
                 Text("Listening...")
                     .font(.system(size: 18, weight: .medium))
                     .foregroundStyle(.secondary)
@@ -690,6 +943,7 @@ struct FloatingPanelView: View {
 
 struct MenuBarView: View {
     var appState: AppState
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(spacing: 8) {
@@ -732,8 +986,9 @@ struct MenuBarView: View {
                 Divider()
             }
 
-            SettingsLink {
-                Text("設定...")
+            Button("設定...") {
+                NSApp.activate(ignoringOtherApps: true)
+                openWindow(id: "settings")
             }
             .keyboardShortcut(",", modifiers: .command)
 
@@ -783,13 +1038,108 @@ struct HistoryItemView: View {
 }
 
 struct SettingsView: View {
+    @AppStorage("useGemini") private var useGemini = true
+    @AppStorage("geminiApiKey") private var geminiApiKey = ""
+    @State private var validationState: ValidationState = .none
+    @State private var isValidating = false
+
+    enum ValidationState {
+        case none
+        case valid
+        case invalid(String)
+    }
+
     var body: some View {
         Form {
-            Text("Nice Voice 設定")
-                .font(.title)
-            Text("fn キーを押している間、音声を録音します")
+            Section {
+                Text("Nice Voice 設定")
+                    .font(.title)
+                Text("fn キーを押している間、音声を録音します")
+            }
+
+            Section("Gemini API") {
+                Toggle("高精度変換を行う", isOn: $useGemini)
+
+                if useGemini {
+                    HStack {
+                        SecureField("API キー", text: $geminiApiKey)
+                            .textFieldStyle(.roundedBorder)
+                            .onChange(of: geminiApiKey) { _, _ in
+                                validationState = .none
+                            }
+
+                        Button {
+                            validateApiKey()
+                        } label: {
+                            if isValidating {
+                                ProgressView()
+                                    .scaleEffect(0.7)
+                                    .frame(width: 50)
+                            } else {
+                                Text("テスト")
+                                    .frame(width: 50)
+                            }
+                        }
+                        .disabled(geminiApiKey.isEmpty || isValidating)
+                    }
+
+                    switch validationState {
+                    case .none:
+                        if geminiApiKey.isEmpty {
+                            Label("API キーを入力してください", systemImage: "key")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    case .valid:
+                        Label("API キーは有効です", systemImage: "checkmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                    case .invalid(let message):
+                        Label(message, systemImage: "xmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+
+                    Link("Google AI Studio で API キーを取得", destination: URL(string: "https://aistudio.google.com/apikey")!)
+                        .font(.caption)
+                }
+            }
         }
+        .formStyle(.grouped)
         .padding()
-        .frame(width: 400, height: 300)
+        .frame(width: 450, height: 350)
+    }
+
+    private func validateApiKey() {
+        isValidating = true
+        validationState = .none
+
+        Task {
+            do {
+                let isValid = try await testApiKey(geminiApiKey)
+                await MainActor.run {
+                    isValidating = false
+                    validationState = isValid ? .valid : .invalid("API キーが無効です")
+                }
+            } catch {
+                await MainActor.run {
+                    isValidating = false
+                    validationState = .invalid("接続エラー: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    private func testApiKey(_ apiKey: String) async throws -> Bool {
+        let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models?key=\(apiKey)")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 10
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            return false
+        }
+        return httpResponse.statusCode == 200
     }
 }
