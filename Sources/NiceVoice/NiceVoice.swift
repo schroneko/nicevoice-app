@@ -327,6 +327,9 @@ final class SpeechRecognitionService {
     private let onTranscription: (String, Bool) -> Void
     private let onRealtimeInput: (String, String) -> Void
     private var lastTranscription = ""
+    private var accumulatedText = ""
+    private var currentSegmentText = ""
+    private var lastResultTime = Date()
 
     init(onTranscription: @escaping (String, Bool) -> Void, onRealtimeInput: @escaping (String, String) -> Void) {
         self.onTranscription = onTranscription
@@ -337,6 +340,9 @@ final class SpeechRecognitionService {
         recognitionTask?.cancel()
         recognitionTask = nil
         lastTranscription = ""
+        accumulatedText = ""
+        currentSegmentText = ""
+        lastResultTime = Date()
 
         recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
         guard let recognitionRequest else {
@@ -358,16 +364,44 @@ final class SpeechRecognitionService {
 
         debugLog("🔍 [DEBUG] Starting recognition task")
         recognitionTask = speechRecognizer?.recognitionTask(with: recognitionRequest) { [weak self] result, error in
+            guard let self else { return }
             if let error {
                 debugLog("🔍 [DEBUG] Recognition error: \(error)")
             }
             if let result {
-                let newText = result.bestTranscription.formattedString
-                let oldText = self?.lastTranscription ?? ""
-                debugLog("🔍 [DEBUG] Recognition result: '\(newText)', isFinal: \(result.isFinal)")
-                self?.lastTranscription = newText
-                self?.onTranscription(newText, result.isFinal)
-                self?.onRealtimeInput(oldText, newText)
+                let segmentText = result.bestTranscription.formattedString
+                let oldText = self.lastTranscription
+                let previousSegment = self.currentSegmentText
+                let now = Date()
+                let timeSinceLastResult = now.timeIntervalSince(self.lastResultTime)
+                debugLog("🔍 [DEBUG] Recognition result: segment='\(segmentText)', isFinal: \(result.isFinal), accumulated='\(self.accumulatedText)', prevSegment='\(previousSegment)', timeDelta=\(String(format: "%.2f", timeSinceLastResult))s")
+
+                let textGotShorter = previousSegment.count > 2 && segmentText.count < previousSegment.count / 2
+                let enoughTimePassed = timeSinceLastResult > 1.0
+                let isNewSegment = !previousSegment.isEmpty && enoughTimePassed && (textGotShorter || (!segmentText.hasPrefix(previousSegment) && !previousSegment.hasPrefix(segmentText)))
+                if isNewSegment {
+                    let separator = self.accumulatedText.isEmpty ? "" : " "
+                    self.accumulatedText += separator + previousSegment
+                    debugLog("🔍 [DEBUG] New segment detected (shorter=\(textGotShorter), timeDelta=\(String(format: "%.2f", timeSinceLastResult))s)! Accumulated previous: '\(self.accumulatedText)'")
+                }
+
+                self.currentSegmentText = segmentText
+                self.lastResultTime = now
+
+                if result.isFinal {
+                    let separator = self.accumulatedText.isEmpty ? "" : " "
+                    self.accumulatedText += separator + segmentText
+                    self.currentSegmentText = ""
+                    self.lastTranscription = self.accumulatedText
+                    self.onTranscription(self.accumulatedText, true)
+                    debugLog("🔍 [DEBUG] Segment finalized, accumulated: '\(self.accumulatedText)'")
+                } else {
+                    let separator = self.accumulatedText.isEmpty ? "" : " "
+                    let fullText = self.accumulatedText + separator + segmentText
+                    self.lastTranscription = fullText
+                    self.onTranscription(fullText, false)
+                }
+                self.onRealtimeInput(oldText, self.lastTranscription)
             }
         }
         debugLog("🔍 [DEBUG] Recognition task created: \(recognitionTask != nil)")
@@ -473,13 +507,12 @@ final class FloatingPanel {
     private func positionNearCursor() {
         guard let window, let screen = NSScreen.main else { return }
 
-        let panelWidth: CGFloat = 300
         let screenFrame = screen.frame
-
+        let panelWidth = screenFrame.width * 0.35
         let x = screenFrame.midX - panelWidth / 2
-        let y = screenFrame.minY + 100
+        let y = screenFrame.minY + screenFrame.height * 0.12
 
-        debugLog("📍 Position: fixed center-bottom (\(x), \(y))")
+        debugLog("📍 Position: fixed center-bottom (\(x), \(y)), panelWidth: \(panelWidth)")
         window.setFrameOrigin(NSPoint(x: x, y: y))
     }
 
@@ -614,33 +647,37 @@ struct FloatingPanelView: View {
     var appState: AppState
     @State private var isPulsing = false
 
+    private var panelWidth: CGFloat {
+        (NSScreen.main?.frame.width ?? 1600) * 0.35
+    }
+
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: 16) {
             Circle()
                 .fill(.red)
-                .frame(width: 10, height: 10)
+                .frame(width: 14, height: 14)
                 .scaleEffect(isPulsing ? 1.3 : 1.0)
                 .opacity(isPulsing ? 0.7 : 1.0)
                 .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: isPulsing)
                 .onAppear { isPulsing = true }
-                .padding(.top, 4)
+                .padding(.top, 5)
 
             if appState.currentTranscription.isEmpty {
                 Text("Listening...")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(size: 18, weight: .medium))
                     .foregroundStyle(.secondary)
             } else {
                 Text(appState.currentTranscription)
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(size: 18, weight: .medium))
                     .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .frame(width: 320)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .padding(.horizontal, 24)
+        .padding(.vertical, 16)
+        .frame(width: panelWidth)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
     }
 }
 
