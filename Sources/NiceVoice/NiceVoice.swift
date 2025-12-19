@@ -167,6 +167,7 @@ final class AppState {
             return
         }
         isRecording = false
+        floatingPanel?.hide()
         speechService?.stopRecording()
         debugLog("🎙️ Recording stopped, waiting for final result...")
 

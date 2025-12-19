@@ -38,18 +38,6 @@ killall NiceVoice 2>/dev/null; open /Applications/NiceVoice.app
 
 ## 解決済みの問題
 
-### Google Drive + Swift Package Manager
-
-**問題**: Google Drive（FileProvider）上で `swift build` や `swift-bundler` を実行すると以下のエラー：
-```
-sandbox-exec: sandbox_apply: Operation not permitted
-error: Invalid manifest
-```
-
-**原因**: Swift Package Manager が SQLite データベースを使用するが、Google Drive の仮想ファイルシステムと互換性がない。
-
-**解決策**: `/tmp/claude/` にファイルをコピーしてからビルドする。`--scratch-path` オプションだけでは不十分な場合がある。
-
 ### CGEvent でのキーボードイベント送信
 
 **問題**: `CGEvent.post()` で Cmd+V を送信してもペーストされない。
