@@ -1,0 +1,17 @@
+.DS_Store
+.claude/
+*.log
+
+# Swift
+.build/
+.swiftpm/
+DerivedData/
+xcuserdata/
+*.xcodeproj
+Packages/
+
+# Environment
+.env
+.env.*
+!.env.example
+.netrc
