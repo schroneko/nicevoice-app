@@ -439,7 +439,6 @@ final class FloatingPanel {
             defer: false
         )
 
-        panel.level = .floating
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
@@ -447,6 +446,7 @@ final class FloatingPanel {
         panel.becomesKeyOnlyIfNeeded = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.isFloatingPanel = true
+        panel.level = .screenSaver
 
         let hostingView = NSHostingView(rootView: FloatingPanelView(appState: appState))
         panel.contentView = hostingView
@@ -549,7 +549,10 @@ final class FloatingPanel {
 
     func show() {
         positionNearCursor()
-        window?.orderFront(nil)
+        window?.orderFrontRegardless()
+        if let window {
+            debugLog("🪟 Window level: \(window.level.rawValue), isVisible: \(window.isVisible)")
+        }
     }
 
     func hide() {
