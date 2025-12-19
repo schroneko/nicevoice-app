@@ -3,6 +3,7 @@ import AVFoundation
 import Speech
 import AppKit
 import Carbon.HIToolbox
+import ApplicationServices
 
 @main
 struct NiceVoiceApp: App {
@@ -40,6 +41,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         debugLog("✅ NiceVoice started")
+        checkAccessibilityPermission()
+    }
+
+    private func checkAccessibilityPermission() {
+        let trusted = AXIsProcessTrusted()
+        debugLog("🔐 Accessibility permission: \(trusted)")
+
+        if !trusted {
+            debugLog("⚠️ Accessibility not granted - opening System Settings")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+            }
+        }
     }
 }
 
@@ -229,6 +243,8 @@ final class AppState {
     }
 
     private func pasteFromClipboard() {
+        let trusted = AXIsProcessTrusted()
+        debugLog("🔐 AXIsProcessTrusted: \(trusted)")
         debugLog("🔍 [DEBUG] pasteFromClipboard called - trying AppleScript")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             let script = """
@@ -457,29 +473,14 @@ final class FloatingPanel {
     private func positionNearCursor() {
         guard let window, let screen = NSScreen.main else { return }
 
-        var position: NSPoint?
+        let panelWidth: CGFloat = 300
+        let screenFrame = screen.frame
 
-        if let caretPos = getCaretPosition() {
-            position = caretPos
-        } else if let focusedPos = getFocusedElementPosition() {
-            position = focusedPos
-        } else {
-            let mouseLocation = NSEvent.mouseLocation
-            position = mouseLocation
-        }
+        let x = screenFrame.midX - panelWidth / 2
+        let y = screenFrame.minY + 100
 
-        if let pos = position {
-            let panelWidth: CGFloat = 400
-            let panelHeight: CGFloat = 100
-            var x = pos.x
-            var y = pos.y - panelHeight - 10
-
-            let screenFrame = screen.frame
-            x = max(screenFrame.minX + 10, min(x, screenFrame.maxX - panelWidth - 10))
-            y = max(screenFrame.minY + 10, min(y, screenFrame.maxY - panelHeight - 10))
-
-            window.setFrameOrigin(NSPoint(x: x, y: y))
-        }
+        debugLog("📍 Position: fixed center-bottom (\(x), \(y))")
+        window.setFrameOrigin(NSPoint(x: x, y: y))
     }
 
     private func getCaretPosition() -> NSPoint? {
@@ -487,28 +488,49 @@ final class FloatingPanel {
         var focusedElement: CFTypeRef?
 
         guard AXUIElementCopyAttributeValue(systemWideElement, kAXFocusedUIElementAttribute as CFString, &focusedElement) == .success else {
+            debugLog("📍 getCaretPosition: Failed to get focused element")
             return nil
         }
 
         let element = focusedElement as! AXUIElement
 
+        var roleValue: CFTypeRef?
+        if AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleValue) == .success {
+            debugLog("📍 getCaretPosition: Element role = \(roleValue as? String ?? "unknown")")
+        }
+
         var selectedRangeValue: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &selectedRangeValue) == .success else {
+            debugLog("📍 getCaretPosition: Failed to get selected range")
             return nil
         }
 
         var boundsValue: CFTypeRef?
         guard AXUIElementCopyParameterizedAttributeValue(element, kAXBoundsForRangeParameterizedAttribute as CFString, selectedRangeValue!, &boundsValue) == .success else {
+            debugLog("📍 getCaretPosition: Failed to get bounds for range")
             return nil
         }
 
         var bounds = CGRect.zero
         guard AXValueGetValue(boundsValue as! AXValue, .cgRect, &bounds) else {
+            debugLog("📍 getCaretPosition: Failed to get bounds value")
+            return nil
+        }
+
+        debugLog("📍 getCaretPosition: Raw bounds = \(bounds)")
+
+        if bounds.width == 0 && bounds.height == 0 {
+            debugLog("📍 getCaretPosition: Bounds size is zero, returning nil")
+            return nil
+        }
+        if bounds.origin.x == 0 && bounds.width == 0 {
+            debugLog("📍 getCaretPosition: Bounds x=0 and width=0, likely invalid")
             return nil
         }
 
         guard let screen = NSScreen.main else { return nil }
-        let flippedY = screen.frame.height - bounds.origin.y
+        let flippedY = screen.frame.height - bounds.origin.y - bounds.height
+        debugLog("📍 getCaretPosition: screen.height=\(screen.frame.height), flippedY=\(flippedY)")
         return NSPoint(x: bounds.origin.x, y: flippedY)
     }
 
@@ -517,23 +539,45 @@ final class FloatingPanel {
         var focusedElement: CFTypeRef?
 
         guard AXUIElementCopyAttributeValue(systemWideElement, kAXFocusedUIElementAttribute as CFString, &focusedElement) == .success else {
+            debugLog("📍 getFocusedElement: Failed to get focused element")
             return nil
         }
 
         let element = focusedElement as! AXUIElement
 
+        var roleValue: CFTypeRef?
+        if AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleValue) == .success {
+            debugLog("📍 getFocusedElement: Element role = \(roleValue as? String ?? "unknown")")
+        }
+
         var positionValue: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &positionValue) == .success else {
+            debugLog("📍 getFocusedElement: Failed to get position")
             return nil
         }
 
         var position = CGPoint.zero
         guard AXValueGetValue(positionValue as! AXValue, .cgPoint, &position) else {
+            debugLog("📍 getFocusedElement: Failed to get position value")
+            return nil
+        }
+
+        var sizeValue: CFTypeRef?
+        var size = CGSize.zero
+        if AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeValue) == .success {
+            AXValueGetValue(sizeValue as! AXValue, .cgSize, &size)
+        }
+
+        debugLog("📍 getFocusedElement: Raw position = \(position), size = \(size)")
+
+        if size.height > 100 {
+            debugLog("📍 getFocusedElement: Element too tall (\(size.height)), likely a window/container")
             return nil
         }
 
         guard let screen = NSScreen.main else { return nil }
-        let flippedY = screen.frame.height - position.y
+        let flippedY = screen.frame.height - position.y - size.height
+        debugLog("📍 getFocusedElement: screen.height=\(screen.frame.height), flippedY=\(flippedY)")
         return NSPoint(x: position.x, y: flippedY)
     }
 
@@ -568,24 +612,35 @@ final class FloatingPanel {
 
 struct FloatingPanelView: View {
     var appState: AppState
+    @State private var isPulsing = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Text("🎤")
-                .font(.title2)
+        HStack(alignment: .top, spacing: 12) {
+            Circle()
+                .fill(.red)
+                .frame(width: 10, height: 10)
+                .scaleEffect(isPulsing ? 1.3 : 1.0)
+                .opacity(isPulsing ? 0.7 : 1.0)
+                .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: isPulsing)
+                .onAppear { isPulsing = true }
+                .padding(.top, 4)
+
             if appState.currentTranscription.isEmpty {
-                Text("fn キーを押している間、文字起こしされます。")
-                    .font(.body)
+                Text("Listening...")
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(.secondary)
             } else {
                 Text(appState.currentTranscription)
-                    .font(.body)
+                    .font(.system(size: 14, weight: .medium))
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
         }
-        .padding()
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
-        .frame(width: 380)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(width: 320)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
     }
 }
 

@@ -18,11 +18,23 @@ cd /Users/username/nicevoice-app
 export PATH="$HOME/.mint/bin:$PATH"
 swift-bundler bundle
 cp -R .build/bundler/NiceVoice.app /Applications/
-codesign -s - -f --deep /Applications/NiceVoice.app
+codesign -fs "NiceVoice" --deep /Applications/NiceVoice.app
 killall NiceVoice 2>/dev/null; open /Applications/NiceVoice.app
 ```
 
-codesign で ad-hoc 署名を追加することで、アクセシビリティ権限が維持される。
+自己署名証明書「NiceVoice」で署名することで、ビルドしてもアクセシビリティ権限が維持される。
+
+### 自己署名証明書の作成（初回のみ）
+
+1. Keychain Access を開く
+2. メニュー: Keychain Access → Certificate Assistant → Create a Certificate...
+3. Name: `NiceVoice`, Identity Type: `Self Signed Root`, Certificate Type: `Code Signing`
+4. Create をクリック
+5. 証明書を信頼設定に追加:
+   ```bash
+   security find-certificate -c "NiceVoice" -p > /tmp/nicevoice-cert.pem
+   security add-trusted-cert -r trustRoot -p codeSign -k ~/Library/Keychains/login.keychain-db /tmp/nicevoice-cert.pem
+   ```
 
 ## 解決済みの問題
 
@@ -66,9 +78,13 @@ keyUp?.post(tap: .cgAnnotatedSessionEventTap)
 
 ### アクセシビリティ権限
 
-**問題**: `/tmp/` にあるアプリはシステム設定のアクセシビリティ一覧に表示されない。
+**問題 1**: `/tmp/` にあるアプリはシステム設定のアクセシビリティ一覧に表示されない。
 
-**解決策**: `~/Applications/` にコピーしてから起動する。
+**解決策**: `/Applications/` にコピーしてから起動する。
+
+**問題 2**: ad-hoc 署名（`codesign -s -`）だとビルドごとに署名が変わり、アクセシビリティ権限がリセットされる。Allow ダイアログを押しても反映されず、毎回設定から手動で追加が必要だった。
+
+**解決策**: 自己署名証明書を作成し、安定した署名を使用する。これにより TCC が同一アプリと認識し、権限が維持される。
 
 ## 未解決・要検討
 
