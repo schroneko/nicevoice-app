@@ -198,8 +198,51 @@ final class AppState {
         }
         debugLog("🔍 [DEBUG] About to copy and paste: '\(text)'")
         addToHistory(text)
-        copyToClipboard(text)
-        pasteFromClipboard()
+        pasteWithClipboardRestore(text)
+    }
+
+    private func pasteWithClipboardRestore(_ text: String) {
+        let pasteboard = NSPasteboard.general
+
+        let previousContents = pasteboard.string(forType: .string)
+        debugLog("📋 Saving previous clipboard: '\(previousContents ?? "nil")'")
+
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+        debugLog("📋 Set clipboard to: '\(text)'")
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            self?.simulatePaste {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    if let previous = previousContents {
+                        pasteboard.clearContents()
+                        pasteboard.setString(previous, forType: .string)
+                        debugLog("📋 Restored clipboard to: '\(previous)'")
+                    } else {
+                        debugLog("📋 No previous clipboard to restore")
+                    }
+                }
+            }
+        }
+    }
+
+    private func simulatePaste(completion: @escaping () -> Void) {
+        let script = """
+        tell application "System Events"
+            keystroke "v" using command down
+        end tell
+        """
+
+        var error: NSDictionary?
+        if let appleScript = NSAppleScript(source: script) {
+            let result = appleScript.executeAndReturnError(&error)
+            if let error = error {
+                debugLog("❌ AppleScript error: \(error)")
+            } else {
+                debugLog("✅ Paste executed successfully: \(result)")
+            }
+        }
+        completion()
     }
 
     func cancelRecording() {
@@ -231,43 +274,6 @@ final class AppState {
         debugLog("🗑️ History cleared")
     }
 
-    private func copyToClipboard(_ text: String) {
-        debugLog("🔍 [DEBUG] copyToClipboard called with: '\(text)'")
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        let success = pasteboard.setString(text, forType: .string)
-        debugLog("📋 Copied to clipboard: '\(text)', success: \(success)")
-
-        let verify = pasteboard.string(forType: .string)
-        debugLog("🔍 [DEBUG] Clipboard verification: '\(verify ?? "nil")'")
-    }
-
-    private func pasteFromClipboard() {
-        let trusted = AXIsProcessTrusted()
-        debugLog("🔐 AXIsProcessTrusted: \(trusted)")
-        debugLog("🔍 [DEBUG] pasteFromClipboard called - trying AppleScript")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            let script = """
-            tell application "System Events"
-                keystroke "v" using command down
-            end tell
-            """
-            debugLog("🔍 [DEBUG] AppleScript: \(script)")
-
-            var error: NSDictionary?
-            if let appleScript = NSAppleScript(source: script) {
-                debugLog("🔍 [DEBUG] NSAppleScript created")
-                let result = appleScript.executeAndReturnError(&error)
-                if let error = error {
-                    debugLog("❌ AppleScript error: \(error)")
-                } else {
-                    debugLog("✅ AppleScript executed successfully, result: \(result)")
-                }
-            } else {
-                debugLog("❌ Failed to create NSAppleScript")
-            }
-        }
-    }
 
     private func handleRealtimeInput(oldText: String, newText: String) {
     }
