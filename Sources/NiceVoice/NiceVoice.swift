@@ -505,7 +505,7 @@ final class AppState {
             ("クロード", "Claude"),
             ("スーパーベース", "Supabase"),
             ("スパベース", "Supabase"),
-            ("スペースベース", "Supabase"),
+            ("グロック", "Grok"),
         ]
         for (reading, writing) in builtInDictionary {
             result = result.replacingOccurrences(of: reading, with: writing)
