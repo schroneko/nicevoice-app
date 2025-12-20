@@ -233,14 +233,13 @@ struct DictionaryEntry: Identifiable, Codable, Equatable {
 struct FillerSettings: Codable {
     var removeFillers: Bool = true
     var enabledPresets: Set<String> = [
-        "えー", "えぇ", "ええ",
-        "あー", "あぁ", "ああ",
-        "うーん", "うん",
+        "えー", "えぅ", "えぇ",
+        "あー", "あぁ",
+        "うーん",
         "まあ", "まぁ",
         "なんか",
         "ちょっと",
-        "やっぱり", "やっぱ",
-        "ですね", "ですよね"
+        "やっぱり", "やっぱ"
     ]
     var customFillers: [String] = []
 
@@ -326,9 +325,10 @@ final class AppState {
         speechService = SpeechRecognitionService(
             onTranscription: { [weak self] text, isFinal in
                 DispatchQueue.main.async {
-                    self?.currentTranscription = text
+                    guard let self else { return }
+                    self.currentTranscription = self.addLocalPunctuation(text)
                     if isFinal {
-                        self?.handleFinalResult(text)
+                        self.handleFinalResult(text)
                     }
                 }
             },
@@ -502,24 +502,99 @@ final class AppState {
             result = result.replacingOccurrences(of: entry.reading, with: entry.writing)
         }
 
-        let greetings = ["こんにちは", "こんばんは", "おはよう", "おはようございます", "お疲れ様です", "お疲れさまです"]
-        for greeting in greetings {
-            if result.hasPrefix(greeting) && result.count > greeting.count {
-                let afterGreeting = result.dropFirst(greeting.count)
-                if let first = afterGreeting.first, first != "。" && first != "、" {
-                    result = greeting + "。" + String(afterGreeting)
+        for suffixLen in (2...4).reversed() {
+            guard result.count > suffixLen * 2 else { continue }
+            let suffix = String(result.suffix(suffixLen))
+            let beforeSuffix = String(result.dropLast(suffixLen))
+            if beforeSuffix.hasSuffix(suffix) {
+                continue
+            }
+            for checkLen in (suffixLen + 1)...(suffixLen + 3) {
+                guard beforeSuffix.count >= checkLen else { continue }
+                let candidate = String(beforeSuffix.suffix(checkLen))
+                if candidate.hasPrefix(suffix) {
+                    result = beforeSuffix
+                    break
                 }
             }
         }
 
-        let questionPatterns = [
-            "ですか", "ますか", "でしょうか", "かな", "かしら",
-            "だろうか", "のか", "なの", "何", "なに",
-            "どう", "どこ", "いつ", "誰", "なぜ",
-            "どれ", "どちら", "いくつ", "いくら"
+        let midSentenceBreakers = [
+            "ありがとうございます", "すみません", "お願いします",
+            "こんにちは", "こんばんは", "おはようございます", "お疲れ様です", "お疲れさまです"
         ]
+        for phrase in midSentenceBreakers.sorted(by: { $0.count > $1.count }) {
+            var offset = 0
+            while offset < result.count {
+                guard let startIdx = result.index(result.startIndex, offsetBy: offset, limitedBy: result.endIndex),
+                      let range = result.range(of: phrase, range: startIdx..<result.endIndex) else { break }
+                var insertedBefore = false
+                if range.lowerBound > result.startIndex {
+                    let prevIndex = result.index(before: range.lowerBound)
+                    let prevChar = result[prevIndex]
+                    if prevChar != "。" && prevChar != "、" && prevChar != "？" && prevChar != "！" {
+                        result.insert("。", at: range.lowerBound)
+                        insertedBefore = true
+                    }
+                }
+                let newUpperBound = result.index(range.lowerBound, offsetBy: phrase.count + (insertedBefore ? 1 : 0))
+                if newUpperBound < result.endIndex {
+                    let nextChar = result[newUpperBound]
+                    if nextChar != "。" && nextChar != "、" && nextChar != "？" && nextChar != "！" {
+                        result.insert("。", at: newUpperBound)
+                    }
+                }
+                offset = result.distance(from: result.startIndex, to: range.lowerBound) + phrase.count + (insertedBefore ? 2 : 1)
+            }
+        }
 
-        let isQuestion = questionPatterns.contains { pattern in
+        let commaAfterConjunctions = ["けど", "けれど", "けれども", "だけど", "ですが", "ですけど"]
+        for conj in commaAfterConjunctions.sorted(by: { $0.count > $1.count }) {
+            var offset = 0
+            while offset < result.count {
+                guard let startIdx = result.index(result.startIndex, offsetBy: offset, limitedBy: result.endIndex),
+                      let range = result.range(of: conj, range: startIdx..<result.endIndex) else { break }
+                if range.upperBound < result.endIndex {
+                    let nextChar = result[range.upperBound]
+                    if nextChar != "。" && nextChar != "、" && nextChar != "？" && nextChar != "！" {
+                        result.insert("、", at: range.upperBound)
+                    }
+                }
+                offset = result.distance(from: result.startIndex, to: range.lowerBound) + conj.count + 1
+            }
+        }
+
+        let startersOnlyAtBeginning = ["はい", "いいえ", "うん", "ええ", "そうですね", "なるほど", "おはよう"]
+        for starter in startersOnlyAtBeginning {
+            if result.hasPrefix(starter) && result.count > starter.count {
+                let afterStarter = result.dropFirst(starter.count)
+                if let first = afterStarter.first, first != "。" && first != "、" {
+                    result = starter + "。" + String(afterStarter)
+                }
+            }
+        }
+
+        let questionEndings = ["ですか", "ますか", "でしょうか"]
+        for ending in questionEndings {
+            var searchStart = result.startIndex
+            while let range = result.range(of: ending, range: searchStart..<result.endIndex) {
+                let afterEnd = range.upperBound
+                if afterEnd < result.endIndex {
+                    let nextChar = result[afterEnd]
+                    if nextChar != "？" && nextChar != "?" && nextChar != "。" {
+                        result.insert("？", at: afterEnd)
+                    }
+                }
+                searchStart = result.index(after: range.lowerBound)
+                if searchStart >= result.endIndex { break }
+            }
+        }
+
+        let trailingQuestionPatterns = [
+            "ですか", "ますか", "でしょうか", "かな", "かしら",
+            "だろうか", "のか", "なの"
+        ]
+        let isQuestion = trailingQuestionPatterns.contains { pattern in
             result.hasSuffix(pattern)
         }
 
@@ -2573,7 +2648,7 @@ struct SettingsContentView: View {
     @State private var newFiller = ""
     @State private var animateContent = false
 
-    private let presetFillers = ["えー", "あー", "うーん", "まあ", "なんか", "ちょっと", "ですね", "ですよね"]
+    private let presetFillers = ["えー", "あー", "うーん", "まあ", "なんか", "ちょっと", "やっぱり"]
 
     enum ValidationState {
         case none
