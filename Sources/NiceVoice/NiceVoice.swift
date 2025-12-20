@@ -498,6 +498,10 @@ final class AppState {
             guard !result.isEmpty else { return result }
         }
 
+        for entry in dictionaryEntries where entry.isEnabled {
+            result = result.replacingOccurrences(of: entry.reading, with: entry.writing)
+        }
+
         let greetings = ["こんにちは", "こんばんは", "おはよう", "おはようございます", "お疲れ様です", "お疲れさまです"]
         for greeting in greetings {
             if result.hasPrefix(greeting) && result.count > greeting.count {
