@@ -238,7 +238,6 @@ struct FillerSettings: Codable {
         "うーん",
         "まあ", "まぁ",
         "なんか",
-        "ちょっと",
         "やっぱり", "やっぱ"
     ]
     var customFillers: [String] = []
@@ -498,23 +497,41 @@ final class AppState {
             guard !result.isEmpty else { return result }
         }
 
+        let builtInDictionary = [
+            ("クロードコード", "Claude Code"),
+            ("ロードコード", "Claude Code"),
+            ("ロードコ", "Claude Code"),
+            ("ラングラー", "Wrangler"),
+            ("クロード", "Claude"),
+            ("スーパーベース", "Supabase"),
+            ("スパベース", "Supabase"),
+            ("スペースベース", "Supabase"),
+        ]
+        for (reading, writing) in builtInDictionary {
+            result = result.replacingOccurrences(of: reading, with: writing)
+        }
+
         for entry in dictionaryEntries where entry.isEnabled {
             result = result.replacingOccurrences(of: entry.reading, with: entry.writing)
         }
 
-        for suffixLen in (2...4).reversed() {
-            guard result.count > suffixLen * 2 else { continue }
-            let suffix = String(result.suffix(suffixLen))
-            let beforeSuffix = String(result.dropLast(suffixLen))
-            if beforeSuffix.hasSuffix(suffix) {
-                continue
-            }
-            for checkLen in (suffixLen + 1)...(suffixLen + 3) {
-                guard beforeSuffix.count >= checkLen else { continue }
-                let candidate = String(beforeSuffix.suffix(checkLen))
-                if candidate.hasPrefix(suffix) {
-                    result = beforeSuffix
-                    break
+        let lastChars = String(result.suffix(min(10, result.count)))
+        let containsLatin = lastChars.unicodeScalars.contains { $0.isASCII && $0.properties.isAlphabetic }
+        if !containsLatin {
+            for suffixLen in (2...4).reversed() {
+                guard result.count > suffixLen * 2 else { continue }
+                let suffix = String(result.suffix(suffixLen))
+                let beforeSuffix = String(result.dropLast(suffixLen))
+                if beforeSuffix.hasSuffix(suffix) {
+                    continue
+                }
+                for checkLen in (suffixLen + 1)...(suffixLen + 3) {
+                    guard beforeSuffix.count >= checkLen else { continue }
+                    let candidate = String(beforeSuffix.suffix(checkLen))
+                    if candidate.hasPrefix(suffix) {
+                        result = beforeSuffix
+                        break
+                    }
                 }
             }
         }
@@ -523,6 +540,25 @@ final class AppState {
             "ありがとうございます", "すみません", "お願いします",
             "こんにちは", "こんばんは", "おはようございます", "お疲れ様です", "お疲れさまです"
         ]
+
+        let transitionWords = ["とりあえず", "ただ", "でも", "しかし", "ちなみに", "あと", "それから", "それで"]
+        for word in transitionWords {
+            var offset = 0
+            while offset < result.count {
+                guard let startIdx = result.index(result.startIndex, offsetBy: offset, limitedBy: result.endIndex),
+                      let range = result.range(of: word, range: startIdx..<result.endIndex) else { break }
+                if range.lowerBound > result.startIndex {
+                    let prevIndex = result.index(before: range.lowerBound)
+                    let prevChar = result[prevIndex]
+                    if prevChar != "。" && prevChar != "、" && prevChar != "？" && prevChar != "！" {
+                        result.insert("。", at: range.lowerBound)
+                        offset = result.distance(from: result.startIndex, to: range.lowerBound) + word.count + 1
+                        continue
+                    }
+                }
+                offset = result.distance(from: result.startIndex, to: range.lowerBound) + word.count
+            }
+        }
         for phrase in midSentenceBreakers.sorted(by: { $0.count > $1.count }) {
             var offset = 0
             while offset < result.count {
@@ -2651,7 +2687,7 @@ struct SettingsContentView: View {
     @State private var newFiller = ""
     @State private var animateContent = false
 
-    private let presetFillers = ["えー", "あー", "うーん", "まあ", "なんか", "ちょっと", "やっぱり"]
+    private let presetFillers = ["えー", "あー", "うーん", "まあ", "なんか", "やっぱり"]
 
     enum ValidationState {
         case none
