@@ -290,6 +290,16 @@ final class AppState {
     @AppStorage("useGemini") var useGemini = true
     @ObservationIgnored
     @AppStorage("geminiApiKey") var geminiApiKey = ""
+    @ObservationIgnored
+    @AppStorage("shortcutKey") var shortcutKeyRaw = ShortcutKey.fn.rawValue
+
+    var shortcutKey: ShortcutKey {
+        get { ShortcutKey(rawValue: shortcutKeyRaw) ?? .fn }
+        set {
+            shortcutKeyRaw = newValue.rawValue
+            keyMonitor?.updateShortcutKey(newValue)
+        }
+    }
 
     @ObservationIgnored
     var usageStats: UsageStats = UsageStats()
@@ -299,7 +309,7 @@ final class AppState {
     var fillerSettings: FillerSettings = FillerSettings()
 
     private var speechService: SpeechRecognitionService?
-    private var fnKeyMonitor: FnKeyMonitor?
+    private(set) var keyMonitor: KeyMonitor?
     private var floatingPanel: FloatingPanel?
     private var waitingForFinalResult = false
     private var finalResultTimer: DispatchWorkItem?
@@ -336,7 +346,8 @@ final class AppState {
             }
         )
 
-        fnKeyMonitor = FnKeyMonitor(
+        keyMonitor = KeyMonitor(
+            shortcutKey: shortcutKey,
             onKeyDown: { [weak self] in self?.startRecording() },
             onKeyUp: { [weak self] in self?.stopRecording() }
         )
@@ -1220,34 +1231,102 @@ final class GeminiService {
     }
 }
 
-final class FnKeyMonitor {
+enum ShortcutKey: String, CaseIterable {
+    case fn = "fn"
+    case leftShift = "leftShift"
+    case rightShift = "rightShift"
+    case leftControl = "leftControl"
+    case rightControl = "rightControl"
+    case leftOption = "leftOption"
+    case rightOption = "rightOption"
+    case leftCommand = "leftCommand"
+    case rightCommand = "rightCommand"
+
+    var displayName: String {
+        switch self {
+        case .fn: return "fn"
+        case .leftShift: return "左 Shift"
+        case .rightShift: return "右 Shift"
+        case .leftControl: return "左 Control"
+        case .rightControl: return "右 Control"
+        case .leftOption: return "左 Option"
+        case .rightOption: return "右 Option"
+        case .leftCommand: return "左 Command"
+        case .rightCommand: return "右 Command"
+        }
+    }
+
+    var keyCode: UInt16 {
+        switch self {
+        case .fn: return 63
+        case .leftShift: return 56
+        case .rightShift: return 60
+        case .leftControl: return 59
+        case .rightControl: return 62
+        case .leftOption: return 58
+        case .rightOption: return 61
+        case .leftCommand: return 55
+        case .rightCommand: return 54
+        }
+    }
+
+    var modifierFlag: NSEvent.ModifierFlags {
+        switch self {
+        case .fn: return .function
+        case .leftShift, .rightShift: return .shift
+        case .leftControl, .rightControl: return .control
+        case .leftOption, .rightOption: return .option
+        case .leftCommand, .rightCommand: return .command
+        }
+    }
+}
+
+final class KeyMonitor {
     private var monitor: Any?
-    private var isFnPressed = false
+    private var isKeyPressed = false
     private let onKeyDown: () -> Void
     private let onKeyUp: () -> Void
+    private var shortcutKey: ShortcutKey
 
-    init(onKeyDown: @escaping () -> Void, onKeyUp: @escaping () -> Void) {
+    init(shortcutKey: ShortcutKey = .fn, onKeyDown: @escaping () -> Void, onKeyUp: @escaping () -> Void) {
+        self.shortcutKey = shortcutKey
         self.onKeyDown = onKeyDown
         self.onKeyUp = onKeyUp
         startMonitoring()
     }
 
+    func updateShortcutKey(_ newKey: ShortcutKey) {
+        guard newKey != shortcutKey else { return }
+        shortcutKey = newKey
+        isKeyPressed = false
+        stopMonitoring()
+        startMonitoring()
+        debugLog("🔄 Shortcut key changed to: \(newKey.displayName)")
+    }
+
+    private func stopMonitoring() {
+        if let monitor {
+            NSEvent.removeMonitor(monitor)
+            self.monitor = nil
+        }
+    }
+
     private func startMonitoring() {
-        debugLog("🔍 [DEBUG] FnKeyMonitor startMonitoring called")
+        debugLog("🔍 [DEBUG] KeyMonitor startMonitoring called for: \(shortcutKey.displayName)")
         monitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
             guard let self else { return }
-            let fnPressed = event.modifierFlags.contains(.function)
+            let keyPressed = self.isShortcutKeyPressed(event: event)
 
-            if fnPressed && !self.isFnPressed {
-                debugLog("🔍 [DEBUG] fn key DOWN detected")
-                self.isFnPressed = true
+            if keyPressed && !self.isKeyPressed {
+                debugLog("🔍 [DEBUG] \(self.shortcutKey.displayName) key DOWN detected")
+                self.isKeyPressed = true
                 DispatchQueue.main.async {
                     debugLog("🔍 [DEBUG] Calling onKeyDown callback")
                     self.onKeyDown()
                 }
-            } else if !fnPressed && self.isFnPressed {
-                debugLog("🔍 [DEBUG] fn key UP detected")
-                self.isFnPressed = false
+            } else if !keyPressed && self.isKeyPressed {
+                debugLog("🔍 [DEBUG] \(self.shortcutKey.displayName) key UP detected")
+                self.isKeyPressed = false
                 DispatchQueue.main.async {
                     debugLog("🔍 [DEBUG] Calling onKeyUp callback")
                     self.onKeyUp()
@@ -1258,14 +1337,20 @@ final class FnKeyMonitor {
         if monitor == nil {
             debugLog("⚠️ アクセシビリティ権限が必要です - monitor is nil")
         } else {
-            debugLog("✅ FnKeyMonitor started successfully")
+            debugLog("✅ KeyMonitor started successfully for: \(shortcutKey.displayName)")
         }
     }
 
-    deinit {
-        if let monitor {
-            NSEvent.removeMonitor(monitor)
+    private func isShortcutKeyPressed(event: NSEvent) -> Bool {
+        let hasModifier = event.modifierFlags.contains(shortcutKey.modifierFlag)
+        if shortcutKey == .fn {
+            return hasModifier
         }
+        return hasModifier && event.keyCode == shortcutKey.keyCode
+    }
+
+    deinit {
+        stopMonitoring()
     }
 }
 
@@ -2676,16 +2761,65 @@ struct HistoryRowView: View {
     }
 }
 
+struct ShortcutKeyButton: View {
+    let key: ShortcutKey
+    let isSelected: Bool
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: iconName)
+                    .font(.system(size: 16, weight: .medium))
+                Text(key.displayName)
+                    .font(.caption)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 52)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isSelected ? Color.accentColor.opacity(0.15) : (isHovered ? Color.secondary.opacity(0.1) : Color.clear))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(isSelected ? Color.accentColor : Color.secondary.opacity(0.2), lineWidth: isSelected ? 2 : 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(isSelected ? .primary : .secondary)
+        .onHover { hovering in
+            isHovered = hovering
+        }
+    }
+
+    private var iconName: String {
+        switch key {
+        case .fn: return "fn"
+        case .leftShift, .rightShift: return "shift"
+        case .leftControl, .rightControl: return "control"
+        case .leftOption, .rightOption: return "option"
+        case .leftCommand, .rightCommand: return "command"
+        }
+    }
+}
+
 struct SettingsContentView: View {
     var appState: AppState
     @AppStorage("useGemini") private var useGemini = true
     @AppStorage("geminiApiKey") private var geminiApiKey = ""
     @AppStorage("showInMenuBar") private var showInMenuBar = true
+    @AppStorage("shortcutKey") private var shortcutKeyRaw = ShortcutKey.fn.rawValue
     @State private var validationState: ValidationState = .none
     @State private var isValidating = false
     @State private var fillerSettings: FillerSettings
     @State private var newFiller = ""
     @State private var animateContent = false
+
+    private var selectedShortcutKey: ShortcutKey {
+        ShortcutKey(rawValue: shortcutKeyRaw) ?? .fn
+    }
 
     private let presetFillers = ["えー", "あー", "うーん", "まあ", "なんか", "やっぱり"]
 
@@ -2718,6 +2852,34 @@ struct SettingsContentView: View {
                         description: "オフにすると Dock からのみ起動できます",
                         isOn: $showInMenuBar
                     )
+
+                    Divider()
+                        .padding(.vertical, 4)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("ショートカットキー")
+                            .font(.body)
+                        Text("録音を開始・停止するキー")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        LazyVGrid(columns: [
+                            GridItem(.flexible()),
+                            GridItem(.flexible()),
+                            GridItem(.flexible())
+                        ], spacing: 8) {
+                            ForEach(ShortcutKey.allCases, id: \.self) { key in
+                                ShortcutKeyButton(
+                                    key: key,
+                                    isSelected: selectedShortcutKey == key,
+                                    action: {
+                                        shortcutKeyRaw = key.rawValue
+                                        appState.keyMonitor?.updateShortcutKey(key)
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
                 .opacity(animateContent ? 1 : 0)
                 .offset(y: animateContent ? 0 : 10)
