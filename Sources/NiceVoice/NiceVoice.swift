@@ -326,7 +326,7 @@ final class AppState {
             onTranscription: { [weak self] text, isFinal in
                 DispatchQueue.main.async {
                     guard let self else { return }
-                    self.currentTranscription = self.addLocalPunctuation(text)
+                    self.currentTranscription = self.addLocalPunctuation(text, isFinal: isFinal)
                     if isFinal {
                         self.handleFinalResult(text)
                     }
@@ -484,7 +484,7 @@ final class AppState {
         performPaste(text)
     }
 
-    private func addLocalPunctuation(_ text: String) -> String {
+    private func addLocalPunctuation(_ text: String, isFinal: Bool = true) -> String {
         var result = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !result.isEmpty else { return result }
 
@@ -574,14 +574,14 @@ final class AppState {
             }
         }
 
-        let questionEndings = ["ですか", "ますか", "でしょうか"]
-        for ending in questionEndings {
+        let questionEndings = ["ですかね", "ますかね", "でしょうかね", "ですか", "ますか", "でしょうか"]
+        for ending in questionEndings.sorted(by: { $0.count > $1.count }) {
             var searchStart = result.startIndex
             while let range = result.range(of: ending, range: searchStart..<result.endIndex) {
                 let afterEnd = range.upperBound
                 if afterEnd < result.endIndex {
                     let nextChar = result[afterEnd]
-                    if nextChar != "？" && nextChar != "?" && nextChar != "。" {
+                    if nextChar != "？" && nextChar != "?" && nextChar != "。" && nextChar != "ね" {
                         result.insert("？", at: afterEnd)
                     }
                 }
@@ -590,21 +590,24 @@ final class AppState {
             }
         }
 
-        let trailingQuestionPatterns = [
-            "ですか", "ますか", "でしょうか", "かな", "かしら",
-            "だろうか", "のか", "なの"
-        ]
-        let isQuestion = trailingQuestionPatterns.contains { pattern in
-            result.hasSuffix(pattern)
-        }
-
-        if isQuestion {
-            if !result.hasSuffix("？") && !result.hasSuffix("?") {
-                result += "？"
+        if isFinal {
+            let trailingQuestionPatterns = [
+                "ですかね", "ますかね", "でしょうかね",
+                "ですか", "ますか", "でしょうか", "かな", "かしら",
+                "だろうか", "のか", "なの"
+            ]
+            let isQuestion = trailingQuestionPatterns.contains { pattern in
+                result.hasSuffix(pattern)
             }
-        } else {
-            if !result.hasSuffix("。") && !result.hasSuffix("？") && !result.hasSuffix("！") {
-                result += "。"
+
+            if isQuestion {
+                if !result.hasSuffix("？") && !result.hasSuffix("?") {
+                    result += "？"
+                }
+            } else {
+                if !result.hasSuffix("。") && !result.hasSuffix("？") && !result.hasSuffix("！") && !result.hasSuffix("、") {
+                    result += "。"
+                }
             }
         }
 
