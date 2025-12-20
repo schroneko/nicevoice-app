@@ -181,6 +181,12 @@ struct TranscriptionRecord: Identifiable, Codable {
         self.text = text
         self.timestamp = timestamp
     }
+
+    init(id: UUID, text: String, timestamp: Date) {
+        self.id = id
+        self.text = text
+        self.timestamp = timestamp
+    }
 }
 
 struct UsageStats: Codable {
@@ -226,7 +232,16 @@ struct DictionaryEntry: Identifiable, Codable, Equatable {
 
 struct FillerSettings: Codable {
     var removeFillers: Bool = true
-    var enabledPresets: Set<String> = ["えー", "あー", "うーん", "まあ", "なんか", "ちょっと", "ですね", "ですよね"]
+    var enabledPresets: Set<String> = [
+        "えー", "えぇ", "ええ",
+        "あー", "あぁ", "ああ",
+        "うーん", "うん",
+        "まあ", "まぁ",
+        "なんか",
+        "ちょっと",
+        "やっぱり", "やっぱ",
+        "ですね", "ですよね"
+    ]
     var customFillers: [String] = []
 
     var addPunctuation: Bool = true
@@ -235,7 +250,7 @@ struct FillerSettings: Codable {
     var allEnabledFillers: [String] {
         var fillers = Array(enabledPresets)
         fillers.append(contentsOf: customFillers)
-        return fillers
+        return fillers.sorted { $0.count > $1.count }
     }
 }
 
@@ -399,42 +414,46 @@ final class AppState {
         NotificationCenter.default.post(name: .recordingStateChanged, object: nil)
 
         sfSpeechResult = currentTranscription
+        let fallbackResult = addLocalPunctuation(sfSpeechResult)
+        debugLog("📝 SFSpeech result: '\(fallbackResult)'")
+
+        if fallbackResult.isEmpty {
+            debugLog("⚠️ No speech detected, skipping")
+            floatingPanel?.hide()
+            speechService?.clearAudioBuffers()
+            return
+        }
 
         if useGemini && !geminiApiKey.isEmpty {
             isConverting = true
-            debugLog("🔄 Starting Gemini conversion...")
-
+            debugLog("🔄 Starting Gemini processing...")
             Task {
                 do {
                     let geminiResult = try await processWithGemini()
                     await MainActor.run {
+                        debugLog("✅ Gemini result: '\(geminiResult)'")
                         isConverting = false
                         floatingPanel?.hide()
+                        addToHistory(geminiResult)
                         performPaste(geminiResult)
                         speechService?.clearAudioBuffers()
                     }
                 } catch {
-                    debugLog("❌ Gemini error: \(error), falling back to SFSpeech")
+                    debugLog("❌ Gemini error: \(error), using fallback")
                     await MainActor.run {
                         isConverting = false
                         floatingPanel?.hide()
-                        performPaste(sfSpeechResult)
+                        addToHistory(fallbackResult)
+                        performPaste(fallbackResult)
                         speechService?.clearAudioBuffers()
                     }
                 }
             }
         } else {
             floatingPanel?.hide()
-            waitingForFinalResult = true
-
-            finalResultTimer?.cancel()
-            let timer = DispatchWorkItem { [weak self] in
-                guard let self, self.waitingForFinalResult else { return }
-                debugLog("⏱️ Timeout - using current transcription: '\(self.currentTranscription)'")
-                self.performPaste(self.currentTranscription)
-            }
-            finalResultTimer = timer
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0, execute: timer)
+            addToHistory(fallbackResult)
+            performPaste(fallbackResult)
+            speechService?.clearAudioBuffers()
         }
     }
 
@@ -465,6 +484,54 @@ final class AppState {
         performPaste(text)
     }
 
+    private func addLocalPunctuation(_ text: String) -> String {
+        var result = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !result.isEmpty else { return result }
+
+        if fillerSettings.removeFillers {
+            let fillers = fillerSettings.allEnabledFillers
+            for filler in fillers {
+                result = result.replacingOccurrences(of: filler, with: "")
+            }
+            result = result.trimmingCharacters(in: .whitespacesAndNewlines)
+            result = result.replacingOccurrences(of: "  ", with: " ")
+            guard !result.isEmpty else { return result }
+        }
+
+        let greetings = ["こんにちは", "こんばんは", "おはよう", "おはようございます", "お疲れ様です", "お疲れさまです"]
+        for greeting in greetings {
+            if result.hasPrefix(greeting) && result.count > greeting.count {
+                let afterGreeting = result.dropFirst(greeting.count)
+                if let first = afterGreeting.first, first != "。" && first != "、" {
+                    result = greeting + "。" + String(afterGreeting)
+                }
+            }
+        }
+
+        let questionPatterns = [
+            "ですか", "ますか", "でしょうか", "かな", "かしら",
+            "だろうか", "のか", "なの", "何", "なに",
+            "どう", "どこ", "いつ", "誰", "なぜ",
+            "どれ", "どちら", "いくつ", "いくら"
+        ]
+
+        let isQuestion = questionPatterns.contains { pattern in
+            result.hasSuffix(pattern)
+        }
+
+        if isQuestion {
+            if !result.hasSuffix("？") && !result.hasSuffix("?") {
+                result += "？"
+            }
+        } else {
+            if !result.hasSuffix("。") && !result.hasSuffix("？") && !result.hasSuffix("！") {
+                result += "。"
+            }
+        }
+
+        return result
+    }
+
     private func performPaste(_ text: String) {
         waitingForFinalResult = false
         floatingPanel?.hide()
@@ -473,7 +540,6 @@ final class AppState {
             return
         }
         debugLog("🔍 [DEBUG] About to copy and paste: '\(text)'")
-        addToHistory(text)
         pasteWithClipboardRestore(text)
     }
 
@@ -529,14 +595,16 @@ final class AppState {
         debugLog("🚫 Recording cancelled")
     }
 
-    private func addToHistory(_ text: String) {
+    @discardableResult
+    private func addToHistory(_ text: String) -> UUID {
         let record = TranscriptionRecord(text: text, timestamp: Date())
         history.insert(record, at: 0)
         if history.count > 20 {
             history.removeLast()
         }
         saveHistory()
-        debugLog("📚 Added to history: '\(text)'")
+        debugLog("📚 Added to history: '\(text)' (id: \(record.id))")
+        return record.id
     }
 
     func copyHistoryItem(_ text: String) {
@@ -935,7 +1003,10 @@ final class GeminiService {
     }
 
     private func buildPrompt() -> String {
-        var parts: [String] = ["この音声を書き起こしてください。"]
+        var parts: [String] = [
+            "この音声を書き起こしてください。",
+            "重要: 音声に含まれている内容のみを書き起こしてください。音声にない内容を追加しないでください。"
+        ]
 
         if fillerSettings.addPunctuation {
             parts.append("句読点を適切に入れてください（文末に「。」、疑問文に「？」、文中の区切りに「、」）。")
@@ -955,7 +1026,7 @@ final class GeminiService {
         let enabledEntries = dictionaryEntries.filter { $0.isEnabled }
         if !enabledEntries.isEmpty {
             let rules = enabledEntries.map { "「\($0.reading)」→「\($0.writing)」" }.joined(separator: "、")
-            parts.append("変換ルール: \(rules)")
+            parts.append("音声内に以下の読みが含まれる場合のみ変換: \(rules)")
         }
 
         parts.append("書き起こし結果のみ出力：")
@@ -1260,52 +1331,41 @@ final class FloatingPanel {
     }
 }
 
+struct SpinningIcon: View {
+    @State private var rotation = 0.0
+
+    var body: some View {
+        Image(systemName: "arrow.trianglehead.2.clockwise")
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(.blue)
+            .rotationEffect(.degrees(rotation))
+            .onAppear {
+                withAnimation(.linear(duration: 1).repeatForever(autoreverses: false)) {
+                    rotation = 360
+                }
+            }
+    }
+}
+
 struct FloatingPanelView: View {
     var appState: AppState
     @State private var isPulsing = false
-    @State private var rotationAngle = 0.0
 
     private var panelWidth: CGFloat {
         (NSScreen.main?.frame.width ?? 1600) * 0.35
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 16) {
-            if appState.isConverting {
-                Image(systemName: "arrow.trianglehead.2.clockwise")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.blue)
-                    .rotationEffect(.degrees(rotationAngle))
-                    .onAppear {
-                        withAnimation(.linear(duration: 1).repeatForever(autoreverses: false)) {
-                            rotationAngle = 360
-                        }
-                    }
-                    .padding(.top, 5)
-            } else {
-                Circle()
-                    .fill(.red)
-                    .frame(width: 14, height: 14)
-                    .scaleEffect(isPulsing ? 1.3 : 1.0)
-                    .opacity(isPulsing ? 0.7 : 1.0)
-                    .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: isPulsing)
-                    .onAppear { isPulsing = true }
-                    .padding(.top, 5)
-            }
+        HStack(alignment: .center, spacing: 16) {
+            Circle()
+                .fill(.red)
+                .frame(width: 12, height: 12)
+                .scaleEffect(isPulsing ? 1.3 : 1.0)
+                .opacity(isPulsing ? 0.7 : 1.0)
+                .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: isPulsing)
+                .onAppear { isPulsing = true }
 
-            if appState.isConverting {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("変換中...")
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundStyle(.blue)
-                    if !appState.currentTranscription.isEmpty {
-                        Text(appState.currentTranscription)
-                            .font(.system(size: 14))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-                }
-            } else if appState.currentTranscription.isEmpty {
+            if appState.currentTranscription.isEmpty {
                 Text("Listening...")
                     .font(.system(size: 18, weight: .medium))
                     .foregroundStyle(.secondary)
@@ -1315,7 +1375,12 @@ struct FloatingPanelView: View {
                     .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
             Spacer()
+
+            if appState.isConverting {
+                SpinningIcon()
+            }
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 16)
