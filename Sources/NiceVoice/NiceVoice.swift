@@ -5,6 +5,9 @@ import AppKit
 import Carbon.HIToolbox
 import ApplicationServices
 import UniformTypeIdentifiers
+import os.log
+
+private let logger = Logger(subsystem: "com.nicevoice.app", category: "general")
 
 extension Notification.Name {
     static let recordingStateChanged = Notification.Name("recordingStateChanged")
@@ -22,18 +25,29 @@ struct NiceVoiceApp: App {
     }
 }
 
+private let logDirectory: URL = {
+    let logsDir = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Logs/NiceVoice")
+    try? FileManager.default.createDirectory(at: logsDir, withIntermediateDirectories: true)
+    return logsDir
+}()
+
+private let logFilePath: String = {
+    logDirectory.appendingPathComponent("debug.log").path
+}()
+
 func debugLog(_ message: String) {
     let timestamp = ISO8601DateFormatter().string(from: Date())
     let logMessage = "[\(timestamp)] \(message)\n"
     print(logMessage, terminator: "")
+    logger.debug("\(message, privacy: .public)")
 
-    let logPath = "/tmp/nicevoice-debug.log"
-    if let handle = FileHandle(forWritingAtPath: logPath) {
+    if let handle = FileHandle(forWritingAtPath: logFilePath) {
         handle.seekToEndOfFile()
         handle.write(logMessage.data(using: .utf8)!)
         handle.closeFile()
     } else {
-        FileManager.default.createFile(atPath: logPath, contents: logMessage.data(using: .utf8))
+        FileManager.default.createFile(atPath: logFilePath, contents: logMessage.data(using: .utf8))
     }
 }
 
@@ -977,7 +991,7 @@ final class SpeechRecognitionService {
 
     private var lastVoiceTime = Date()
     private let silenceThreshold: Float = 0.01
-    private let silenceDuration: TimeInterval = 0.5
+    private let silenceDuration: TimeInterval = 0.8
     private var confirmedOnSilence = false
 
     init(onTranscription: @escaping (String, Bool) -> Void, onRealtimeInput: @escaping (String, String) -> Void) {
@@ -1048,13 +1062,24 @@ final class SpeechRecognitionService {
                 let displayText: String
                 if self.savedText.isEmpty {
                     displayText = currentText
+                    debugLog("🔍 [MERGE] savedText empty, using currentText")
                 } else {
                     let commonLen = self.commonPrefixLength(self.savedText, currentText)
                     let threshold = Int(Double(self.savedText.count) * 0.7)
-                    if commonLen >= threshold && currentText.count >= self.savedText.count {
+                    debugLog("🔍 [MERGE] savedText='\(self.savedText)' (\(self.savedText.count)), currentText='\(currentText)' (\(currentText.count)), commonLen=\(commonLen), threshold=\(threshold)")
+
+                    let isShortFragment = self.savedText.count <= 5
+                    let isLikelyCorrection = isShortFragment && currentText.count >= self.savedText.count * 2 && commonLen < 2
+
+                    if isLikelyCorrection {
                         displayText = currentText
+                        debugLog("🔍 [MERGE] Treating as correction (short fragment replaced)")
+                    } else if commonLen >= threshold && currentText.count >= self.savedText.count {
+                        displayText = currentText
+                        debugLog("🔍 [MERGE] Using currentText (continuation)")
                     } else {
                         displayText = self.savedText + " " + currentText
+                        debugLog("🔍 [MERGE] Concatenating: '\(displayText)'")
                     }
                 }
 
@@ -3497,10 +3522,26 @@ struct SettingsView: View {
                     }
                 }
             }
+
+            Section("デバッグ") {
+                HStack {
+                    Button {
+                        copyRecentLogs()
+                    } label: {
+                        Label("最近のログをコピー", systemImage: "doc.on.clipboard")
+                    }
+
+                    Spacer()
+
+                    Text("直近 100 行")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
         .formStyle(.grouped)
         .padding()
-        .frame(width: 450, height: useGemini ? 420 : 280)
+        .frame(width: 450, height: useGemini ? 500 : 360)
     }
 
     private func validateApiKey() {
@@ -3534,5 +3575,21 @@ struct SettingsView: View {
             return false
         }
         return httpResponse.statusCode == 200
+    }
+
+    private func copyRecentLogs() {
+        let lineCount = 100
+
+        guard let content = try? String(contentsOfFile: logFilePath, encoding: .utf8) else {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString("ログファイルが見つかりません: \(logFilePath)", forType: .string)
+            return
+        }
+
+        let lines = content.components(separatedBy: .newlines)
+        let recentLines = lines.suffix(lineCount).joined(separator: "\n")
+
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(recentLines, forType: .string)
     }
 }
