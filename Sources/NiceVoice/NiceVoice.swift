@@ -548,9 +548,26 @@ final class AppState {
         }
 
         let midSentenceBreakers = [
-            "ありがとうございます", "すみません", "お願いします",
+            "ありがとうございます", "すみません",
             "こんにちは", "こんばんは", "おはようございます", "お疲れ様です", "お疲れさまです"
         ]
+
+        let sentenceEndings = ["ました", "ません", "でした"]
+        for ending in sentenceEndings {
+            var searchStart = result.startIndex
+            while let range = result.range(of: ending, range: searchStart..<result.endIndex) {
+                let afterEnd = range.upperBound
+                if afterEnd < result.endIndex {
+                    let nextChar = result[afterEnd]
+                    let isNextPunctuation = nextChar == "。" || nextChar == "、" || nextChar == "？" || nextChar == "！" || nextChar == "か" || nextChar == "が" || nextChar == "け" || nextChar == "ね" || nextChar == "よ"
+                    if !isNextPunctuation {
+                        result.insert("。", at: afterEnd)
+                    }
+                }
+                searchStart = result.index(after: range.lowerBound)
+                if searchStart >= result.endIndex { break }
+            }
+        }
 
         let transitionWords = ["とりあえず", "ただ", "でも", "しかし", "ちなみに", "あと", "それから", "それで"]
         for word in transitionWords {
@@ -655,6 +672,10 @@ final class AppState {
                 if !result.hasSuffix("。") && !result.hasSuffix("？") && !result.hasSuffix("！") && !result.hasSuffix("、") {
                     result += "。"
                 }
+            }
+        } else {
+            while result.hasSuffix("。") {
+                result = String(result.dropLast())
             }
         }
 
@@ -924,12 +945,17 @@ final class SpeechRecognitionService {
     private let onTranscription: (String, Bool) -> Void
     private let onRealtimeInput: (String, String) -> Void
     private var lastTranscription = ""
-    private var accumulatedText = ""
-    private var currentSegmentText = ""
-    private var lastResultTime = Date()
+
+    private var savedText = ""
+    private var lastRecognizedText = ""
 
     private var audioBuffers: [AVAudioPCMBuffer] = []
     private var recordingFormat: AVAudioFormat?
+
+    private var lastVoiceTime = Date()
+    private let silenceThreshold: Float = 0.01
+    private let silenceDuration: TimeInterval = 0.5
+    private var confirmedOnSilence = false
 
     init(onTranscription: @escaping (String, Bool) -> Void, onRealtimeInput: @escaping (String, String) -> Void) {
         self.onTranscription = onTranscription
@@ -940,9 +966,10 @@ final class SpeechRecognitionService {
         recognitionTask?.cancel()
         recognitionTask = nil
         lastTranscription = ""
-        accumulatedText = ""
-        currentSegmentText = ""
-        lastResultTime = Date()
+        savedText = ""
+        lastRecognizedText = ""
+        lastVoiceTime = Date()
+        confirmedOnSilence = false
         audioBuffers = []
 
         recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
@@ -958,9 +985,24 @@ final class SpeechRecognitionService {
         recordingFormat = format
 
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
+            guard let self else { return }
             recognitionRequest.append(buffer)
-            if let copy = self?.copyBuffer(buffer) {
-                self?.audioBuffers.append(copy)
+            if let copy = self.copyBuffer(buffer) {
+                self.audioBuffers.append(copy)
+            }
+
+            let rms = self.calculateRMS(buffer)
+            let now = Date()
+            if rms > self.silenceThreshold {
+                self.lastVoiceTime = now
+                self.confirmedOnSilence = false
+            } else {
+                let elapsed = now.timeIntervalSince(self.lastVoiceTime)
+                if elapsed >= self.silenceDuration && !self.lastRecognizedText.isEmpty && !self.confirmedOnSilence {
+                    self.savedText = self.lastRecognizedText
+                    self.confirmedOnSilence = true
+                    debugLog("🔇 [VAD] Confirmed on silence: '\(self.savedText)'")
+                }
             }
         }
 
@@ -974,39 +1016,28 @@ final class SpeechRecognitionService {
                 debugLog("🔍 [DEBUG] Recognition error: \(error)")
             }
             if let result {
-                let segmentText = result.bestTranscription.formattedString
+                let currentText = result.bestTranscription.formattedString
                 let oldText = self.lastTranscription
-                let previousSegment = self.currentSegmentText
-                let now = Date()
-                let timeSinceLastResult = now.timeIntervalSince(self.lastResultTime)
-                debugLog("🔍 [DEBUG] Recognition result: segment='\(segmentText)', isFinal: \(result.isFinal), accumulated='\(self.accumulatedText)', prevSegment='\(previousSegment)', timeDelta=\(String(format: "%.2f", timeSinceLastResult))s")
+                debugLog("🔍 [DEBUG] Recognition: current='\(currentText)', saved='\(self.savedText)', isFinal=\(result.isFinal)")
 
-                let textGotShorter = previousSegment.count > 2 && segmentText.count < previousSegment.count / 2
-                let enoughTimePassed = timeSinceLastResult > 1.0
-                let isNewSegment = !previousSegment.isEmpty && enoughTimePassed && (textGotShorter || (!segmentText.hasPrefix(previousSegment) && !previousSegment.hasPrefix(segmentText)))
-                if isNewSegment {
-                    let separator = self.accumulatedText.isEmpty ? "" : " "
-                    self.accumulatedText += separator + previousSegment
-                    debugLog("🔍 [DEBUG] New segment detected (shorter=\(textGotShorter), timeDelta=\(String(format: "%.2f", timeSinceLastResult))s)! Accumulated previous: '\(self.accumulatedText)'")
-                }
+                self.lastRecognizedText = currentText
 
-                self.currentSegmentText = segmentText
-                self.lastResultTime = now
-
-                if result.isFinal {
-                    let separator = self.accumulatedText.isEmpty ? "" : " "
-                    self.accumulatedText += separator + segmentText
-                    self.currentSegmentText = ""
-                    self.lastTranscription = self.accumulatedText
-                    self.onTranscription(self.accumulatedText, true)
-                    debugLog("🔍 [DEBUG] Segment finalized, accumulated: '\(self.accumulatedText)'")
+                let displayText: String
+                if self.savedText.isEmpty {
+                    displayText = currentText
                 } else {
-                    let separator = self.accumulatedText.isEmpty ? "" : " "
-                    let fullText = self.accumulatedText + separator + segmentText
-                    self.lastTranscription = fullText
-                    self.onTranscription(fullText, false)
+                    let commonLen = self.commonPrefixLength(self.savedText, currentText)
+                    let threshold = Int(Double(self.savedText.count) * 0.7)
+                    if commonLen >= threshold {
+                        displayText = currentText
+                    } else {
+                        displayText = self.savedText + " " + currentText
+                    }
                 }
-                self.onRealtimeInput(oldText, self.lastTranscription)
+
+                self.lastTranscription = displayText
+                self.onTranscription(displayText, result.isFinal)
+                self.onRealtimeInput(oldText, displayText)
             }
         }
         debugLog("🔍 [DEBUG] Recognition task created: \(recognitionTask != nil)")
@@ -1030,6 +1061,28 @@ final class SpeechRecognitionService {
             }
         }
         return copy
+    }
+
+    private func calculateRMS(_ buffer: AVAudioPCMBuffer) -> Float {
+        guard let channelData = buffer.floatChannelData else { return 0 }
+        let frameLength = Int(buffer.frameLength)
+        guard frameLength > 0 else { return 0 }
+
+        var sum: Float = 0
+        let data = channelData[0]
+        for i in 0..<frameLength {
+            let sample = data[i]
+            sum += sample * sample
+        }
+        return sqrt(sum / Float(frameLength))
+    }
+
+    private func commonPrefixLength(_ a: String, _ b: String) -> Int {
+        var count = 0
+        for (c1, c2) in zip(a, b) {
+            if c1 == c2 { count += 1 } else { break }
+        }
+        return count
     }
 
     func getRecordedAudioData() -> Data? {
