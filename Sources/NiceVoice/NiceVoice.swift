@@ -608,6 +608,15 @@ final class AppState {
                         offset = result.distance(from: result.startIndex, to: range.lowerBound) + word.count
                         continue
                     }
+                    // 「では」の後に続く場合は句点を挿入しない
+                    if result.distance(from: result.startIndex, to: range.lowerBound) >= 2 {
+                        let twoBack = result.index(range.lowerBound, offsetBy: -2)
+                        let preceding = String(result[twoBack..<range.lowerBound])
+                        if preceding == "では" {
+                            offset = result.distance(from: result.startIndex, to: range.lowerBound) + word.count
+                            continue
+                        }
+                    }
                     if prevChar != "。" && prevChar != "、" && prevChar != "？" && prevChar != "！" {
                         result.insert("。", at: range.lowerBound)
                         offset = result.distance(from: result.startIndex, to: range.lowerBound) + word.count + 1
