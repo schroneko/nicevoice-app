@@ -50,11 +50,13 @@ open /Applications/NiceVoice.app                          # sandbox無効
 **問題**: `CGEvent.post()` で Cmd+V を送信してもペーストされない。
 
 **試したこと**:
+
 - `.cgSessionEventTap` - 動作せず
 - `.cghidEventTap` - 動作せず
 - AppleScript (`keystroke "v" using command down`) - 動作せず
 
 **解決策**: 以下の組み合わせで動作した：
+
 ```swift
 let source = CGEventSource(stateID: .privateState)
 let keyDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: true)
@@ -67,6 +69,7 @@ keyUp?.post(tap: .cgAnnotatedSessionEventTap)
 ```
 
 ポイント:
+
 - `CGEventSource(stateID: .privateState)` を使用
 - `.cgAnnotatedSessionEventTap` にポスト
 - keyDown と keyUp の間に 50ms の遅延
@@ -86,11 +89,13 @@ keyUp?.post(tap: .cgAnnotatedSessionEventTap)
 **問題**: `settings.local.json` の `sandbox.excludedCommands` に `cp` や `swift-bundler` を追加しても効かない。
 
 **試したこと**:
+
 - `sandbox.allowedDirectories` → ドキュメントに存在しない無効な設定
 - `Edit(/Applications/**)` → Bash サンドボックスには効かない（Edit ツール専用）
 - `sandbox.excludedCommands: ["cp", "/bin/cp"]` → 効果なし
 
 **解決策**:
+
 - `/Applications/NiceVoice.app` をシンボリックリンクにして `cp` を回避
 - ビルド・終了・起動コマンドは `dangerouslyDisableSandbox: true` で実行
 
@@ -101,6 +106,7 @@ keyUp?.post(tap: .cgAnnotatedSessionEventTap)
 fn キーを離した後、別のアプリ（Spotlight など）にフォーカスを切り替えてからペーストしたい場合がある。現在は 0.3 秒後に自動ペーストされるため、切り替え時間が足りない可能性がある。
 
 検討中のアプローチ:
+
 - 遅延を長くする（ただし長すぎると使いにくい）
 - 手動トリガー（fn を再度押したらペースト）
 - フォーカス変更を検知してからペースト
@@ -122,6 +128,7 @@ API キーは 1Password の `GOOGLE_AI_STUDIO_API_KEY` に保存済み。
 アプリの設定画面（メニューバー → 設定...）で API キーを入力する。
 
 ハイブリッド処理フロー:
+
 1. 録音中: SFSpeechRecognizer でリアルタイム表示
 2. 録音終了後: 「Gemini で変換中...」エフェクト表示
 3. Gemini API で高精度変換
