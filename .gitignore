@@ -1,7 +1,6 @@
 .DS_Store
 .claude/
 *.log
-.tasks.json
 
 # Swift
 .build/
