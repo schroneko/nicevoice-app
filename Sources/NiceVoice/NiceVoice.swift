@@ -495,8 +495,10 @@ final class AppState {
     }
 
     private func addLocalPunctuation(_ text: String, isFinal: Bool = true) -> String {
+        let originalText = text
         var result = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !result.isEmpty else { return result }
+        debugLog("🔤 [PUNCT] Input: '\(originalText)'")
 
         if fillerSettings.removeFillers {
             let fillers = fillerSettings.allEnabledFillers
@@ -560,7 +562,9 @@ final class AppState {
                 if afterEnd < result.endIndex {
                     let nextChar = result[afterEnd]
                     let isNextPunctuation = nextChar == "。" || nextChar == "、" || nextChar == "？" || nextChar == "！" || nextChar == "か" || nextChar == "が" || nextChar == "け" || nextChar == "ね" || nextChar == "よ"
-                    if !isNextPunctuation {
+                    let suffixAfter = String(result[afterEnd...])
+                    let isContinuation = suffixAfter.hasPrefix("でした") || suffixAfter.hasPrefix("っけ") || suffixAfter.hasPrefix("よね") || suffixAfter.hasPrefix("けど") || suffixAfter.hasPrefix("が")
+                    if !isNextPunctuation && !isContinuation {
                         result.insert("。", at: afterEnd)
                     }
                 }
@@ -578,6 +582,18 @@ final class AppState {
                 if range.lowerBound > result.startIndex {
                     let prevIndex = result.index(before: range.lowerBound)
                     let prevChar = result[prevIndex]
+                    if word == "ただ" && (prevChar == "い" || prevChar == "わ" || prevChar == "ま") {
+                        offset = result.distance(from: result.startIndex, to: range.lowerBound) + word.count
+                        continue
+                    }
+                    if word == "でも" && (prevChar == "な" || prevChar == "何" || prevChar == "誰" || prevChar == "ど" || prevChar == "い") {
+                        offset = result.distance(from: result.startIndex, to: range.lowerBound) + word.count
+                        continue
+                    }
+                    if word == "あと" && (prevChar >= "0" && prevChar <= "9" || prevChar == "分" || prevChar == "時" || prevChar == "日" || prevChar == "年") {
+                        offset = result.distance(from: result.startIndex, to: range.lowerBound) + word.count
+                        continue
+                    }
                     if prevChar != "。" && prevChar != "、" && prevChar != "？" && prevChar != "！" {
                         result.insert("。", at: range.lowerBound)
                         offset = result.distance(from: result.startIndex, to: range.lowerBound) + word.count + 1
@@ -668,10 +684,6 @@ final class AppState {
                 if !result.hasSuffix("？") && !result.hasSuffix("?") {
                     result += "？"
                 }
-            } else {
-                if !result.hasSuffix("。") && !result.hasSuffix("？") && !result.hasSuffix("！") && !result.hasSuffix("、") {
-                    result += "。"
-                }
             }
         } else {
             while result.hasSuffix("。") {
@@ -679,6 +691,9 @@ final class AppState {
             }
         }
 
+        if result != originalText.trimmingCharacters(in: .whitespacesAndNewlines) {
+            debugLog("🔤 [PUNCT] Output: '\(result)' (changed)")
+        }
         return result
     }
 
@@ -1028,7 +1043,7 @@ final class SpeechRecognitionService {
                 } else {
                     let commonLen = self.commonPrefixLength(self.savedText, currentText)
                     let threshold = Int(Double(self.savedText.count) * 0.7)
-                    if commonLen >= threshold {
+                    if commonLen >= threshold && currentText.count >= self.savedText.count {
                         displayText = currentText
                     } else {
                         displayText = self.savedText + " " + currentText
