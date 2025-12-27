@@ -684,6 +684,14 @@ final class AppState {
                 if !result.hasSuffix("？") && !result.hasSuffix("?") {
                     result += "？"
                 }
+            } else {
+                let politeEndings = ["お願いします", "お願いいたします", "ください", "くださいませ", "思います", "でございます"]
+                for ending in politeEndings {
+                    if result.hasSuffix(ending) {
+                        result += "。"
+                        break
+                    }
+                }
             }
         } else {
             while result.hasSuffix("。") {
