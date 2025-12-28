@@ -2,14 +2,15 @@
 
 ## プロジェクト概要
 
-macOS 向け音声入力アプリ。fn キーを押している間に録音し、離すとテキストがペーストされる。
+macOS 向け音声入力アプリ。ショートカットキー（設定で変更可能）を押している間に録音し、離すとテキストがペーストされる。
 
 ## 技術スタック
 
 - Swift 5.9 / SwiftUI
 - macOS 14+
 - Swift Bundler（CLI ベースのビルド）
-- SFSpeechRecognizer（Mac 標準の音声認識）
+- Chrome Web Speech API（音声認識、Chromium 系ブラウザ経由）
+- SFSpeechRecognizer（フォールバック用）
 
 ## ビルド方法
 
@@ -102,17 +103,17 @@ keyUp?.post(tap: .cgAnnotatedSessionEventTap)
 
 ### フォーカス切り替え後のペースト
 
-fn キーを離した後、別のアプリ（Spotlight など）にフォーカスを切り替えてからペーストしたい場合がある。現在は 0.3 秒後に自動ペーストされるため、切り替え時間が足りない可能性がある。
+ショートカットキーを離した後、別のアプリ（Spotlight など）にフォーカスを切り替えてからペーストしたい場合がある。現在は 0.3 秒後に自動ペーストされるため、切り替え時間が足りない可能性がある。
 
 検討中のアプローチ:
 
 - 遅延を長くする（ただし長すぎると使いにくい）
-- 手動トリガー（fn を再度押したらペースト）
+- 手動トリガー（キーを再度押したらペースト）
 - フォーカス変更を検知してからペースト
 
 ## 必要な権限
 
 - マイク（NSMicrophoneUsageDescription）
 - 音声認識（NSSpeechRecognitionUsageDescription）
-- アクセシビリティ（fn キー監視、キーボードイベント送信）
+- アクセシビリティ（ショートカットキー監視、キーボードイベント送信）
 - オートメーション/AppleEvents（NSAppleEventsUsageDescription）- 現在未使用だが将来用

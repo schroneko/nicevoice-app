@@ -6,6 +6,8 @@ import Carbon.HIToolbox
 import ApplicationServices
 import UniformTypeIdentifiers
 import os.log
+import Network
+import CommonCrypto
 
 private let logger = Logger(subsystem: "com.nicevoice.app", category: "general")
 
@@ -318,11 +320,13 @@ final class AppState {
     var fillerSettings: FillerSettings = FillerSettings()
 
     private var speechService: SpeechRecognitionService?
+    private var chromeSpeechService: ChromeSpeechService?
     private(set) var keyMonitor: KeyMonitor?
     private var floatingPanel: FloatingPanel?
     private var waitingForFinalResult = false
     private var finalResultTimer: DispatchWorkItem?
     private var sfSpeechResult = ""
+    private var useChromeSpeech = false
 
     private enum UserDefaultsKey {
         static let usageStats = "usageStats"
@@ -355,6 +359,22 @@ final class AppState {
             }
         )
 
+        chromeSpeechService = ChromeSpeechService(
+            onTranscription: { [weak self] text, isFinal in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.currentTranscription = self.addLocalPunctuation(text, isFinal: isFinal)
+                    if isFinal {
+                        self.handleFinalResult(text)
+                    }
+                }
+            },
+            onError: { [weak self] error in
+                debugLog("❌ Chrome speech error: \(error)")
+                self?.statusMessage = error
+            }
+        )
+
         keyMonitor = KeyMonitor(
             shortcutKey: shortcutKey,
             onKeyDown: { [weak self] in self?.startRecording() },
@@ -371,19 +391,6 @@ final class AppState {
     private func requestPermissions() async {
         statusMessage = "権限を確認中..."
 
-        let speechStatus = await withCheckedContinuation { continuation in
-            SFSpeechRecognizer.requestAuthorization { status in
-                continuation.resume(returning: status)
-            }
-        }
-
-        guard speechStatus == .authorized else {
-            await MainActor.run {
-                statusMessage = "音声認識の権限が必要です"
-            }
-            return
-        }
-
         let micStatus = await AVCaptureDevice.requestAccess(for: .audio)
         guard micStatus else {
             await MainActor.run {
@@ -392,14 +399,40 @@ final class AppState {
             return
         }
 
-        await MainActor.run {
-            isReady = true
-            statusMessage = "準備完了 - fn キーを押して録音"
+        if ChromeSpeechService.isAvailable {
+            await MainActor.run {
+                useChromeSpeech = true
+                isReady = true
+                let browserName = ChromeSpeechService.detectBrowser()?.split(separator: "/").last?.replacingOccurrences(of: ".app", with: "") ?? "Chrome"
+                statusMessage = "準備完了 - \(shortcutKey.displayName) キーを押して録音 (\(browserName))"
+                debugLog("✅ Using Chrome Web Speech API")
+                chromeSpeechService?.start()
+            }
+        } else {
+            let speechStatus = await withCheckedContinuation { continuation in
+                SFSpeechRecognizer.requestAuthorization { status in
+                    continuation.resume(returning: status)
+                }
+            }
+
+            if speechStatus == .authorized {
+                await MainActor.run {
+                    useChromeSpeech = false
+                    isReady = true
+                    statusMessage = "準備完了 - \(shortcutKey.displayName) キーを押して録音 (Apple)"
+                    debugLog("✅ Using Apple SFSpeechRecognizer")
+                }
+            } else {
+                await MainActor.run {
+                    statusMessage = "非対応: Chromium ブラウザをインストールしてください"
+                    debugLog("❌ No speech recognition available")
+                }
+            }
         }
     }
 
     func startRecording() {
-        debugLog("🔍 [DEBUG] startRecording called - isReady: \(isReady), isRecording: \(isRecording)")
+        debugLog("🔍 [DEBUG] startRecording called - isReady: \(isReady), isRecording: \(isRecording), useChrome: \(useChromeSpeech)")
         guard isReady, !isRecording else {
             debugLog("🔍 [DEBUG] startRecording guard failed")
             return
@@ -411,13 +444,18 @@ final class AppState {
 
         floatingPanel?.show()
 
-        do {
-            try speechService?.startRecording()
-            debugLog("🔍 [DEBUG] speechService.startRecording() succeeded")
-        } catch {
-            debugLog("❌ Recording error: \(error)")
-            isRecording = false
-            floatingPanel?.hide()
+        if useChromeSpeech {
+            chromeSpeechService?.startRecording()
+            debugLog("🔍 [DEBUG] chromeSpeechService.startRecording() called")
+        } else {
+            do {
+                try speechService?.startRecording()
+                debugLog("🔍 [DEBUG] speechService.startRecording() succeeded")
+            } catch {
+                debugLog("❌ Recording error: \(error)")
+                isRecording = false
+                floatingPanel?.hide()
+            }
         }
     }
 
@@ -428,13 +466,18 @@ final class AppState {
             return
         }
         isRecording = false
-        speechService?.stopRecording()
+
+        if useChromeSpeech {
+            chromeSpeechService?.stopRecording()
+        } else {
+            speechService?.stopRecording()
+        }
         debugLog("🎙️ Recording stopped")
         NotificationCenter.default.post(name: .recordingStateChanged, object: nil)
 
         sfSpeechResult = currentTranscription
         let fallbackResult = addLocalPunctuation(sfSpeechResult)
-        debugLog("📝 SFSpeech result: '\(fallbackResult)'")
+        debugLog("📝 Speech result: '\(fallbackResult)'")
 
         if fallbackResult.isEmpty {
             debugLog("⚠️ No speech detected, skipping")
@@ -1199,6 +1242,417 @@ final class SpeechRecognitionService {
 
     func clearAudioBuffers() {
         audioBuffers = []
+    }
+}
+
+final class ChromeSpeechService {
+    private static let wsPort: UInt16 = 9473
+    private static let httpPort: UInt16 = 9474
+
+    private static let supportedBrowsers = [
+        "/Applications/Google Chrome.app",
+        "/Applications/Microsoft Edge.app",
+        "/Applications/Brave Browser.app",
+        "/Applications/Arc.app",
+        "/Applications/Vivaldi.app",
+        "/Applications/Opera.app",
+        "/Applications/Chromium.app",
+    ]
+
+    private var wsListener: NWListener?
+    private var httpListener: NWListener?
+    private var connection: NWConnection?
+    private var isConnected = false
+    private var browserPath: String?
+    private var htmlContent: String = ""
+
+    private let onTranscription: (String, Bool) -> Void
+    private let onError: (String) -> Void
+
+    static func detectBrowser() -> String? {
+        supportedBrowsers.first { FileManager.default.fileExists(atPath: $0) }
+    }
+
+    static var isAvailable: Bool {
+        detectBrowser() != nil
+    }
+
+    init(onTranscription: @escaping (String, Bool) -> Void, onError: @escaping (String) -> Void) {
+        self.onTranscription = onTranscription
+        self.onError = onError
+        self.browserPath = Self.detectBrowser()
+        loadHtmlContent()
+    }
+
+    private func loadHtmlContent() {
+        let htmlPath = Bundle.main.resourceURL?
+            .appendingPathComponent("speech-recognition.html").path
+            ?? getResourcePath()
+
+        if let content = try? String(contentsOfFile: htmlPath, encoding: .utf8) {
+            htmlContent = content
+            debugLog("✅ HTML content loaded from: \(htmlPath)")
+        } else {
+            debugLog("❌ Failed to load HTML from: \(htmlPath)")
+        }
+    }
+
+    func start() {
+        guard browserPath != nil else {
+            onError("非対応: Chromium 系ブラウザが見つかりません")
+            return
+        }
+
+        startHttpServer()
+        startWebSocketServer()
+    }
+
+    func stop() {
+        stopWebSocketServer()
+        stopHttpServer()
+    }
+
+    private func startHttpServer() {
+        do {
+            let parameters = NWParameters.tcp
+            parameters.allowLocalEndpointReuse = true
+            httpListener = try NWListener(using: parameters, on: NWEndpoint.Port(rawValue: Self.httpPort)!)
+
+            httpListener?.stateUpdateHandler = { state in
+                switch state {
+                case .ready:
+                    debugLog("🌐 HTTP server ready on port \(Self.httpPort)")
+                case .failed(let error):
+                    debugLog("❌ HTTP server failed: \(error)")
+                default:
+                    break
+                }
+            }
+
+            httpListener?.newConnectionHandler = { [weak self] connection in
+                self?.handleHttpConnection(connection)
+            }
+
+            httpListener?.start(queue: .main)
+        } catch {
+            debugLog("❌ Failed to create HTTP server: \(error)")
+        }
+    }
+
+    private func stopHttpServer() {
+        httpListener?.cancel()
+        httpListener = nil
+    }
+
+    private func handleHttpConnection(_ connection: NWConnection) {
+        connection.stateUpdateHandler = { state in
+            if case .ready = state {
+                connection.receive(minimumIncompleteLength: 1, maximumLength: 4096) { [weak self] data, _, _, _ in
+                    guard let self, let data, String(data: data, encoding: .utf8)?.contains("GET") == true else {
+                        connection.cancel()
+                        return
+                    }
+                    self.sendHttpResponse(connection)
+                }
+            }
+        }
+        connection.start(queue: .main)
+    }
+
+    private func sendHttpResponse(_ connection: NWConnection) {
+        let body = htmlContent.data(using: .utf8) ?? Data()
+        let response = """
+        HTTP/1.1 200 OK\r
+        Content-Type: text/html; charset=utf-8\r
+        Content-Length: \(body.count)\r
+        Connection: close\r
+        \r
+
+        """
+        var responseData = response.data(using: .utf8)!
+        responseData.append(body)
+
+        connection.send(content: responseData, completion: .contentProcessed { _ in
+            connection.cancel()
+        })
+    }
+
+    private func startWebSocketServer() {
+        do {
+            let parameters = NWParameters.tcp
+            parameters.allowLocalEndpointReuse = true
+            wsListener = try NWListener(using: parameters, on: NWEndpoint.Port(rawValue: Self.wsPort)!)
+
+            wsListener?.stateUpdateHandler = { [weak self] state in
+                switch state {
+                case .ready:
+                    debugLog("🌐 WebSocket server ready on port \(Self.wsPort)")
+                    self?.openBrowser()
+                case .failed(let error):
+                    debugLog("❌ WebSocket server failed: \(error)")
+                    self?.onError("WebSocket サーバー起動失敗")
+                default:
+                    break
+                }
+            }
+
+            wsListener?.newConnectionHandler = { [weak self] connection in
+                self?.handleNewConnection(connection)
+            }
+
+            wsListener?.start(queue: .main)
+        } catch {
+            debugLog("❌ Failed to create WebSocket server: \(error)")
+            onError("WebSocket サーバー作成失敗")
+        }
+    }
+
+    private func stopWebSocketServer() {
+        sendCommand("stop")
+        connection?.cancel()
+        connection = nil
+        wsListener?.cancel()
+        wsListener = nil
+        isConnected = false
+    }
+
+    private func handleNewConnection(_ newConnection: NWConnection) {
+        connection?.cancel()
+        connection = newConnection
+
+        connection?.stateUpdateHandler = { [weak self] state in
+            switch state {
+            case .ready:
+                debugLog("🔗 Browser connected")
+                self?.isConnected = true
+                self?.performWebSocketHandshake()
+            case .failed(let error):
+                debugLog("❌ Connection failed: \(error)")
+                self?.isConnected = false
+            case .cancelled:
+                debugLog("🔌 Connection cancelled")
+                self?.isConnected = false
+            default:
+                break
+            }
+        }
+
+        connection?.start(queue: .main)
+    }
+
+    private func performWebSocketHandshake() {
+        connection?.receive(minimumIncompleteLength: 1, maximumLength: 4096) { [weak self] data, _, _, error in
+            guard let self, let data, error == nil else { return }
+
+            if let request = String(data: data, encoding: .utf8), request.contains("Upgrade: websocket") {
+                self.completeHandshake(request: request)
+            }
+        }
+    }
+
+    private func completeHandshake(request: String) {
+        guard let keyLine = request.split(separator: "\r\n").first(where: { $0.hasPrefix("Sec-WebSocket-Key:") }) else {
+            debugLog("❌ No WebSocket key found")
+            return
+        }
+
+        let key = keyLine.replacingOccurrences(of: "Sec-WebSocket-Key: ", with: "").trimmingCharacters(in: .whitespaces)
+        let acceptKey = generateAcceptKey(key)
+
+        let response = """
+        HTTP/1.1 101 Switching Protocols\r
+        Upgrade: websocket\r
+        Connection: Upgrade\r
+        Sec-WebSocket-Accept: \(acceptKey)\r
+        \r
+
+        """
+
+        connection?.send(content: response.data(using: .utf8), completion: .contentProcessed { [weak self] error in
+            if error == nil {
+                debugLog("✅ WebSocket handshake complete")
+                self?.receiveMessages()
+            }
+        })
+    }
+
+    private func generateAcceptKey(_ key: String) -> String {
+        let magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+        let combined = key + magic
+        let hash = combined.data(using: .utf8)!.sha1()
+        return hash.base64EncodedString()
+    }
+
+    private func receiveMessages() {
+        connection?.receive(minimumIncompleteLength: 2, maximumLength: 65536) { [weak self] data, _, isComplete, error in
+            guard let self else { return }
+
+            if let data, !data.isEmpty {
+                if let message = self.decodeWebSocketFrame(data) {
+                    self.handleMessage(message)
+                }
+            }
+
+            if !isComplete && error == nil {
+                self.receiveMessages()
+            }
+        }
+    }
+
+    private func decodeWebSocketFrame(_ data: Data) -> String? {
+        guard data.count >= 2 else { return nil }
+
+        let firstByte = data[0]
+        let secondByte = data[1]
+        let isMasked = (secondByte & 0x80) != 0
+        var payloadLength = Int(secondByte & 0x7F)
+        var offset = 2
+
+        if payloadLength == 126 {
+            guard data.count >= 4 else { return nil }
+            payloadLength = Int(data[2]) << 8 | Int(data[3])
+            offset = 4
+        } else if payloadLength == 127 {
+            guard data.count >= 10 else { return nil }
+            payloadLength = 0
+            for i in 0..<8 {
+                payloadLength = payloadLength << 8 | Int(data[2 + i])
+            }
+            offset = 10
+        }
+
+        var maskKey: [UInt8] = []
+        if isMasked {
+            guard data.count >= offset + 4 else { return nil }
+            maskKey = Array(data[offset..<(offset + 4)])
+            offset += 4
+        }
+
+        guard data.count >= offset + payloadLength else { return nil }
+
+        var payload = Array(data[offset..<(offset + payloadLength)])
+        if isMasked {
+            for i in 0..<payload.count {
+                payload[i] ^= maskKey[i % 4]
+            }
+        }
+
+        return String(bytes: payload, encoding: .utf8)
+    }
+
+    private func handleMessage(_ message: String) {
+        guard let data = message.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let type = json["type"] as? String else {
+            return
+        }
+
+        switch type {
+        case "ready":
+            debugLog("🎤 Browser ready for speech recognition")
+        case "started":
+            debugLog("🎙️ Chrome speech recognition started")
+        case "result":
+            if let text = json["text"] as? String, let isFinal = json["isFinal"] as? Bool {
+                debugLog("📝 Chrome result: '\(text)' (final: \(isFinal))")
+                DispatchQueue.main.async {
+                    self.onTranscription(text, isFinal)
+                }
+            }
+        case "error":
+            if let errorMsg = json["message"] as? String {
+                debugLog("❌ Chrome speech error: \(errorMsg)")
+                DispatchQueue.main.async {
+                    self.onError(errorMsg)
+                }
+            }
+        default:
+            break
+        }
+    }
+
+    func startRecording() {
+        sendCommand("start")
+    }
+
+    func stopRecording() {
+        sendCommand("stop")
+    }
+
+    private func sendCommand(_ command: String) {
+        guard isConnected else {
+            debugLog("⚠️ Cannot send command: not connected")
+            return
+        }
+
+        let json = "{\"type\":\"\(command)\"}"
+        if let frame = encodeWebSocketFrame(json) {
+            connection?.send(content: frame, completion: .contentProcessed { error in
+                if let error {
+                    debugLog("❌ Send error: \(error)")
+                }
+            })
+        }
+    }
+
+    private func encodeWebSocketFrame(_ text: String) -> Data? {
+        guard let payload = text.data(using: .utf8) else { return nil }
+
+        var frame = Data()
+        frame.append(0x81)
+
+        if payload.count < 126 {
+            frame.append(UInt8(payload.count))
+        } else if payload.count < 65536 {
+            frame.append(126)
+            frame.append(UInt8((payload.count >> 8) & 0xFF))
+            frame.append(UInt8(payload.count & 0xFF))
+        } else {
+            frame.append(127)
+            for i in (0..<8).reversed() {
+                frame.append(UInt8((payload.count >> (i * 8)) & 0xFF))
+            }
+        }
+
+        frame.append(payload)
+        return frame
+    }
+
+    private func openBrowser() {
+        guard let browserPath else { return }
+
+        let url = URL(string: "http://localhost:\(Self.httpPort)")!
+
+        let config = NSWorkspace.OpenConfiguration()
+        config.arguments = ["--app=\(url.absoluteString)"]
+        config.createsNewApplicationInstance = false
+
+        NSWorkspace.shared.open(
+            [url],
+            withApplicationAt: URL(fileURLWithPath: browserPath),
+            configuration: config
+        ) { _, error in
+            if let error {
+                debugLog("❌ Failed to open browser: \(error)")
+            } else {
+                debugLog("🌐 Opened browser: \(browserPath) with localhost URL")
+            }
+        }
+    }
+
+    private func getResourcePath() -> String {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        return appSupport.appendingPathComponent("NiceVoice/speech-recognition.html").path
+    }
+}
+
+extension Data {
+    func sha1() -> Data {
+        var digest = [UInt8](repeating: 0, count: Int(CC_SHA1_DIGEST_LENGTH))
+        _ = withUnsafeBytes { bytes in
+            CC_SHA1(bytes.baseAddress, CC_LONG(count), &digest)
+        }
+        return Data(digest)
     }
 }
 

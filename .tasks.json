@@ -1,17 +1,17 @@
 [
   {
-    "content": "004: ベンチマークを作成",
-    "status": "completed",
-    "activeForm": "ベンチマークを作成中"
+    "content": "Chrome Web Speech API 統合をコミット",
+    "status": "in_progress",
+    "activeForm": "コミット中"
   },
   {
-    "content": "005: CLAUDE.md のキー操作説明を fn → 右 Cmd に修正",
+    "content": "feature/benchmark ブランチを main にマージ",
     "status": "pending",
-    "activeForm": "CLAUDE.md を修正中"
+    "activeForm": "マージ中"
   },
   {
-    "content": "006: アプリが動かない問題を調査・修正",
+    "content": "Chromium バンドルの検討（将来）",
     "status": "pending",
-    "activeForm": "アプリの問題を調査中"
+    "activeForm": "Chromium バンドルを検討中"
   }
 ]

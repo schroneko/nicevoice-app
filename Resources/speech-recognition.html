@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>NiceVoice Speech Recognition</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #1a1a1a;
+            color: #fff;
+            padding: 40px;
+            text-align: center;
+        }
+        .status {
+            font-size: 24px;
+            margin: 20px 0;
+        }
+        .connected { color: #4ade80; }
+        .disconnected { color: #f87171; }
+        .recording { color: #fbbf24; }
+        .result {
+            font-size: 18px;
+            color: #a1a1aa;
+            margin-top: 20px;
+            min-height: 60px;
+        }
+        .hint {
+            font-size: 14px;
+            color: #71717a;
+            margin-top: 40px;
+        }
+    </style>
+</head>
+<body>
+    <h1>NiceVoice</h1>
+    <div id="status" class="status disconnected">Connecting...</div>
+    <div id="result" class="result"></div>
+    <div class="hint">This tab handles speech recognition. Keep it open in the background.</div>
+
+    <script>
+        const WS_PORT = 9473;
+        let ws = null;
+        let recognition = null;
+        let isRecording = false;
+        let finalTranscript = '';
+        let interimTranscript = '';
+
+        const statusEl = document.getElementById('status');
+        const resultEl = document.getElementById('result');
+
+        function updateStatus(text, className) {
+            statusEl.textContent = text;
+            statusEl.className = 'status ' + className;
+        }
+
+        function connect() {
+            ws = new WebSocket(`ws://localhost:${WS_PORT}`);
+
+            ws.onopen = () => {
+                updateStatus('Connected - Waiting for commands', 'connected');
+                ws.send(JSON.stringify({ type: 'ready' }));
+            };
+
+            ws.onclose = () => {
+                updateStatus('Disconnected - Reconnecting...', 'disconnected');
+                stopRecognition();
+                setTimeout(connect, 2000);
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+
+                if (data.type === 'start') {
+                    startRecognition();
+                } else if (data.type === 'stop') {
+                    stopRecognition();
+                }
+            };
+        }
+
+        function startRecognition() {
+            if (isRecording) return;
+
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                ws.send(JSON.stringify({ type: 'error', message: 'Speech Recognition not supported' }));
+                return;
+            }
+
+            recognition = new SpeechRecognition();
+            recognition.lang = 'ja-JP';
+            recognition.continuous = true;
+            recognition.interimResults = true;
+
+            finalTranscript = '';
+            interimTranscript = '';
+
+            recognition.onstart = () => {
+                isRecording = true;
+                updateStatus('Recording...', 'recording');
+                ws.send(JSON.stringify({ type: 'started' }));
+            };
+
+            recognition.onresult = (event) => {
+                interimTranscript = '';
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        finalTranscript += transcript;
+                    } else {
+                        interimTranscript += transcript;
+                    }
+                }
+
+                const currentText = finalTranscript + interimTranscript;
+                resultEl.textContent = currentText;
+
+                ws.send(JSON.stringify({
+                    type: 'result',
+                    text: currentText,
+                    isFinal: false
+                }));
+            };
+
+            recognition.onerror = (event) => {
+                console.error('Recognition error:', event.error);
+                if (event.error !== 'no-speech' && event.error !== 'aborted') {
+                    ws.send(JSON.stringify({ type: 'error', message: event.error }));
+                }
+            };
+
+            recognition.onend = () => {
+                if (isRecording) {
+                    recognition.start();
+                }
+            };
+
+            try {
+                recognition.start();
+            } catch (e) {
+                ws.send(JSON.stringify({ type: 'error', message: e.message }));
+            }
+        }
+
+        function stopRecognition() {
+            isRecording = false;
+            if (recognition) {
+                recognition.stop();
+                recognition = null;
+            }
+
+            const finalText = finalTranscript + interimTranscript;
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'result',
+                    text: finalText,
+                    isFinal: true
+                }));
+            }
+
+            updateStatus('Connected - Waiting for commands', 'connected');
+            finalTranscript = '';
+            interimTranscript = '';
+        }
+
+        connect();
+    </script>
+</body>
+</html>
