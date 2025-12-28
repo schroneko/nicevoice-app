@@ -1073,19 +1073,26 @@ final class SpeechRecognitionService {
                     displayText = currentText
                     debugLog("🔍 [MERGE] savedText empty, using currentText")
                 } else {
-                    let commonLen = self.commonPrefixLength(self.savedText, currentText)
-                    let threshold = Int(Double(self.savedText.count) * 0.7)
-                    debugLog("🔍 [MERGE] savedText='\(self.savedText)' (\(self.savedText.count)), currentText='\(currentText)' (\(currentText.count)), commonLen=\(commonLen), threshold=\(threshold)")
+                    // 句読点・空白を除去して比較（SFSpeechRecognizerが句読点を付けたり外したりするため）
+                    let savedNormalized = self.savedText.filter { !$0.isPunctuation && !$0.isWhitespace }
+                    let currentNormalized = currentText.filter { !$0.isPunctuation && !$0.isWhitespace }
 
-                    let isShortFragment = self.savedText.count <= 5
-                    let isLikelyCorrection = isShortFragment && currentText.count >= self.savedText.count * 2 && commonLen < 2
+                    let commonLen = self.commonPrefixLength(savedNormalized, currentNormalized)
+                    let threshold = Int(Double(savedNormalized.count) * 0.7)
+                    debugLog("🔍 [MERGE] savedText='\(self.savedText)' (\(self.savedText.count)), currentText='\(currentText)' (\(currentText.count)), normalized: saved='\(savedNormalized)' current='\(currentNormalized)', commonLen=\(commonLen), threshold=\(threshold)")
+
+                    let isShortFragment = savedNormalized.count <= 5
+                    let isLikelyCorrection = isShortFragment && currentNormalized.count >= savedNormalized.count * 2 && commonLen < 2
+
+                    // savedText の正規化版が currentText の正規化版に含まれているか（修正判定）
+                    let savedContainedInCurrent = currentNormalized.contains(savedNormalized) || savedNormalized.hasPrefix(String(currentNormalized.prefix(savedNormalized.count)))
 
                     if isLikelyCorrection {
                         displayText = currentText
                         debugLog("🔍 [MERGE] Treating as correction (short fragment replaced)")
-                    } else if commonLen >= threshold && currentText.count >= self.savedText.count {
+                    } else if commonLen >= threshold || savedContainedInCurrent {
                         displayText = currentText
-                        debugLog("🔍 [MERGE] Using currentText (continuation)")
+                        debugLog("🔍 [MERGE] Using currentText (continuation or correction)")
                     } else {
                         displayText = self.savedText + " " + currentText
                         debugLog("🔍 [MERGE] Concatenating: '\(displayText)'")
