@@ -299,6 +299,7 @@ final class AppState {
     var currentTranscription = ""
     var isReady = false
     var statusMessage = "初期化中..."
+    var errorMessage: String?
     var history: [TranscriptionRecord] = []
 
     @ObservationIgnored
@@ -356,6 +357,16 @@ final class AppState {
             },
             onRealtimeInput: { [weak self] oldText, newText in
                 self?.handleRealtimeInput(oldText: oldText, newText: newText)
+            },
+            onRecognitionError: { [weak self] error in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    debugLog("❌ Apple speech error: \(error)")
+                    self.isReady = false
+                    self.isRecording = false
+                    self.statusMessage = error
+                    self.errorMessage = error
+                }
             }
         )
 
@@ -372,6 +383,11 @@ final class AppState {
             onError: { [weak self] error in
                 debugLog("❌ Chrome speech error: \(error)")
                 self?.statusMessage = error
+            },
+            onStatusChange: { [weak self] status in
+                DispatchQueue.main.async {
+                    self?.statusMessage = status
+                }
             }
         )
 
@@ -433,10 +449,29 @@ final class AppState {
 
     func startRecording() {
         debugLog("🔍 [DEBUG] startRecording called - isReady: \(isReady), isRecording: \(isRecording), useChrome: \(useChromeSpeech)")
-        guard isReady, !isRecording else {
-            debugLog("🔍 [DEBUG] startRecording guard failed")
+
+        guard !isRecording else {
+            debugLog("🔍 [DEBUG] startRecording guard failed - already recording")
             return
         }
+
+        if !isReady {
+            if ChromeSpeechService.isAvailable {
+                debugLog("🔍 [DEBUG] Chrome is now available, reconnecting...")
+                useChromeSpeech = true
+                isReady = true
+                let browserName = ChromeSpeechService.detectBrowser()?.split(separator: "/").last?.replacingOccurrences(of: ".app", with: "") ?? "Chrome"
+                statusMessage = "準備完了 - \(shortcutKey.displayName) キーを押して録音 (\(browserName))"
+                chromeSpeechService?.start()
+            } else {
+                debugLog("🔍 [DEBUG] startRecording - not ready, showing error")
+                errorMessage = "音声認識が無効です: Chrome を起動するか Siri を有効にしてください"
+                floatingPanel?.show()
+                return
+            }
+        }
+
+        errorMessage = nil
         isRecording = true
         currentTranscription = ""
         debugLog("🎙️ Recording started")
@@ -460,7 +495,15 @@ final class AppState {
     }
 
     func stopRecording() {
-        debugLog("🔍 [DEBUG] stopRecording called - isRecording: \(isRecording)")
+        debugLog("🔍 [DEBUG] stopRecording called - isRecording: \(isRecording), errorMessage: \(errorMessage ?? "nil")")
+
+        if errorMessage != nil {
+            debugLog("🔍 [DEBUG] stopRecording - hiding error panel")
+            errorMessage = nil
+            floatingPanel?.hide()
+            return
+        }
+
         guard isRecording else {
             debugLog("🔍 [DEBUG] stopRecording guard failed - not recording")
             return
@@ -1000,6 +1043,7 @@ final class SpeechRecognitionService {
     private let audioEngine = AVAudioEngine()
     private let onTranscription: (String, Bool) -> Void
     private let onRealtimeInput: (String, String) -> Void
+    private let onRecognitionError: ((String) -> Void)?
     private var lastTranscription = ""
 
     private var savedText = ""
@@ -1013,9 +1057,14 @@ final class SpeechRecognitionService {
     private let silenceDuration: TimeInterval = 0.8
     private var confirmedOnSilence = false
 
-    init(onTranscription: @escaping (String, Bool) -> Void, onRealtimeInput: @escaping (String, String) -> Void) {
+    init(
+        onTranscription: @escaping (String, Bool) -> Void,
+        onRealtimeInput: @escaping (String, String) -> Void,
+        onRecognitionError: ((String) -> Void)? = nil
+    ) {
         self.onTranscription = onTranscription
         self.onRealtimeInput = onRealtimeInput
+        self.onRecognitionError = onRecognitionError
     }
 
     func startRecording() throws {
@@ -1070,6 +1119,10 @@ final class SpeechRecognitionService {
             guard let self else { return }
             if let error {
                 debugLog("🔍 [DEBUG] Recognition error: \(error)")
+                let nsError = error as NSError
+                if nsError.domain == "kLSRErrorDomain" && nsError.code == 201 {
+                    self.onRecognitionError?("音声認識が無効です: システム設定で Siri を有効にするか、Chrome を起動してください")
+                }
             }
             if let result {
                 let currentText = result.bestTranscription.formattedString
@@ -1249,14 +1302,14 @@ final class ChromeSpeechService {
     private static let wsPort: UInt16 = 9473
     private static let httpPort: UInt16 = 9474
 
-    private static let supportedBrowsers = [
-        "/Applications/Google Chrome.app",
-        "/Applications/Microsoft Edge.app",
-        "/Applications/Brave Browser.app",
-        "/Applications/Arc.app",
-        "/Applications/Vivaldi.app",
-        "/Applications/Opera.app",
-        "/Applications/Chromium.app",
+    private static let supportedBrowsers: [(path: String, bundleId: String)] = [
+        ("/Applications/Google Chrome.app", "com.google.Chrome"),
+        ("/Applications/Microsoft Edge.app", "com.microsoft.edgemac"),
+        ("/Applications/Brave Browser.app", "com.brave.Browser"),
+        ("/Applications/Arc.app", "company.thebrowser.Browser"),
+        ("/Applications/Vivaldi.app", "com.vivaldi.Vivaldi"),
+        ("/Applications/Opera.app", "com.operasoftware.Opera"),
+        ("/Applications/Chromium.app", "org.chromium.Chromium"),
     ]
 
     private var wsListener: NWListener?
@@ -1265,29 +1318,55 @@ final class ChromeSpeechService {
     private var isConnected = false
     private var browserPath: String?
     private var htmlContent: String = ""
+    private var connectionTimeoutTimer: DispatchWorkItem?
+    private static let connectionTimeout: TimeInterval = 5.0
 
     private let onTranscription: (String, Bool) -> Void
     private let onError: (String) -> Void
+    private let onStatusChange: ((String) -> Void)?
+
+    static func detectInstalledBrowser() -> (path: String, bundleId: String)? {
+        supportedBrowsers.first { FileManager.default.fileExists(atPath: $0.path) }
+    }
 
     static func detectBrowser() -> String? {
-        supportedBrowsers.first { FileManager.default.fileExists(atPath: $0) }
+        detectInstalledBrowser()?.path
+    }
+
+    static func detectRunningBrowser() -> (path: String, bundleId: String)? {
+        let runningApps = NSWorkspace.shared.runningApplications
+        return supportedBrowsers.first { browser in
+            FileManager.default.fileExists(atPath: browser.path) &&
+            runningApps.contains { $0.bundleIdentifier == browser.bundleId }
+        }
     }
 
     static var isAvailable: Bool {
-        detectBrowser() != nil
+        detectRunningBrowser() != nil
     }
 
-    init(onTranscription: @escaping (String, Bool) -> Void, onError: @escaping (String) -> Void) {
+    init(
+        onTranscription: @escaping (String, Bool) -> Void,
+        onError: @escaping (String) -> Void,
+        onStatusChange: ((String) -> Void)? = nil
+    ) {
         self.onTranscription = onTranscription
         self.onError = onError
-        self.browserPath = Self.detectBrowser()
+        self.onStatusChange = onStatusChange
         loadHtmlContent()
     }
 
     private func loadHtmlContent() {
-        let htmlPath = Bundle.main.resourceURL?
+        let bundlePath = Bundle.main.resourceURL?
             .appendingPathComponent("speech-recognition.html").path
-            ?? getResourcePath()
+        let fallbackPath = getResourcePath()
+
+        let htmlPath: String
+        if let bundlePath, FileManager.default.fileExists(atPath: bundlePath) {
+            htmlPath = bundlePath
+        } else {
+            htmlPath = fallbackPath
+        }
 
         if let content = try? String(contentsOfFile: htmlPath, encoding: .utf8) {
             htmlContent = content
@@ -1298,13 +1377,37 @@ final class ChromeSpeechService {
     }
 
     func start() {
-        guard browserPath != nil else {
-            onError("非対応: Chromium 系ブラウザが見つかりません")
+        guard let runningBrowser = Self.detectRunningBrowser() else {
+            if Self.detectInstalledBrowser() != nil {
+                onError("ブラウザが起動していません: Chrome を起動してください")
+            } else {
+                onError("非対応: Chromium 系ブラウザが見つかりません")
+            }
             return
         }
 
+        browserPath = runningBrowser.path
+        onStatusChange?("ブラウザ接続待ち...")
+        startConnectionTimeout()
         startHttpServer()
         startWebSocketServer()
+    }
+
+    private func startConnectionTimeout() {
+        connectionTimeoutTimer?.cancel()
+        let timer = DispatchWorkItem { [weak self] in
+            guard let self, !self.isConnected else { return }
+            debugLog("❌ Browser connection timeout")
+            self.onError("ブラウザ接続タイムアウト: Chrome を起動してください")
+            self.stop()
+        }
+        connectionTimeoutTimer = timer
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.connectionTimeout, execute: timer)
+    }
+
+    private func cancelConnectionTimeout() {
+        connectionTimeoutTimer?.cancel()
+        connectionTimeoutTimer = nil
     }
 
     func stop() {
@@ -1424,6 +1527,7 @@ final class ChromeSpeechService {
             switch state {
             case .ready:
                 debugLog("🔗 Browser connected")
+                self?.cancelConnectionTimeout()
                 self?.isConnected = true
                 self?.performWebSocketHandshake()
             case .failed(let error):
@@ -1983,33 +2087,58 @@ struct FloatingPanelView: View {
         (NSScreen.main?.frame.width ?? 1600) * 0.35
     }
 
-    var body: some View {
-        HStack(alignment: .center, spacing: 16) {
-            Circle()
-                .fill(.red)
-                .frame(width: 12, height: 12)
-                .scaleEffect(isPulsing ? 1.3 : 1.0)
-                .opacity(isPulsing ? 0.7 : 1.0)
-                .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: isPulsing)
-                .onAppear { isPulsing = true }
+    private var isError: Bool {
+        appState.errorMessage != nil
+    }
 
-            if appState.currentTranscription.isEmpty {
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            ZStack {
+                if isError {
+                    Circle()
+                        .fill(.orange.opacity(0.2))
+                        .frame(width: 36, height: 36)
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .font(.system(size: 16, weight: .semibold))
+                } else {
+                    Circle()
+                        .fill(.red.opacity(0.15))
+                        .frame(width: 36, height: 36)
+                        .scaleEffect(isPulsing ? 1.15 : 1.0)
+                        .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: isPulsing)
+                    Circle()
+                        .fill(.red)
+                        .frame(width: 14, height: 14)
+                        .scaleEffect(isPulsing ? 1.1 : 1.0)
+                        .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: isPulsing)
+                }
+            }
+            .onAppear { isPulsing = true }
+
+            if let error = appState.errorMessage {
+                Text(error)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if appState.currentTranscription.isEmpty {
                 Text("Listening...")
-                    .font(.system(size: 18, weight: .medium))
+                    .font(.system(size: 17, weight: .medium))
                     .foregroundStyle(.secondary)
             } else {
                 Text(appState.currentTranscription)
-                    .font(.system(size: 18, weight: .medium))
+                    .font(.system(size: 17, weight: .medium))
                     .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer()
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 16)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
         .frame(width: panelWidth)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28))
     }
 }
 
