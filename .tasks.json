@@ -1,15 +1,5 @@
 [
   {
-    "content": "Chrome Web Speech API 統合をコミット",
-    "status": "in_progress",
-    "activeForm": "コミット中"
-  },
-  {
-    "content": "feature/benchmark ブランチを main にマージ",
-    "status": "pending",
-    "activeForm": "マージ中"
-  },
-  {
     "content": "Chromium バンドルの検討（将来）",
     "status": "pending",
     "activeForm": "Chromium バンドルを検討中"
