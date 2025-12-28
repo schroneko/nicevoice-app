@@ -1,7 +1,17 @@
 [
   {
     "content": "004: ベンチマークを作成",
-    "status": "pending",
+    "status": "completed",
     "activeForm": "ベンチマークを作成中"
+  },
+  {
+    "content": "005: CLAUDE.md のキー操作説明を fn → 右 Cmd に修正",
+    "status": "pending",
+    "activeForm": "CLAUDE.md を修正中"
+  },
+  {
+    "content": "006: アプリが動かない問題を調査・修正",
+    "status": "pending",
+    "activeForm": "アプリの問題を調査中"
   }
 ]
