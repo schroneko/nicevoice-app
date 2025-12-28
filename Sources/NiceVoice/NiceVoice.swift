@@ -1054,12 +1054,20 @@ final class SpeechRecognitionService {
                     // savedText の正規化版が currentText の正規化版に含まれているか（修正判定）
                     let savedContainedInCurrent = currentNormalized.contains(savedNormalized) || savedNormalized.hasPrefix(String(currentNormalized.prefix(savedNormalized.count)))
 
+                    // currentText の方が長い、または同程度の長さで共通部分がある場合は修正と判定
+                    // SFSpeechRecognizer は全体を再認識するので、より長い結果の方が正確
+                    let currentIsLongerOrSimilar = currentNormalized.count >= savedNormalized.count
+                    let hasSignificantOverlap = commonLen >= min(savedNormalized.count, currentNormalized.count) / 3
+
                     if isLikelyCorrection {
                         displayText = currentText
                         debugLog("🔍 [MERGE] Treating as correction (short fragment replaced)")
                     } else if commonLen >= threshold || savedContainedInCurrent {
                         displayText = currentText
                         debugLog("🔍 [MERGE] Using currentText (continuation or correction)")
+                    } else if currentIsLongerOrSimilar && hasSignificantOverlap {
+                        displayText = currentText
+                        debugLog("🔍 [MERGE] Using currentText (longer/similar with overlap)")
                     } else {
                         displayText = self.savedText + " " + currentText
                         debugLog("🔍 [MERGE] Concatenating: '\(displayText)'")
