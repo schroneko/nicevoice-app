@@ -298,12 +298,7 @@ final class AppState {
     var isReady = false
     var statusMessage = "初期化中..."
     var history: [TranscriptionRecord] = []
-    var isConverting = false
 
-    @ObservationIgnored
-    @AppStorage("useGemini") var useGemini = true
-    @ObservationIgnored
-    @AppStorage("geminiApiKey") var geminiApiKey = ""
     @ObservationIgnored
     @AppStorage("shortcutKey") var shortcutKeyRaw = ShortcutKey.fn.rawValue
 
@@ -448,57 +443,10 @@ final class AppState {
             return
         }
 
-        if useGemini && !geminiApiKey.isEmpty {
-            isConverting = true
-            debugLog("🔄 Starting Gemini processing...")
-            Task {
-                do {
-                    let geminiResult = try await processWithGemini()
-                    await MainActor.run {
-                        debugLog("✅ Gemini result: '\(geminiResult)'")
-                        isConverting = false
-                        floatingPanel?.hide()
-                        addToHistory(geminiResult)
-                        performPaste(geminiResult)
-                        speechService?.clearAudioBuffers()
-                    }
-                } catch {
-                    debugLog("❌ Gemini error: \(error), using fallback")
-                    await MainActor.run {
-                        isConverting = false
-                        floatingPanel?.hide()
-                        addToHistory(fallbackResult)
-                        performPaste(fallbackResult)
-                        speechService?.clearAudioBuffers()
-                    }
-                }
-            }
-        } else {
-            floatingPanel?.hide()
-            addToHistory(fallbackResult)
-            performPaste(fallbackResult)
-            speechService?.clearAudioBuffers()
-        }
-    }
-
-    private func processWithGemini() async throws -> String {
-        guard let audioData = speechService?.getRecordedAudioData(), !audioData.isEmpty else {
-            throw GeminiError.audioDataEmpty
-        }
-
-        let geminiService = GeminiService(
-            apiKey: geminiApiKey,
-            dictionaryEntries: dictionaryEntries,
-            fillerSettings: fillerSettings
-        )
-        let result = try await geminiService.transcribe(audioData: audioData)
-
-        let estimatedTokens = audioData.count / 32
-        await MainActor.run {
-            recordConversion(characters: result.count, tokens: estimatedTokens)
-        }
-
-        return result
+        floatingPanel?.hide()
+        addToHistory(fallbackResult)
+        performPaste(fallbackResult)
+        speechService?.clearAudioBuffers()
     }
 
     private func handleFinalResult(_ text: String) {
@@ -648,6 +596,25 @@ final class AppState {
                     }
                 }
                 offset = result.distance(from: result.startIndex, to: range.lowerBound) + phrase.count + (insertedBefore ? 2 : 1)
+            }
+        }
+
+        let politeEndingsForMid = ["お願いいたします", "お願いします", "くださいませ", "ください", "でございます", "思います"]
+        for phrase in politeEndingsForMid {
+            var offset = 0
+            while offset < result.count {
+                guard let startIdx = result.index(result.startIndex, offsetBy: offset, limitedBy: result.endIndex),
+                      let range = result.range(of: phrase, range: startIdx..<result.endIndex) else { break }
+                let afterEnd = range.upperBound
+                if afterEnd < result.endIndex {
+                    let nextChar = result[afterEnd]
+                    if nextChar != "。" && nextChar != "、" && nextChar != "？" && nextChar != "！" {
+                        result.insert("。", at: afterEnd)
+                        offset = result.distance(from: result.startIndex, to: afterEnd) + 1
+                        continue
+                    }
+                }
+                offset = result.distance(from: result.startIndex, to: range.lowerBound) + phrase.count
             }
         }
 
@@ -1227,127 +1194,6 @@ final class SpeechRecognitionService {
     }
 }
 
-enum GeminiError: Error {
-    case apiKeyMissing
-    case audioDataEmpty
-    case apiError(statusCode: Int, message: String)
-    case parseError
-    case timeout
-}
-
-final class GeminiService {
-    private let apiKey: String
-    private let modelName = "gemini-3-flash-preview"
-    private let baseURL = "https://generativelanguage.googleapis.com/v1beta/models"
-    private let dictionaryEntries: [DictionaryEntry]
-    private let fillerSettings: FillerSettings
-
-    init(apiKey: String, dictionaryEntries: [DictionaryEntry] = [], fillerSettings: FillerSettings = FillerSettings()) {
-        self.apiKey = apiKey
-        self.dictionaryEntries = dictionaryEntries
-        self.fillerSettings = fillerSettings
-    }
-
-    private func buildPrompt() -> String {
-        var parts: [String] = [
-            "この音声を書き起こしてください。",
-            "重要: 音声に含まれている内容のみを書き起こしてください。音声にない内容を追加しないでください。"
-        ]
-
-        if fillerSettings.addPunctuation {
-            parts.append("句読点を適切に入れてください（文末に「。」、疑問文に「？」、文中の区切りに「、」）。")
-        }
-
-        if fillerSettings.removeRepetition {
-            parts.append("言い淀みの繰り返し（「あの、あの」など）は1回にまとめてください。")
-        }
-
-        if fillerSettings.removeFillers {
-            let fillers = fillerSettings.allEnabledFillers
-            if !fillers.isEmpty {
-                parts.append("フィラー（\(fillers.joined(separator: "、"))）は除去してください。")
-            }
-        }
-
-        let enabledEntries = dictionaryEntries.filter { $0.isEnabled }
-        if !enabledEntries.isEmpty {
-            let rules = enabledEntries.map { "「\($0.reading)」→「\($0.writing)」" }.joined(separator: "、")
-            parts.append("音声内に以下の読みが含まれる場合のみ変換: \(rules)")
-        }
-
-        parts.append("書き起こし結果のみ出力：")
-
-        return parts.joined(separator: "\n")
-    }
-
-    func transcribe(audioData: Data) async throws -> String {
-        guard !apiKey.isEmpty else {
-            throw GeminiError.apiKeyMissing
-        }
-        guard !audioData.isEmpty else {
-            throw GeminiError.audioDataEmpty
-        }
-
-        let base64Audio = audioData.base64EncodedString()
-        let url = URL(string: "\(baseURL)/\(modelName):generateContent")!
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 30
-
-        let prompt = buildPrompt()
-        debugLog("📝 Prompt: \(prompt)")
-
-        let body: [String: Any] = [
-            "contents": [[
-                "parts": [
-                    ["text": prompt],
-                    [
-                        "inlineData": [
-                            "mimeType": "audio/wav",
-                            "data": base64Audio
-                        ]
-                    ]
-                ]
-            ]],
-            "generationConfig": [
-                "maxOutputTokens": 8192,
-                "temperature": 0.2
-            ]
-        ]
-
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        debugLog("🌐 Transcribing audio with Gemini 3 Flash...")
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw GeminiError.apiError(statusCode: -1, message: "Invalid response")
-        }
-
-        if httpResponse.statusCode != 200 {
-            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
-            debugLog("❌ Gemini API error: \(httpResponse.statusCode) - \(errorMessage)")
-            throw GeminiError.apiError(statusCode: httpResponse.statusCode, message: errorMessage)
-        }
-
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let candidates = json["candidates"] as? [[String: Any]],
-              let content = candidates.first?["content"] as? [String: Any],
-              let parts = content["parts"] as? [[String: Any]],
-              let text = parts.first?["text"] as? String else {
-            debugLog("❌ Failed to parse Gemini response")
-            throw GeminiError.parseError
-        }
-
-        let result = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        debugLog("✅ Transcription result: '\(result)'")
-        return result
-    }
-}
-
 enum ShortcutKey: String, CaseIterable {
     case fn = "fn"
     case leftShift = "leftShift"
@@ -1697,10 +1543,6 @@ struct FloatingPanelView: View {
             }
 
             Spacer()
-
-            if appState.isConverting {
-                SpinningIcon()
-            }
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 16)
@@ -2924,12 +2766,8 @@ struct ShortcutKeyButton: View {
 
 struct SettingsContentView: View {
     var appState: AppState
-    @AppStorage("useGemini") private var useGemini = true
-    @AppStorage("geminiApiKey") private var geminiApiKey = ""
     @AppStorage("showInMenuBar") private var showInMenuBar = true
     @AppStorage("shortcutKey") private var shortcutKeyRaw = ShortcutKey.fn.rawValue
-    @State private var validationState: ValidationState = .none
-    @State private var isValidating = false
     @State private var fillerSettings: FillerSettings
     @State private var newFiller = ""
     @State private var animateContent = false
@@ -2939,12 +2777,6 @@ struct SettingsContentView: View {
     }
 
     private let presetFillers = ["えー", "あー", "うーん", "まあ", "なんか", "やっぱり"]
-
-    enum ValidationState {
-        case none
-        case valid
-        case invalid(String)
-    }
 
     init(appState: AppState) {
         self.appState = appState
@@ -3001,88 +2833,7 @@ struct SettingsContentView: View {
                 .opacity(animateContent ? 1 : 0)
                 .offset(y: animateContent ? 0 : 10)
 
-                SettingsSection(title: "Gemini API", icon: "sparkles", color: .blue) {
-                    SettingsToggleRow(
-                        title: "高精度変換を使用",
-                        description: "Gemini API を使用して高精度な変換を行います",
-                        isOn: $useGemini
-                    )
-
-                    if useGemini {
-                        Divider()
-                            .padding(.vertical, 4)
-
-                        VStack(alignment: .leading, spacing: 12) {
-                            HStack(spacing: 12) {
-                                SecureField("API キー", text: $geminiApiKey)
-                                    .textFieldStyle(.plain)
-                                    .padding(10)
-                                    .background(Color.secondary.opacity(0.1))
-                                    .cornerRadius(8)
-                                    .onChange(of: geminiApiKey) { _, _ in
-                                        validationState = .none
-                                    }
-
-                                Button {
-                                    validateApiKey()
-                                } label: {
-                                    if isValidating {
-                                        ProgressView()
-                                            .scaleEffect(0.6)
-                                            .frame(width: 60, height: 32)
-                                    } else {
-                                        Text("テスト")
-                                            .font(.callout.weight(.medium))
-                                            .frame(width: 60, height: 32)
-                                    }
-                                }
-                                .buttonStyle(.bordered)
-                                .disabled(geminiApiKey.isEmpty || isValidating)
-                            }
-
-                            switch validationState {
-                            case .none:
-                                if geminiApiKey.isEmpty {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "key")
-                                            .font(.caption)
-                                        Text("API キーを入力してください")
-                                            .font(.caption)
-                                    }
-                                    .foregroundStyle(.secondary)
-                                }
-                            case .valid:
-                                HStack(spacing: 6) {
-                                    Image(systemName: "checkmark.circle.fill")
-                                    Text("API キーは有効です")
-                                }
-                                .font(.caption)
-                                .foregroundStyle(.green)
-                            case .invalid(let message):
-                                HStack(spacing: 6) {
-                                    Image(systemName: "xmark.circle.fill")
-                                    Text(message)
-                                }
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                            }
-
-                            Link(destination: URL(string: "https://aistudio.google.com/apikey")!) {
-                                HStack(spacing: 4) {
-                                    Text("Google AI Studio で API キーを取得")
-                                    Image(systemName: "arrow.up.right")
-                                        .font(.caption2)
-                                }
-                                .font(.caption)
-                            }
-                        }
-                    }
-                }
-                .opacity(animateContent ? 1 : 0)
-                .offset(y: animateContent ? 0 : 10)
-
-                if useGemini {
-                    SettingsSection(title: "書き起こし調整", icon: "text.alignleft", color: .purple) {
+                SettingsSection(title: "書き起こし調整", icon: "text.alignleft", color: .purple) {
                         SettingsToggleRow(
                             title: "句読点を自動で付ける",
                             description: "。、？を適切な位置に追加して読みやすくします",
@@ -3187,22 +2938,8 @@ struct SettingsContentView: View {
                             }
                         }
                     }
-                    .opacity(animateContent ? 1 : 0)
-                    .offset(y: animateContent ? 0 : 10)
-
-                    SettingsSection(title: "料金目安", icon: "yensign.circle", color: .green) {
-                        VStack(spacing: 12) {
-                            PriceRow(label: "Gemini 3 Flash", value: "$0.50 / 100万トークン")
-                            PriceRow(label: "音声 1 分あたり", value: "約 $0.0008（≒ 0.12 円）")
-                        }
-                        Text("※ 1秒 ≈ 25トークン、1分 ≈ 1,500トークン")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                            .padding(.top, 4)
-                    }
-                    .opacity(animateContent ? 1 : 0)
-                    .offset(y: animateContent ? 0 : 10)
-                }
+                .opacity(animateContent ? 1 : 0)
+                .offset(y: animateContent ? 0 : 10)
 
                 Spacer(minLength: 20)
             }
@@ -3213,39 +2950,6 @@ struct SettingsContentView: View {
                 animateContent = true
             }
         }
-    }
-
-    private func validateApiKey() {
-        isValidating = true
-        validationState = .none
-
-        Task {
-            do {
-                let isValid = try await testApiKey(geminiApiKey)
-                await MainActor.run {
-                    isValidating = false
-                    validationState = isValid ? .valid : .invalid("API キーが無効です")
-                }
-            } catch {
-                await MainActor.run {
-                    isValidating = false
-                    validationState = .invalid("接続エラー")
-                }
-            }
-        }
-    }
-
-    private func testApiKey(_ apiKey: String) async throws -> Bool {
-        let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models?key=\(apiKey)")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.timeoutInterval = 10
-
-        let (_, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            return false
-        }
-        return httpResponse.statusCode == 200
     }
 
     private func addCustomFiller() {
@@ -3442,170 +3146,5 @@ struct FillerChip: View {
             .cornerRadius(16)
         }
         .buttonStyle(.plain)
-    }
-}
-
-struct SettingsView: View {
-    @AppStorage("useGemini") private var useGemini = true
-    @AppStorage("geminiApiKey") private var geminiApiKey = ""
-    @State private var validationState: ValidationState = .none
-    @State private var isValidating = false
-
-    enum ValidationState {
-        case none
-        case valid
-        case invalid(String)
-    }
-
-    var body: some View {
-        Form {
-            Section {
-                Text("Nice Voice 設定")
-                    .font(.title)
-                Text("fn キーを押している間、音声を録音します")
-            }
-
-            Section("Gemini API") {
-                Toggle("高精度変換を行う", isOn: $useGemini)
-
-                if useGemini {
-                    HStack {
-                        SecureField("API キー", text: $geminiApiKey)
-                            .textFieldStyle(.roundedBorder)
-                            .onChange(of: geminiApiKey) { _, _ in
-                                validationState = .none
-                            }
-
-                        Button {
-                            validateApiKey()
-                        } label: {
-                            if isValidating {
-                                ProgressView()
-                                    .scaleEffect(0.7)
-                                    .frame(width: 50)
-                            } else {
-                                Text("テスト")
-                                    .frame(width: 50)
-                            }
-                        }
-                        .disabled(geminiApiKey.isEmpty || isValidating)
-                    }
-
-                    switch validationState {
-                    case .none:
-                        if geminiApiKey.isEmpty {
-                            Label("API キーを入力してください", systemImage: "key")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    case .valid:
-                        Label("API キーは有効です", systemImage: "checkmark.circle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.green)
-                    case .invalid(let message):
-                        Label(message, systemImage: "xmark.circle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
-
-                    Link("Google AI Studio で API キーを取得", destination: URL(string: "https://aistudio.google.com/apikey")!)
-                        .font(.caption)
-                }
-            }
-
-            if useGemini {
-                Section("料金目安") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("Gemini 3 Flash")
-                                .font(.caption)
-                            Spacer()
-                            Text("$0.50 / 100万トークン")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        HStack {
-                            Text("音声 1 分あたり")
-                                .font(.caption)
-                            Spacer()
-                            Text("約 $0.0008（≒ 0.12 円）")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Text("※ 1秒 ≈ 25トークン、1分 ≈ 1,500トークン")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-            }
-
-            Section("デバッグ") {
-                HStack {
-                    Button {
-                        copyRecentLogs()
-                    } label: {
-                        Label("最近のログをコピー", systemImage: "doc.on.clipboard")
-                    }
-
-                    Spacer()
-
-                    Text("直近 100 行")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .formStyle(.grouped)
-        .padding()
-        .frame(width: 450, height: useGemini ? 500 : 360)
-    }
-
-    private func validateApiKey() {
-        isValidating = true
-        validationState = .none
-
-        Task {
-            do {
-                let isValid = try await testApiKey(geminiApiKey)
-                await MainActor.run {
-                    isValidating = false
-                    validationState = isValid ? .valid : .invalid("API キーが無効です")
-                }
-            } catch {
-                await MainActor.run {
-                    isValidating = false
-                    validationState = .invalid("接続エラー: \(error.localizedDescription)")
-                }
-            }
-        }
-    }
-
-    private func testApiKey(_ apiKey: String) async throws -> Bool {
-        let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models?key=\(apiKey)")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.timeoutInterval = 10
-
-        let (_, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            return false
-        }
-        return httpResponse.statusCode == 200
-    }
-
-    private func copyRecentLogs() {
-        let lineCount = 100
-
-        guard let content = try? String(contentsOfFile: logFilePath, encoding: .utf8) else {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString("ログファイルが見つかりません: \(logFilePath)", forType: .string)
-            return
-        }
-
-        let lines = content.components(separatedBy: .newlines)
-        let recentLines = lines.suffix(lineCount).joined(separator: "\n")
-
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(recentLines, forType: .string)
     }
 }
