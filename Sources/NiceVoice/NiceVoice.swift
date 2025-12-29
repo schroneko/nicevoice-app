@@ -4,7 +4,6 @@ import Speech
 import AppKit
 import Carbon.HIToolbox
 import ApplicationServices
-import UniformTypeIdentifiers
 import os.log
 import Network
 import CommonCrypto
@@ -38,25 +37,51 @@ private let logFilePath: String = {
     logDirectory.appendingPathComponent("debug.log").path
 }()
 
+private let maxLogFileSize: UInt64 = 5 * 1024 * 1024
+private let maxLogBackups = 3
+
+private func rotateLogIfNeeded() {
+    let fm = FileManager.default
+    guard let attrs = try? fm.attributesOfItem(atPath: logFilePath),
+          let fileSize = attrs[.size] as? UInt64,
+          fileSize >= maxLogFileSize else {
+        return
+    }
+
+    for i in stride(from: maxLogBackups - 1, through: 0, by: -1) {
+        let oldPath = i == 0 ? logFilePath : "\(logFilePath).\(i)"
+        let newPath = "\(logFilePath).\(i + 1)"
+
+        if i == maxLogBackups - 1 {
+            try? fm.removeItem(atPath: newPath)
+        }
+        if fm.fileExists(atPath: oldPath) {
+            try? fm.moveItem(atPath: oldPath, toPath: newPath)
+        }
+    }
+}
+
 func debugLog(_ message: String) {
     let timestamp = ISO8601DateFormatter().string(from: Date())
     let logMessage = "[\(timestamp)] \(message)\n"
     print(logMessage, terminator: "")
     logger.debug("\(message, privacy: .public)")
 
+    rotateLogIfNeeded()
+
+    guard let logData = logMessage.data(using: .utf8) else { return }
     if let handle = FileHandle(forWritingAtPath: logFilePath) {
         handle.seekToEndOfFile()
-        handle.write(logMessage.data(using: .utf8)!)
+        handle.write(logData)
         handle.closeFile()
     } else {
-        FileManager.default.createFile(atPath: logFilePath, contents: logMessage.data(using: .utf8))
+        FileManager.default.createFile(atPath: logFilePath, contents: logData)
     }
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     let appState = AppState()
     private var statusItem: NSStatusItem?
-    private var recordingObservation: NSKeyValueObservation?
 
     @AppStorage("showInMenuBar") var showInMenuBar = true
 
@@ -924,29 +949,34 @@ final class AppState {
         }
     }
 
-    private func saveUsageStats() {
-        if let data = try? JSONEncoder().encode(usageStats) {
-            UserDefaults.standard.set(data, forKey: UserDefaultsKey.usageStats)
+    private func save<T: Encodable>(_ value: T, forKey key: String) {
+        if let data = try? JSONEncoder().encode(value) {
+            UserDefaults.standard.set(data, forKey: key)
         }
     }
 
+    private func load<T: Decodable>(forKey key: String) -> T? {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+        return try? JSONDecoder().decode(T.self, from: data)
+    }
+
+    private func saveUsageStats() {
+        save(usageStats, forKey: UserDefaultsKey.usageStats)
+    }
+
     private func loadUsageStats() {
-        if let data = UserDefaults.standard.data(forKey: UserDefaultsKey.usageStats),
-           let stats = try? JSONDecoder().decode(UsageStats.self, from: data) {
+        if let stats: UsageStats = load(forKey: UserDefaultsKey.usageStats) {
             usageStats = stats
             usageStats.resetTodayIfNeeded()
         }
     }
 
     private func saveDictionary() {
-        if let data = try? JSONEncoder().encode(dictionaryEntries) {
-            UserDefaults.standard.set(data, forKey: UserDefaultsKey.dictionary)
-        }
+        save(dictionaryEntries, forKey: UserDefaultsKey.dictionary)
     }
 
     private func loadDictionary() {
-        if let data = UserDefaults.standard.data(forKey: UserDefaultsKey.dictionary),
-           let entries = try? JSONDecoder().decode([DictionaryEntry].self, from: data) {
+        if let entries: [DictionaryEntry] = load(forKey: UserDefaultsKey.dictionary) {
             dictionaryEntries = entries
             deduplicateDictionary()
             sortDictionary()
@@ -954,28 +984,22 @@ final class AppState {
     }
 
     private func saveFillerSettings() {
-        if let data = try? JSONEncoder().encode(fillerSettings) {
-            UserDefaults.standard.set(data, forKey: UserDefaultsKey.fillerSettings)
-        }
+        save(fillerSettings, forKey: UserDefaultsKey.fillerSettings)
     }
 
     private func loadFillerSettings() {
-        if let data = UserDefaults.standard.data(forKey: UserDefaultsKey.fillerSettings),
-           let settings = try? JSONDecoder().decode(FillerSettings.self, from: data) {
+        if let settings: FillerSettings = load(forKey: UserDefaultsKey.fillerSettings) {
             fillerSettings = settings
         }
     }
 
     private func saveHistory() {
-        if let data = try? JSONEncoder().encode(history) {
-            UserDefaults.standard.set(data, forKey: UserDefaultsKey.history)
-            debugLog("💾 History saved (\(history.count) items)")
-        }
+        save(history, forKey: UserDefaultsKey.history)
+        debugLog("💾 History saved (\(history.count) items)")
     }
 
     private func loadHistory() {
-        if let data = UserDefaults.standard.data(forKey: UserDefaultsKey.history),
-           let records = try? JSONDecoder().decode([TranscriptionRecord].self, from: data) {
+        if let records: [TranscriptionRecord] = load(forKey: UserDefaultsKey.history) {
             history = records
             debugLog("📂 History loaded (\(records.count) items)")
         }
@@ -1416,15 +1440,20 @@ final class ChromeSpeechService {
     }
 
     private func startHttpServer() {
+        guard let port = NWEndpoint.Port(rawValue: Self.httpPort) else {
+            debugLog("❌ Invalid HTTP port: \(Self.httpPort)")
+            return
+        }
         do {
             let parameters = NWParameters.tcp
             parameters.allowLocalEndpointReuse = true
-            httpListener = try NWListener(using: parameters, on: NWEndpoint.Port(rawValue: Self.httpPort)!)
+            parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: "127.0.0.1", port: port)
+            httpListener = try NWListener(using: parameters, on: port)
 
             httpListener?.stateUpdateHandler = { state in
                 switch state {
                 case .ready:
-                    debugLog("🌐 HTTP server ready on port \(Self.httpPort)")
+                    debugLog("🌐 HTTP server ready on localhost:\(Self.httpPort)")
                 case .failed(let error):
                     debugLog("❌ HTTP server failed: \(error)")
                 default:
@@ -1472,7 +1501,10 @@ final class ChromeSpeechService {
         \r
 
         """
-        var responseData = response.data(using: .utf8)!
+        guard var responseData = response.data(using: .utf8) else {
+            connection.cancel()
+            return
+        }
         responseData.append(body)
 
         connection.send(content: responseData, completion: .contentProcessed { _ in
@@ -1481,15 +1513,21 @@ final class ChromeSpeechService {
     }
 
     private func startWebSocketServer() {
+        guard let port = NWEndpoint.Port(rawValue: Self.wsPort) else {
+            debugLog("❌ Invalid WebSocket port: \(Self.wsPort)")
+            onError("WebSocket ポートが無効")
+            return
+        }
         do {
             let parameters = NWParameters.tcp
             parameters.allowLocalEndpointReuse = true
-            wsListener = try NWListener(using: parameters, on: NWEndpoint.Port(rawValue: Self.wsPort)!)
+            parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: "127.0.0.1", port: port)
+            wsListener = try NWListener(using: parameters, on: port)
 
             wsListener?.stateUpdateHandler = { [weak self] state in
                 switch state {
                 case .ready:
-                    debugLog("🌐 WebSocket server ready on port \(Self.wsPort)")
+                    debugLog("🌐 WebSocket server ready on localhost:\(Self.wsPort)")
                     self?.openBrowser()
                 case .failed(let error):
                     debugLog("❌ WebSocket server failed: \(error)")
@@ -1606,7 +1644,6 @@ final class ChromeSpeechService {
     private func decodeWebSocketFrame(_ data: Data) -> String? {
         guard data.count >= 2 else { return nil }
 
-        let firstByte = data[0]
         let secondByte = data[1]
         let isMasked = (secondByte & 0x80) != 0
         var payloadLength = Int(secondByte & 0x7F)
