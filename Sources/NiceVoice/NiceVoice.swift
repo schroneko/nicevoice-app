@@ -89,6 +89,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         debugLog("✅ NiceVoice started")
         checkAccessibilityPermission()
         setupStatusItem()
+        setupFillerDetection()
 
         NotificationCenter.default.addObserver(
             self,
@@ -103,6 +104,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             name: .recordingStateChanged,
             object: nil
         )
+    }
+
+    private func setupFillerDetection() {
+        let devVarsPath = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("nicevoice-app/.dev.vars").path
+        FillerDetectionService.setupAPIKey(from: devVarsPath)
     }
 
     @objc private func recordingStateChanged() {
@@ -285,6 +292,9 @@ struct FillerSettings: Codable {
 
     var addPunctuation: Bool = true
     var removeRepetition: Bool = true
+
+    var useSmartFillerDetection: Bool = false
+    var ambiguousFillers: Set<String> = ["あの", "その", "ちょっと"]
 
     var allEnabledFillers: [String] {
         var fillers = Array(enabledPresets)
@@ -630,6 +640,35 @@ final class AppState {
             debugLog("⚠️ Final result empty after processing, skipping")
             floatingPanel?.hide()
             return
+        }
+
+        if fillerSettings.useSmartFillerDetection && fillerSettings.removeFillers {
+            let ambiguous = fillerSettings.ambiguousFillers
+            let hasAmbiguousWords = ambiguous.contains { processedText.contains($0) }
+
+            if hasAmbiguousWords {
+                let textToProcess = processedText
+                Task {
+                    let detectedFillers = await FillerDetectionService.detectFillers(
+                        in: textToProcess,
+                        ambiguousWords: ambiguous
+                    )
+                    var result = textToProcess
+                    for filler in detectedFillers {
+                        result = result.replacingOccurrences(of: filler, with: "")
+                    }
+                    let finalText = result.replacingOccurrences(of: "  ", with: " ")
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+
+                    await MainActor.run {
+                        if !finalText.isEmpty {
+                            self.addToHistory(finalText)
+                            self.performPaste(finalText)
+                        }
+                    }
+                }
+                return
+            }
         }
 
         addToHistory(processedText)
@@ -3844,6 +3883,18 @@ struct SettingsContentView: View {
                                     .buttonStyle(.borderedProminent)
                                     .disabled(newFiller.isEmpty)
                                 }
+
+                                Divider()
+                                    .padding(.vertical, 8)
+
+                                SettingsToggleRow(
+                                    title: "AI でフィラーを識別",
+                                    description: "「あの」「その」など文脈依存のフィラーを Claude Haiku 4.5 で判定します",
+                                    isOn: $fillerSettings.useSmartFillerDetection
+                                )
+                                .onChange(of: fillerSettings.useSmartFillerDetection) { _, _ in
+                                    appState.updateFillerSettings(fillerSettings)
+                                }
                             }
                         }
                     }
@@ -4055,5 +4106,139 @@ struct FillerChip: View {
             .cornerRadius(16)
         }
         .buttonStyle(.plain)
+    }
+}
+
+final class FillerDetectionService {
+    private static let configDirectory: URL = {
+        let appSupport = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/NiceVoice")
+        try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
+        return appSupport
+    }()
+
+    private static let configPath: URL = {
+        configDirectory.appendingPathComponent("config.json")
+    }()
+
+    private struct Config: Codable {
+        var anthropicAPIKey: String?
+    }
+
+    static func getAPIKey() -> String? {
+        guard let data = try? Data(contentsOf: configPath),
+              let config = try? JSONDecoder().decode(Config.self, from: data) else {
+            return nil
+        }
+        return config.anthropicAPIKey
+    }
+
+    static func setupAPIKey(from devVarsPath: String) {
+        guard let content = try? String(contentsOfFile: devVarsPath, encoding: .utf8) else {
+            debugLog("⚠️ .dev.vars not found at \(devVarsPath)")
+            return
+        }
+
+        var anthropicKey: String?
+        for line in content.split(separator: "\n") {
+            let parts = line.split(separator: "=", maxSplits: 1)
+            if parts.count == 2 && parts[0] == "ANTHROPIC_API_KEY" {
+                anthropicKey = String(parts[1])
+                break
+            }
+        }
+
+        guard let key = anthropicKey else {
+            debugLog("⚠️ ANTHROPIC_API_KEY not found in .dev.vars")
+            return
+        }
+
+        let config = Config(anthropicAPIKey: key)
+        if let data = try? JSONEncoder().encode(config) {
+            try? data.write(to: configPath)
+            debugLog("✅ Anthropic API key configured")
+        }
+    }
+
+    static func detectFillers(in text: String, ambiguousWords: Set<String>) async -> [String] {
+        guard let apiKey = getAPIKey(), !apiKey.isEmpty else {
+            debugLog("⚠️ Anthropic API key not configured")
+            return []
+        }
+
+        let wordsInText = ambiguousWords.filter { text.contains($0) }
+        guard !wordsInText.isEmpty else {
+            return []
+        }
+
+        let prompt = """
+        文中のフィラー（言い淀み）を特定してください。
+
+        【判定基準】
+        - フィラー: 文頭や文中で意味なく挿入された「あの」「その」「ちょっと」
+        - 非フィラー: 「あの人」「その日」「ちょっと待って」のように名詞や動詞を修飾している場合
+
+        【入力】
+        \(text)
+
+        【出力形式】
+        フィラーのみをカンマ区切りで出力。説明不要。
+        例: あの,その
+        フィラーがなければ: なし
+        """
+
+        do {
+            let fillers = try await callClaudeAPI(prompt: prompt, apiKey: apiKey)
+            return fillers
+        } catch {
+            debugLog("❌ Filler detection error: \(error)")
+            return []
+        }
+    }
+
+    private static func callClaudeAPI(prompt: String, apiKey: String) async throws -> [String] {
+        let url = URL(string: "https://api.anthropic.com/v1/messages")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        request.timeoutInterval = 5
+
+        let body: [String: Any] = [
+            "model": "claude-haiku-4-5-20251001",
+            "max_tokens": 100,
+            "messages": [
+                ["role": "user", "content": prompt]
+            ]
+        ]
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw NSError(domain: "FillerDetection", code: 1, userInfo: [NSLocalizedDescriptionKey: "API request failed"])
+        }
+
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let content = json["content"] as? [[String: Any]],
+              let firstContent = content.first,
+              let text = firstContent["text"] as? String else {
+            throw NSError(domain: "FillerDetection", code: 2, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
+        }
+
+        if text.trimmingCharacters(in: .whitespacesAndNewlines) == "なし" {
+            return []
+        }
+
+        let fillers = text.split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        debugLog("🔍 Smart filler detection: \(fillers)")
+        return fillers
     }
 }
