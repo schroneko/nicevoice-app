@@ -2,51 +2,51 @@
   {
     "id": "basic_greeting",
     "text": "こんにちは",
-    "audioPath": "/Users/username/nicevoice-app/benchmark-audio/basic_greeting.wav"
+    "audioPath": "benchmark-audio/basic_greeting.wav"
   },
   {
     "id": "polite_request",
     "text": "お願いいたします",
-    "audioPath": "/Users/username/nicevoice-app/benchmark-audio/polite_request.wav"
+    "audioPath": "benchmark-audio/polite_request.wav"
   },
   {
     "id": "question",
     "text": "徹底的に調べてもらってもいいですか",
-    "audioPath": "/Users/username/nicevoice-app/benchmark-audio/question.wav"
+    "audioPath": "benchmark-audio/question.wav"
   },
   {
     "id": "repeated_polite",
     "text": "お願いいたします。お願いいたします。お願いいたします。",
-    "audioPath": "/Users/username/nicevoice-app/benchmark-audio/repeated_polite.wav"
+    "audioPath": "benchmark-audio/repeated_polite.wav"
   },
   {
     "id": "filler_words",
     "text": "えーっと、あのー、それからですね",
-    "audioPath": "/Users/username/nicevoice-app/benchmark-audio/filler_words.wav"
+    "audioPath": "benchmark-audio/filler_words.wav"
   },
   {
     "id": "technical",
     "text": "クロードコードを使って開発しています",
-    "audioPath": "/Users/username/nicevoice-app/benchmark-audio/technical.wav"
+    "audioPath": "benchmark-audio/technical.wav"
   },
   {
     "id": "long_sentence",
     "text": "本日はお忙しい中ご参加いただきまして誠にありがとうございます",
-    "audioPath": "/Users/username/nicevoice-app/benchmark-audio/long_sentence.wav"
+    "audioPath": "benchmark-audio/long_sentence.wav"
   },
   {
     "id": "numbers",
     "text": "2024年12月28日の会議です",
-    "audioPath": "/Users/username/nicevoice-app/benchmark-audio/numbers.wav"
+    "audioPath": "benchmark-audio/numbers.wav"
   },
   {
     "id": "mixed",
     "text": "Swiftでアプリを作成してGitHubにプッシュしました",
-    "audioPath": "/Users/username/nicevoice-app/benchmark-audio/mixed.wav"
+    "audioPath": "benchmark-audio/mixed.wav"
   },
   {
     "id": "pause_mid",
     "text": "これは、とても重要な、お知らせです",
-    "audioPath": "/Users/username/nicevoice-app/benchmark-audio/pause_mid.wav"
+    "audioPath": "benchmark-audio/pause_mid.wav"
   }
 ]

@@ -72,7 +72,7 @@ async function generateAudio(testCase) {
   const outputPath = resolve(outputDir, `${testCase.id}.wav`);
   writeFileSync(outputPath, Buffer.from(audioBuffer));
 
-  return outputPath;
+  return `benchmark-audio/${testCase.id}.wav`;
 }
 
 async function main() {

@@ -66,7 +66,8 @@ func normalize(_ text: String) -> String {
 }
 
 let scriptDir = URL(fileURLWithPath: #file).deletingLastPathComponent()
-let manifestPath = scriptDir.deletingLastPathComponent().appendingPathComponent("benchmark-audio/manifest.json")
+let projectRoot = scriptDir.deletingLastPathComponent()
+let manifestPath = projectRoot.appendingPathComponent("benchmark-audio/manifest.json")
 
 print("🎯 NiceVoice ベンチマーク")
 print(String(repeating: "=", count: 60))
@@ -103,7 +104,7 @@ for testCase in testCases {
     print("\n📝 テスト: \(testCase.id)")
     print("   期待値: \(testCase.text)")
 
-    let audioURL = URL(fileURLWithPath: testCase.audioPath)
+    let audioURL = projectRoot.appendingPathComponent(testCase.audioPath)
     guard FileManager.default.fileExists(atPath: audioURL.path) else {
         print("   ❌ 音声ファイルが見つかりません")
         results.append(BenchmarkResult(id: testCase.id, expected: testCase.text, actual: "[FILE NOT FOUND]", distance: -1, accuracy: 0, passed: false))
