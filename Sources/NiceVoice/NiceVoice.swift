@@ -1013,19 +1013,63 @@ final class AppState {
             return
         }
 
-        var textField: CFTypeRef?
-        AXUIElementCopyAttributeValue(window, kAXFocusedUIElementAttribute as CFString, &textField)
-
-        if let field = textField {
-            let setResult = AXUIElementSetAttributeValue(field as! AXUIElement, kAXValueAttribute as CFString, text as CFTypeRef)
+        if let searchField = findSearchField(in: window) {
+            let setResult = AXUIElementSetAttributeValue(searchField, kAXValueAttribute as CFString, text as CFTypeRef)
             if setResult == .success {
                 debugLog("✅ Text set to Spotlight via AXUIElement")
             } else {
-                debugLog("❌ Failed to set text to Spotlight: \(setResult.rawValue)")
+                debugLog("❌ AXUIElement failed (\(setResult.rawValue)), trying CGEvent postToPid")
+                sendPasteToSpotlight(pid: spotlightApp.processIdentifier)
             }
         } else {
-            debugLog("❌ No focused element in Spotlight window")
+            debugLog("⚠️ No search field found, trying CGEvent postToPid")
+            sendPasteToSpotlight(pid: spotlightApp.processIdentifier)
         }
+    }
+
+    private func findSearchField(in element: AXUIElement, depth: Int = 0) -> AXUIElement? {
+        if depth > 10 { return nil }
+
+        var role: CFTypeRef?
+        AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role)
+
+        if let roleStr = role as? String {
+            debugLog("🔍 [AX] depth=\(depth) role=\(roleStr)")
+            if roleStr == "AXTextField" || roleStr == "AXSearchField" || roleStr == "AXTextArea" {
+                return element
+            }
+        }
+
+        var children: CFTypeRef?
+        AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &children)
+
+        if let childArray = children as? [AXUIElement] {
+            for child in childArray {
+                if let found = findSearchField(in: child, depth: depth + 1) {
+                    return found
+                }
+            }
+        }
+
+        return nil
+    }
+
+    private func sendPasteToSpotlight(pid: pid_t) {
+        let source = CGEventSource(stateID: .privateState)
+        guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: true),
+              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: false) else {
+            debugLog("❌ Failed to create CGEvent for Spotlight")
+            return
+        }
+
+        keyDown.flags = .maskCommand
+        keyUp.flags = .maskCommand
+
+        keyDown.postToPid(pid)
+        usleep(50000)
+        keyUp.postToPid(pid)
+
+        debugLog("✅ Paste sent to Spotlight PID \(pid) via postToPid")
     }
 
     func cancelRecording() {
