@@ -284,8 +284,6 @@ struct FillerSettings: Codable {
         "えー", "えぅ", "えぇ",
         "あー", "あぁ",
         "うーん",
-        "まあ", "まぁ",
-        "なんか",
         "やっぱり", "やっぱ"
     ]
     var customFillers: [String] = []
@@ -294,7 +292,11 @@ struct FillerSettings: Codable {
     var removeRepetition: Bool = true
 
     var useSmartFillerDetection: Bool = false
-    var ambiguousFillers: Set<String> = ["あの", "その", "ちょっと"]
+    var ambiguousFillers: Set<String> = [
+        "あの", "その", "ちょっと",
+        "なんか", "まあ", "まぁ",
+        "こう", "ほら"
+    ]
 
     var allEnabledFillers: [String] {
         var fillers = Array(enabledPresets)
