@@ -326,6 +326,7 @@ final class AppState {
     var statusMessage = "初期化中..."
     var errorMessage: String?
     var history: [TranscriptionRecord] = []
+    var audioLevels: [Float] = Array(repeating: 0, count: 20)
 
     @ObservationIgnored
     @AppStorage("shortcutKey") var shortcutKeyRaw = ShortcutKey.fn.rawValue
@@ -347,12 +348,14 @@ final class AppState {
 
     private var speechService: SpeechRecognitionService?
     private var chromeSpeechService: ChromeSpeechService?
+    private var speechAnalyzerService: Any?
     private(set) var keyMonitor: KeyMonitor?
     private var floatingPanel: FloatingPanel?
     private var waitingForFinalResult = false
     private var finalResultTimer: DispatchWorkItem?
     private var sfSpeechResult = ""
     private var useChromeSpeech = false
+    private var useSpeechAnalyzer = false
 
     private enum UserDefaultsKey {
         static let usageStats = "usageStats"
@@ -416,6 +419,34 @@ final class AppState {
             }
         )
 
+        if #available(macOS 26.0, *) {
+            speechAnalyzerService = SpeechAnalyzerService(
+                onTranscription: { [weak self] text, isFinal in
+                    DispatchQueue.main.async {
+                        guard let self else { return }
+                        self.currentTranscription = self.addLocalPunctuation(text, isFinal: isFinal)
+                        if isFinal {
+                            self.handleFinalResult(text)
+                        }
+                    }
+                },
+                onError: { [weak self] error in
+                    debugLog("❌ SpeechAnalyzer error: \(error)")
+                    self?.statusMessage = error
+                },
+                onStatusChange: { [weak self] status in
+                    DispatchQueue.main.async {
+                        self?.statusMessage = status
+                    }
+                },
+                onAudioLevel: { [weak self] level in
+                    guard let self else { return }
+                    self.audioLevels.removeFirst()
+                    self.audioLevels.append(level)
+                }
+            )
+        }
+
         keyMonitor = KeyMonitor(
             shortcutKey: shortcutKey,
             onKeyDown: { [weak self] in self?.startRecording() },
@@ -440,9 +471,22 @@ final class AppState {
             return
         }
 
-        if ChromeSpeechService.isAvailable {
+        if #available(macOS 26.0, *), let service = speechAnalyzerService as? SpeechAnalyzerService {
+            await MainActor.run {
+                statusMessage = "SpeechAnalyzer を初期化中..."
+            }
+            await service.start()
+            await MainActor.run {
+                useSpeechAnalyzer = true
+                useChromeSpeech = false
+                isReady = true
+                statusMessage = "準備完了 - \(shortcutKey.displayName) キーを押して録音 (SpeechAnalyzer)"
+                debugLog("✅ Using Apple SpeechAnalyzer")
+            }
+        } else if ChromeSpeechService.isAvailable {
             await MainActor.run {
                 useChromeSpeech = true
+                useSpeechAnalyzer = false
                 isReady = true
                 let browserName = ChromeSpeechService.detectBrowser()?.split(separator: "/").last?.replacingOccurrences(of: ".app", with: "") ?? "Chrome"
                 statusMessage = "準備完了 - \(shortcutKey.displayName) キーを押して録音 (\(browserName))"
@@ -459,13 +503,14 @@ final class AppState {
             if speechStatus == .authorized {
                 await MainActor.run {
                     useChromeSpeech = false
+                    useSpeechAnalyzer = false
                     isReady = true
-                    statusMessage = "準備完了 - \(shortcutKey.displayName) キーを押して録音 (Apple)"
+                    statusMessage = "準備完了 - \(shortcutKey.displayName) キーを押して録音 (Apple Legacy)"
                     debugLog("✅ Using Apple SFSpeechRecognizer")
                 }
             } else {
                 await MainActor.run {
-                    statusMessage = "非対応: Chromium ブラウザをインストールしてください"
+                    statusMessage = "音声認識が利用できません"
                     debugLog("❌ No speech recognition available")
                 }
             }
@@ -473,7 +518,7 @@ final class AppState {
     }
 
     func startRecording() {
-        debugLog("🔍 [DEBUG] startRecording called - isReady: \(isReady), isRecording: \(isRecording), useChrome: \(useChromeSpeech)")
+        debugLog("🔍 [DEBUG] startRecording called - isReady: \(isReady), isRecording: \(isRecording), useSpeechAnalyzer: \(useSpeechAnalyzer), useChrome: \(useChromeSpeech)")
 
         guard !isRecording else {
             debugLog("🔍 [DEBUG] startRecording guard failed - already recording")
@@ -481,19 +526,10 @@ final class AppState {
         }
 
         if !isReady {
-            if ChromeSpeechService.isAvailable {
-                debugLog("🔍 [DEBUG] Chrome is now available, reconnecting...")
-                useChromeSpeech = true
-                isReady = true
-                let browserName = ChromeSpeechService.detectBrowser()?.split(separator: "/").last?.replacingOccurrences(of: ".app", with: "") ?? "Chrome"
-                statusMessage = "準備完了 - \(shortcutKey.displayName) キーを押して録音 (\(browserName))"
-                chromeSpeechService?.start()
-            } else {
-                debugLog("🔍 [DEBUG] startRecording - not ready, showing error")
-                errorMessage = "音声認識が無効です: Chrome を起動するか Siri を有効にしてください"
-                floatingPanel?.show()
-                return
-            }
+            debugLog("🔍 [DEBUG] startRecording - not ready, showing error")
+            errorMessage = "音声認識が初期化されていません"
+            floatingPanel?.show()
+            return
         }
 
         errorMessage = nil
@@ -504,7 +540,12 @@ final class AppState {
 
         floatingPanel?.show()
 
-        if useChromeSpeech {
+        if useSpeechAnalyzer {
+            if #available(macOS 26.0, *), let service = speechAnalyzerService as? SpeechAnalyzerService {
+                service.startRecording()
+                debugLog("🔍 [DEBUG] speechAnalyzerService.startRecording() called")
+            }
+        } else if useChromeSpeech {
             chromeSpeechService?.startRecording()
             debugLog("🔍 [DEBUG] chromeSpeechService.startRecording() called")
         } else {
@@ -535,6 +576,24 @@ final class AppState {
         }
         isRecording = false
 
+        if useSpeechAnalyzer {
+            if #available(macOS 26.0, *), let service = speechAnalyzerService as? SpeechAnalyzerService {
+                waitingForFinalResult = true
+                debugLog("🎙️ Recording stopped - waiting for SpeechAnalyzer final result")
+                floatingPanel?.hide()
+                service.stopRecording()
+                NotificationCenter.default.post(name: .recordingStateChanged, object: nil)
+
+                finalResultTimer = DispatchWorkItem { [weak self] in
+                    guard let self, self.waitingForFinalResult else { return }
+                    debugLog("⚠️ SpeechAnalyzer timeout - no final result received")
+                    self.waitingForFinalResult = false
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: finalResultTimer!)
+                return
+            }
+        }
+
         if useChromeSpeech {
             chromeSpeechService?.stopRecording()
         } else {
@@ -564,7 +623,17 @@ final class AppState {
         guard waitingForFinalResult else { return }
         debugLog("✅ Final result received: '\(text)'")
         finalResultTimer?.cancel()
-        performPaste(text)
+        waitingForFinalResult = false
+
+        let processedText = addLocalPunctuation(text)
+        if processedText.isEmpty {
+            debugLog("⚠️ Final result empty after processing, skipping")
+            floatingPanel?.hide()
+            return
+        }
+
+        addToHistory(processedText)
+        performPaste(processedText)
     }
 
     private func addLocalPunctuation(_ text: String, isFinal: Bool = true) -> String {
@@ -843,21 +912,18 @@ final class AppState {
     }
 
     private func simulatePaste(completion: @escaping () -> Void) {
-        let script = """
-        tell application "System Events"
-            keystroke "v" using command down
-        end tell
-        """
+        let source = CGEventSource(stateID: .privateState)
+        let keyDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: true)
+        let keyUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: false)
 
-        var error: NSDictionary?
-        if let appleScript = NSAppleScript(source: script) {
-            let result = appleScript.executeAndReturnError(&error)
-            if let error = error {
-                debugLog("❌ AppleScript error: \(error)")
-            } else {
-                debugLog("✅ Paste executed successfully: \(result)")
-            }
-        }
+        keyDown?.flags = .maskCommand
+        keyUp?.flags = .maskCommand
+
+        keyDown?.post(tap: .cgAnnotatedSessionEventTap)
+        usleep(50000)
+        keyUp?.post(tap: .cgAnnotatedSessionEventTap)
+
+        debugLog("✅ Paste executed via CGEvent")
         completion()
     }
 
@@ -1847,6 +1913,252 @@ enum ShortcutKey: String, CaseIterable {
     }
 }
 
+@available(macOS 26.0, *)
+final class SpeechAnalyzerService {
+    private var analyzer: SpeechAnalyzer?
+    private var transcriber: SpeechTranscriber?
+    private var audioEngine: AVAudioEngine?
+    private var audioConverter: AVAudioConverter?
+    private var analyzerFormat: AVAudioFormat?
+    private var isRunning = false
+    private var transcriptionTask: Task<Void, Never>?
+    private var analyzerTask: Task<Void, Error>?
+    private var inputContinuation: AsyncStream<AnalyzerInput>.Continuation?
+
+    private let onTranscription: (String, Bool) -> Void
+    private let onError: (String) -> Void
+    private let onStatusChange: ((String) -> Void)?
+    private let onAudioLevel: ((Float) -> Void)?
+
+    static var isAvailable: Bool {
+        if #available(macOS 26.0, *) {
+            return true
+        }
+        return false
+    }
+
+    init(
+        onTranscription: @escaping (String, Bool) -> Void,
+        onError: @escaping (String) -> Void,
+        onStatusChange: ((String) -> Void)? = nil,
+        onAudioLevel: ((Float) -> Void)? = nil
+    ) {
+        self.onTranscription = onTranscription
+        self.onError = onError
+        self.onStatusChange = onStatusChange
+        self.onAudioLevel = onAudioLevel
+    }
+
+    func start() async {
+        let locale = Locale(identifier: "ja-JP")
+        let tempTranscriber = SpeechTranscriber(
+            locale: locale,
+            transcriptionOptions: [],
+            reportingOptions: [.volatileResults],
+            attributeOptions: []
+        )
+
+        do {
+            if let downloader = try await AssetInventory.assetInstallationRequest(supporting: [tempTranscriber]) {
+                onStatusChange?("音声認識モデルをダウンロード中...")
+                try await downloader.downloadAndInstall()
+            }
+        } catch {
+            debugLog("❌ Model download failed: \(error)")
+            onError("モデルのダウンロードに失敗: \(error.localizedDescription)")
+            return
+        }
+
+        analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [tempTranscriber])
+        onStatusChange?("準備完了")
+        debugLog("✅ SpeechAnalyzer initialized with Japanese locale")
+        if let format = analyzerFormat {
+            debugLog("🔊 Analyzer format: \(format.sampleRate)Hz, \(format.channelCount)ch")
+        }
+    }
+
+    func startRecording() {
+        guard !isRunning else { return }
+        guard let analyzerFormat else {
+            onError("SpeechAnalyzer が初期化されていません")
+            return
+        }
+
+        isRunning = true
+
+        let locale = Locale(identifier: "ja-JP")
+        transcriber = SpeechTranscriber(
+            locale: locale,
+            transcriptionOptions: [],
+            reportingOptions: [.volatileResults],
+            attributeOptions: []
+        )
+        guard let transcriber else {
+            onError("SpeechTranscriber の作成に失敗しました")
+            isRunning = false
+            return
+        }
+        analyzer = SpeechAnalyzer(modules: [transcriber])
+        guard let analyzer else {
+            onError("SpeechAnalyzer の作成に失敗しました")
+            isRunning = false
+            return
+        }
+        debugLog("🔍 [DEBUG] Created new SpeechTranscriber and SpeechAnalyzer")
+
+        audioEngine = AVAudioEngine()
+
+        guard let audioEngine else { return }
+
+        let inputNode = audioEngine.inputNode
+        let inputFormat = inputNode.outputFormat(forBus: 0)
+        debugLog("🔊 Input format: \(inputFormat.sampleRate)Hz, \(inputFormat.channelCount)ch")
+
+        if inputFormat.sampleRate != analyzerFormat.sampleRate || inputFormat.channelCount != analyzerFormat.channelCount {
+            audioConverter = AVAudioConverter(from: inputFormat, to: analyzerFormat)
+            debugLog("🔄 Audio converter created (format mismatch)")
+        } else {
+            debugLog("✅ No audio conversion needed")
+        }
+
+        let inputStream = AsyncStream<AnalyzerInput> { continuation in
+            self.inputContinuation = continuation
+        }
+
+        transcriptionTask = Task { [weak self] in
+            guard let self else { return }
+            var accumulated = ""
+            debugLog("🔍 [DEBUG] Transcription task started, waiting for results...")
+
+            do {
+                for try await result in transcriber.results {
+                    let text = String(result.text.characters)
+                    let isFinal = result.isFinal
+                    debugLog("🔍 [DEBUG] SpeechAnalyzer result: '\(text)' (final: \(isFinal))")
+
+                    if isFinal {
+                        accumulated += text
+                    }
+
+                    let outputText = isFinal ? accumulated : text
+                    await MainActor.run {
+                        self.onTranscription(outputText, isFinal)
+                    }
+                }
+                debugLog("🔍 [DEBUG] Transcription loop ended normally")
+            } catch {
+                await MainActor.run {
+                    debugLog("❌ Transcription error: \(error)")
+                    self.onError("音声認識エラー: \(error.localizedDescription)")
+                }
+            }
+        }
+
+        analyzerTask = Task {
+            try await analyzer.start(inputSequence: inputStream)
+        }
+
+        var bufferCount = 0
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
+            guard let self, self.isRunning else { return }
+            bufferCount += 1
+            if bufferCount % 50 == 1 {
+                debugLog("🔊 [DEBUG] Audio buffer #\(bufferCount), frames: \(buffer.frameLength)")
+            }
+
+            if let channelData = buffer.floatChannelData {
+                let frameLength = Int(buffer.frameLength)
+                var sum: Float = 0
+                for i in 0..<frameLength {
+                    let sample = channelData[0][i]
+                    sum += sample * sample
+                }
+                let rms = sqrt(sum / Float(frameLength))
+                let level = min(1.0, rms * 5)
+                DispatchQueue.main.async {
+                    self.onAudioLevel?(level)
+                }
+            }
+
+            if let converter = self.audioConverter, let targetFormat = self.analyzerFormat {
+                let ratio = targetFormat.sampleRate / inputFormat.sampleRate
+                let outputFrameCapacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio)
+                guard let convertedBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outputFrameCapacity) else {
+                    if bufferCount == 1 {
+                        debugLog("❌ [DEBUG] Failed to create output buffer")
+                    }
+                    return
+                }
+
+                var error: NSError?
+                let status = converter.convert(to: convertedBuffer, error: &error) { inNumPackets, outStatus in
+                    outStatus.pointee = .haveData
+                    return buffer
+                }
+
+                if status == .error {
+                    if bufferCount == 1 {
+                        debugLog("❌ [DEBUG] Conversion error: \(error?.localizedDescription ?? "unknown")")
+                    }
+                    return
+                }
+
+                if bufferCount == 1 {
+                    debugLog("🔊 [DEBUG] Converted buffer: \(convertedBuffer.frameLength) frames, format: \(convertedBuffer.format)")
+                }
+                self.inputContinuation?.yield(AnalyzerInput(buffer: convertedBuffer))
+            } else {
+                self.inputContinuation?.yield(AnalyzerInput(buffer: buffer))
+            }
+        }
+
+        usleep(100000)
+
+        do {
+            try audioEngine.start()
+            debugLog("🎙️ SpeechAnalyzer recording started")
+        } catch {
+            debugLog("❌ Audio engine failed to start: \(error)")
+            onError("オーディオエンジンの起動に失敗しました")
+            isRunning = false
+        }
+    }
+
+    func stopRecording() {
+        guard isRunning else { return }
+        isRunning = false
+
+        audioEngine?.inputNode.removeTap(onBus: 0)
+        audioEngine?.stop()
+        audioEngine = nil
+
+        inputContinuation?.finish()
+        inputContinuation = nil
+
+        Task {
+            debugLog("🔍 [DEBUG] Calling finalizeAndFinishThroughEndOfInput...")
+            try? await analyzer?.finalizeAndFinishThroughEndOfInput()
+            debugLog("🔍 [DEBUG] finalizeAndFinishThroughEndOfInput completed")
+
+            try? await Task.sleep(for: .milliseconds(500))
+
+            transcriptionTask?.cancel()
+            transcriptionTask = nil
+            analyzerTask?.cancel()
+            analyzerTask = nil
+        }
+
+        debugLog("🎙️ SpeechAnalyzer recording stopped")
+    }
+
+    func stop() {
+        stopRecording()
+        analyzer = nil
+        transcriber = nil
+        audioConverter = nil
+    }
+}
+
 final class KeyMonitor {
     private var monitor: Any?
     private var isKeyPressed = false
@@ -1940,7 +2252,7 @@ final class FloatingPanel {
         guard let appState else { return }
 
         let panel = NonActivatingPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 400, height: 100),
+            contentRect: NSRect(x: 0, y: 0, width: 80, height: 40),
             styleMask: [.nonactivatingPanel, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -1965,9 +2277,9 @@ final class FloatingPanel {
         guard let window, let screen = NSScreen.main else { return }
 
         let screenFrame = screen.frame
-        let panelWidth = screenFrame.width * 0.35
+        let panelWidth: CGFloat = 80
         let x = screenFrame.midX - panelWidth / 2
-        let y = screenFrame.minY + screenFrame.height * 0.12
+        let y = screenFrame.minY + 30
 
         debugLog("📍 Position: fixed center-bottom (\(x), \(y)), panelWidth: \(panelWidth)")
         window.setFrameOrigin(NSPoint(x: x, y: y))
@@ -2118,64 +2430,66 @@ struct SpinningIcon: View {
 
 struct FloatingPanelView: View {
     var appState: AppState
-    @State private var isPulsing = false
-
-    private var panelWidth: CGFloat {
-        (NSScreen.main?.frame.width ?? 1600) * 0.35
-    }
 
     private var isError: Bool {
         appState.errorMessage != nil
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 14) {
-            ZStack {
-                if isError {
-                    Circle()
-                        .fill(.orange.opacity(0.2))
-                        .frame(width: 36, height: 36)
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                        .font(.system(size: 16, weight: .semibold))
-                } else {
-                    Circle()
-                        .fill(.red.opacity(0.15))
-                        .frame(width: 36, height: 36)
-                        .scaleEffect(isPulsing ? 1.15 : 1.0)
-                        .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: isPulsing)
-                    Circle()
-                        .fill(.red)
-                        .frame(width: 14, height: 14)
-                        .scaleEffect(isPulsing ? 1.1 : 1.0)
-                        .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: isPulsing)
-                }
-            }
-            .onAppear { isPulsing = true }
-
+        HStack(alignment: .center, spacing: 10) {
             if let error = appState.errorMessage {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .font(.system(size: 12))
                 Text(error)
-                    .font(.system(size: 15, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.primary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else if appState.currentTranscription.isEmpty {
-                Text("Listening...")
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             } else {
-                Text(appState.currentTranscription)
-                    .font(.system(size: 17, weight: .medium))
-                    .lineLimit(3)
-                    .fixedSize(horizontal: false, vertical: true)
+                EqualizerView(level: appState.audioLevels.last ?? 0)
             }
-
-            Spacer()
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
-        .frame(width: panelWidth)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(.black.opacity(0.7), in: Capsule())
+    }
+}
+
+struct EqualizerView: View {
+    let level: Float
+    private let barCount = 10
+    @State private var barHeights: [CGFloat] = Array(repeating: 2, count: 10)
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 2) {
+            ForEach(0..<barCount, id: \.self) { index in
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(
+                        LinearGradient(
+                            colors: [.cyan.opacity(0.5), .cyan, .cyan.opacity(0.5)],
+                            startPoint: .bottom,
+                            endPoint: .top
+                        )
+                    )
+                    .frame(width: 2.5, height: barHeights[index])
+                    .animation(.easeOut(duration: 0.06), value: barHeights[index])
+            }
+        }
+        .frame(height: 24, alignment: .center)
+        .onChange(of: level) { _, newLevel in
+            updateBars(level: newLevel)
+        }
+        .onAppear {
+            updateBars(level: level)
+        }
+    }
+
+    private func updateBars(level: Float) {
+        for i in 0..<barCount {
+            let randomFactor = Float.random(in: 0.5...1.5)
+            let height = CGFloat(level * randomFactor * 40) + 2
+            barHeights[i] = min(24, max(2, height))
+        }
     }
 }
 
