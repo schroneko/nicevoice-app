@@ -283,8 +283,7 @@ struct FillerSettings: Codable {
     var enabledPresets: Set<String> = [
         "えー", "えぅ", "えぇ",
         "あー", "あぁ",
-        "うーん",
-        "やっぱり", "やっぱ"
+        "うーん"
     ]
     var customFillers: [String] = []
 
@@ -295,7 +294,8 @@ struct FillerSettings: Codable {
     var ambiguousFillers: Set<String> = [
         "あの", "その", "ちょっと",
         "なんか", "まあ", "まぁ",
-        "こう", "ほら"
+        "こう", "ほら",
+        "やっぱり", "やっぱ"
     ]
 
     var allEnabledFillers: [String] {
@@ -659,6 +659,7 @@ final class AppState {
                     for filler in detectedFillers {
                         result = result.replacingOccurrences(of: filler, with: "")
                     }
+                    result = self.cleanupOrphanedParticles(result)
                     let finalText = result.replacingOccurrences(of: "  ", with: " ")
                         .trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -675,6 +676,24 @@ final class AppState {
 
         addToHistory(processedText)
         performPaste(processedText)
+    }
+
+    private func cleanupOrphanedParticles(_ text: String) -> String {
+        var result = text
+        let orphanedParticlePatterns = [
+            "^ね、", "^よ、", "^さ、", "^な、",
+            "^ね。", "^よ。", "^さ。", "^な。"
+        ]
+        for pattern in orphanedParticlePatterns {
+            if let regex = try? NSRegularExpression(pattern: pattern) {
+                result = regex.stringByReplacingMatches(
+                    in: result,
+                    range: NSRange(result.startIndex..., in: result),
+                    withTemplate: ""
+                )
+            }
+        }
+        return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func addLocalPunctuation(_ text: String, isFinal: Bool = true) -> String {
@@ -920,19 +939,93 @@ final class AppState {
     }
 
     private func simulatePaste(completion: @escaping () -> Void) {
+        guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else {
+            debugLog("❌ No text in clipboard")
+            completion()
+            return
+        }
+
+        if let frontApp = NSWorkspace.shared.frontmostApplication {
+            debugLog("📱 Frontmost app: \(frontApp.localizedName ?? "unknown") (bundle: \(frontApp.bundleIdentifier ?? "unknown"), PID: \(frontApp.processIdentifier))")
+        } else {
+            debugLog("📱 Frontmost app: nil")
+        }
+
+        if isSpotlightOpen() {
+            debugLog("🔍 Spotlight detected - using AXUIElement API")
+            setTextToSpotlight(text)
+            completion()
+            return
+        }
+
+        debugLog("🎯 Sending Cmd+V paste via CGEvent")
+
         let source = CGEventSource(stateID: .privateState)
-        let keyDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: true)
-        let keyUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: false)
+        guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: true),
+              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: false) else {
+            debugLog("❌ Failed to create CGEvent")
+            completion()
+            return
+        }
 
-        keyDown?.flags = .maskCommand
-        keyUp?.flags = .maskCommand
+        keyDown.flags = .maskCommand
+        keyUp.flags = .maskCommand
 
-        keyDown?.post(tap: .cgAnnotatedSessionEventTap)
+        keyDown.post(tap: .cgAnnotatedSessionEventTap)
         usleep(50000)
-        keyUp?.post(tap: .cgAnnotatedSessionEventTap)
+        keyUp.post(tap: .cgAnnotatedSessionEventTap)
 
-        debugLog("✅ Paste executed via CGEvent")
+        debugLog("✅ Paste command sent via CGEvent")
         completion()
+    }
+
+    private func isSpotlightOpen() -> Bool {
+        let apps = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Spotlight")
+        guard let spotlightApp = apps.first else { return false }
+
+        let axApp = AXUIElementCreateApplication(spotlightApp.processIdentifier)
+        var windows: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &windows)
+
+        if result == .success, let windowArray = windows as? [AXUIElement] {
+            let isOpen = !windowArray.isEmpty
+            if isOpen {
+                debugLog("🔍 Spotlight windows found: \(windowArray.count)")
+            }
+            return isOpen
+        }
+        return false
+    }
+
+    private func setTextToSpotlight(_ text: String) {
+        let apps = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Spotlight")
+        guard let spotlightApp = apps.first else {
+            debugLog("❌ Spotlight app not found")
+            return
+        }
+
+        let axApp = AXUIElementCreateApplication(spotlightApp.processIdentifier)
+        var windows: CFTypeRef?
+        AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &windows)
+
+        guard let windowArray = windows as? [AXUIElement], let window = windowArray.first else {
+            debugLog("❌ No Spotlight windows found")
+            return
+        }
+
+        var textField: CFTypeRef?
+        AXUIElementCopyAttributeValue(window, kAXFocusedUIElementAttribute as CFString, &textField)
+
+        if let field = textField {
+            let setResult = AXUIElementSetAttributeValue(field as! AXUIElement, kAXValueAttribute as CFString, text as CFTypeRef)
+            if setResult == .success {
+                debugLog("✅ Text set to Spotlight via AXUIElement")
+            } else {
+                debugLog("❌ Failed to set text to Spotlight: \(setResult.rawValue)")
+            }
+        } else {
+            debugLog("❌ No focused element in Spotlight window")
+        }
     }
 
     func cancelRecording() {
@@ -1062,7 +1155,34 @@ final class AppState {
     }
 
     private func loadFillerSettings() {
-        if let settings: FillerSettings = load(forKey: UserDefaultsKey.fillerSettings) {
+        if var settings: FillerSettings = load(forKey: UserDefaultsKey.fillerSettings) {
+            var needsSave = false
+
+            let fillersToMigrate: Set<String> = ["なんか", "まあ", "まぁ", "やっぱり", "やっぱ"]
+            let migratedFillers = settings.enabledPresets.intersection(fillersToMigrate)
+            if !migratedFillers.isEmpty {
+                settings.enabledPresets.subtract(fillersToMigrate)
+                settings.ambiguousFillers.formUnion(fillersToMigrate)
+                debugLog("🔄 Migrated fillers to ambiguous: \(migratedFillers)")
+                needsSave = true
+            }
+
+            let requiredAmbiguous: Set<String> = [
+                "あの", "その", "ちょっと",
+                "なんか", "まあ", "まぁ",
+                "こう", "ほら",
+                "やっぱり", "やっぱ"
+            ]
+            let missingAmbiguous = requiredAmbiguous.subtracting(settings.ambiguousFillers)
+            if !missingAmbiguous.isEmpty {
+                settings.ambiguousFillers.formUnion(missingAmbiguous)
+                debugLog("🔄 Added missing ambiguous fillers: \(missingAmbiguous)")
+                needsSave = true
+            }
+
+            if needsSave {
+                save(settings, forKey: UserDefaultsKey.fillerSettings)
+            }
             fillerSettings = settings
         }
     }
@@ -4173,25 +4293,35 @@ final class FillerDetectionService {
             return []
         }
 
+        let targetWords = wordsInText.sorted().joined(separator: "、")
         let prompt = """
-        文中のフィラー（言い淀み）を特定してください。
+        以下の単語がフィラー（言い淀み）かどうか判定してください。
+
+        【検査対象】
+        \(targetWords)
 
         【判定基準】
-        - フィラー: 文頭や文中で意味なく挿入された「あの」「その」「ちょっと」
-        - 非フィラー: 「あの人」「その日」「ちょっと待って」のように名詞や動詞を修飾している場合
+        - フィラー: 話し言葉で無意識に挿入される言葉
+          例: 「登録していて、あの支払いも」の「あの」（特定の対象を指していない）
+          例: 「なんか、えーと」「あの、その」
+        - 非フィラー: 特定の対象を指す指示詞として使われている
+          例: 「あの人が来た」「その本を読んだ」「なんかいい感じ」
+
+        【ヒント】
+        - 読点（、）の直後に来る「あの」「その」はフィラーの可能性が高い
+        - 「あの＋名詞」の形でも、文脈上特定の対象を指していなければフィラー
 
         【入力】
         \(text)
 
         【出力形式】
-        フィラーのみをカンマ区切りで出力。説明不要。
-        例: あの,その
+        検査対象の中でフィラーと判定したものだけをカンマ区切りで出力。説明不要。
         フィラーがなければ: なし
         """
 
         do {
             let fillers = try await callClaudeAPI(prompt: prompt, apiKey: apiKey)
-            return fillers
+            return fillers.filter { wordsInText.contains($0) }
         } catch {
             debugLog("❌ Filler detection error: \(error)")
             return []
