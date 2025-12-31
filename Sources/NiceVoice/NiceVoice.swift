@@ -652,6 +652,12 @@ final class AppState {
             guard !result.isEmpty else { return result }
         }
 
+        let punctuations = ["。", "、", "？", "！", "?", "!", ".", ","]
+        for punct in punctuations {
+            result = result.replacingOccurrences(of: " \(punct)", with: punct)
+            result = result.replacingOccurrences(of: "　\(punct)", with: punct)
+        }
+
         let builtInDictionary = [
             ("クロードコード", "Claude Code"),
             ("ロードコード", "Claude Code"),
@@ -824,46 +830,7 @@ final class AppState {
             }
         }
 
-        let questionEndings = ["ですかね", "ますかね", "でしょうかね", "ですか", "ますか", "でしょうか"]
-        for ending in questionEndings.sorted(by: { $0.count > $1.count }) {
-            var searchStart = result.startIndex
-            while let range = result.range(of: ending, range: searchStart..<result.endIndex) {
-                let afterEnd = range.upperBound
-                if afterEnd < result.endIndex {
-                    let nextChar = result[afterEnd]
-                    if nextChar != "？" && nextChar != "?" && nextChar != "。" && nextChar != "ね" {
-                        result.insert("？", at: afterEnd)
-                    }
-                }
-                searchStart = result.index(after: range.lowerBound)
-                if searchStart >= result.endIndex { break }
-            }
-        }
-
-        if isFinal {
-            let trailingQuestionPatterns = [
-                "ですかね", "ますかね", "でしょうかね",
-                "ですか", "ますか", "でしょうか", "かな", "かしら",
-                "だろうか", "のか", "なの"
-            ]
-            let isQuestion = trailingQuestionPatterns.contains { pattern in
-                result.hasSuffix(pattern)
-            }
-
-            if isQuestion {
-                if !result.hasSuffix("？") && !result.hasSuffix("?") {
-                    result += "？"
-                }
-            } else {
-                let politeEndings = ["お願いします", "お願いいたします", "ください", "くださいませ", "思います", "でございます"]
-                for ending in politeEndings {
-                    if result.hasSuffix(ending) {
-                        result += "。"
-                        break
-                    }
-                }
-            }
-        } else {
+        if !isFinal {
             while result.hasSuffix("。") {
                 result = String(result.dropLast())
             }
