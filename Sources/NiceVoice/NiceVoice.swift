@@ -223,17 +223,25 @@ struct TranscriptionRecord: Identifiable, Codable {
     let id: UUID
     let text: String
     let timestamp: Date
+    let audioPath: String?
 
-    init(text: String, timestamp: Date) {
+    init(text: String, timestamp: Date, audioPath: String? = nil) {
         self.id = UUID()
         self.text = text
         self.timestamp = timestamp
+        self.audioPath = audioPath
     }
 
-    init(id: UUID, text: String, timestamp: Date) {
+    init(id: UUID, text: String, timestamp: Date, audioPath: String? = nil) {
         self.id = id
         self.text = text
         self.timestamp = timestamp
+        self.audioPath = audioPath
+    }
+
+    var hasAudio: Bool {
+        guard let path = audioPath else { return false }
+        return FileManager.default.fileExists(atPath: path)
     }
 }
 
@@ -625,8 +633,9 @@ final class AppState {
             return
         }
 
+        let audioData = speechService?.getRecordedAudioData()
         floatingPanel?.hide()
-        addToHistory(fallbackResult)
+        addToHistory(fallbackResult, audioData: audioData)
         performPaste(fallbackResult)
         speechService?.clearAudioBuffers()
     }
@@ -643,6 +652,8 @@ final class AppState {
             floatingPanel?.hide()
             return
         }
+
+        let audioData = speechService?.getRecordedAudioData()
 
         if fillerSettings.useSmartFillerDetection && fillerSettings.removeFillers {
             let ambiguous = fillerSettings.ambiguousFillers
@@ -665,7 +676,7 @@ final class AppState {
 
                     await MainActor.run {
                         if !finalText.isEmpty {
-                            self.addToHistory(finalText)
+                            self.addToHistory(finalText, audioData: audioData)
                             self.performPaste(finalText)
                         }
                     }
@@ -674,7 +685,7 @@ final class AppState {
             }
         }
 
-        addToHistory(processedText)
+        addToHistory(processedText, audioData: audioData)
         performPaste(processedText)
     }
 
@@ -1081,15 +1092,42 @@ final class AppState {
     }
 
     @discardableResult
-    private func addToHistory(_ text: String) -> UUID {
-        let record = TranscriptionRecord(text: text, timestamp: Date())
+    private func addToHistory(_ text: String, audioData: Data? = nil) -> UUID {
+        var audioPath: String? = nil
+
+        if let data = audioData {
+            let recordingsDir = getRecordingsDirectory()
+            let fileName = "\(UUID().uuidString).wav"
+            let filePath = recordingsDir.appendingPathComponent(fileName)
+
+            do {
+                try data.write(to: filePath)
+                audioPath = filePath.path
+                debugLog("🎵 Audio saved: \(filePath.path)")
+            } catch {
+                debugLog("❌ Failed to save audio: \(error)")
+            }
+        }
+
+        let record = TranscriptionRecord(text: text, timestamp: Date(), audioPath: audioPath)
         history.insert(record, at: 0)
         if history.count > 20 {
+            if let removed = history.last, let path = removed.audioPath {
+                try? FileManager.default.removeItem(atPath: path)
+                debugLog("🗑️ Old audio removed: \(path)")
+            }
             history.removeLast()
         }
         saveHistory()
         debugLog("📚 Added to history: '\(text)' (id: \(record.id))")
         return record.id
+    }
+
+    private func getRecordingsDirectory() -> URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let recordingsDir = appSupport.appendingPathComponent("NiceVoice/recordings")
+        try? FileManager.default.createDirectory(at: recordingsDir, withIntermediateDirectories: true)
+        return recordingsDir
     }
 
     func copyHistoryItem(_ text: String) {
@@ -1109,6 +1147,68 @@ final class AppState {
         history.removeAll { $0.id == record.id }
         saveHistory()
         debugLog("🗑️ Removed from history: '\(record.text)'")
+    }
+
+    func addToBenchmark(_ record: TranscriptionRecord, expectedText: String) -> Bool {
+        guard let audioPath = record.audioPath,
+              FileManager.default.fileExists(atPath: audioPath) else {
+            debugLog("❌ No audio file for benchmark")
+            return false
+        }
+
+        let projectRoot = getProjectRoot()
+        let benchmarkDir = projectRoot.appendingPathComponent("benchmark-audio")
+        let manifestPath = benchmarkDir.appendingPathComponent("manifest.json")
+
+        let id = "user_\(record.id.uuidString.prefix(8).lowercased())"
+        let destFileName = "\(id).wav"
+        let destPath = benchmarkDir.appendingPathComponent(destFileName)
+
+        do {
+            try FileManager.default.copyItem(atPath: audioPath, toPath: destPath.path)
+            debugLog("🎵 Audio copied to benchmark: \(destPath.path)")
+        } catch {
+            debugLog("❌ Failed to copy audio: \(error)")
+            return false
+        }
+
+        struct TestCase: Codable {
+            let id: String
+            let text: String
+            let audioPath: String
+        }
+
+        var testCases: [TestCase] = []
+        if let data = try? Data(contentsOf: manifestPath),
+           let existing = try? JSONDecoder().decode([TestCase].self, from: data) {
+            testCases = existing
+        }
+
+        let newCase = TestCase(id: id, text: expectedText, audioPath: "benchmark-audio/\(destFileName)")
+        testCases.append(newCase)
+
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(testCases)
+            try data.write(to: manifestPath)
+            debugLog("✅ Added to benchmark: \(id)")
+            return true
+        } catch {
+            debugLog("❌ Failed to update manifest: \(error)")
+            return false
+        }
+    }
+
+    private func getProjectRoot() -> URL {
+        var url = URL(fileURLWithPath: #file)
+        while url.pathComponents.count > 1 {
+            url = url.deletingLastPathComponent()
+            if FileManager.default.fileExists(atPath: url.appendingPathComponent("Package.swift").path) {
+                return url
+            }
+        }
+        return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
     }
 
     private func handleRealtimeInput(oldText: String, newText: String) {
@@ -2890,6 +2990,9 @@ struct StatusBadge: View {
 struct RecentTranscriptionsCard: View {
     var appState: AppState
     @State private var hoveredId: UUID?
+    @State private var showBenchmarkSheet = false
+    @State private var benchmarkRecord: TranscriptionRecord?
+    @State private var expectedText = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -2923,7 +3026,12 @@ struct RecentTranscriptionsCard: View {
                         RecentTranscriptionRow(
                             record: record,
                             isHovered: hoveredId == record.id,
-                            onCopy: { appState.copyHistoryItem(record.text) }
+                            onCopy: { appState.copyHistoryItem(record.text) },
+                            onAddToBenchmark: { rec in
+                                benchmarkRecord = rec
+                                expectedText = rec.text
+                                showBenchmarkSheet = true
+                            }
                         )
                         .onHover { isHovered in
                             hoveredId = isHovered ? record.id : nil
@@ -2947,6 +3055,68 @@ struct RecentTranscriptionsCard: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(Color.secondary.opacity(0.1), lineWidth: 1)
         }
+        .sheet(isPresented: $showBenchmarkSheet) {
+            BenchmarkAddSheet(
+                recognizedText: benchmarkRecord?.text ?? "",
+                expectedText: $expectedText,
+                onAdd: {
+                    if let record = benchmarkRecord {
+                        _ = appState.addToBenchmark(record, expectedText: expectedText)
+                    }
+                    showBenchmarkSheet = false
+                },
+                onCancel: {
+                    showBenchmarkSheet = false
+                }
+            )
+        }
+    }
+}
+
+struct BenchmarkAddSheet: View {
+    let recognizedText: String
+    @Binding var expectedText: String
+    let onAdd: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("ベンチマークに追加")
+                .font(.headline)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("認識結果:")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Text(recognizedText)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.secondary.opacity(0.1))
+                    .cornerRadius(8)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("正解テキスト:")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                TextEditor(text: $expectedText)
+                    .frame(height: 80)
+                    .padding(4)
+                    .background(Color.secondary.opacity(0.1))
+                    .cornerRadius(8)
+            }
+
+            HStack {
+                Button("キャンセル", action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("追加", action: onAdd)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(expectedText.isEmpty)
+            }
+        }
+        .padding(24)
+        .frame(width: 400)
     }
 }
 
@@ -2954,17 +3124,29 @@ struct RecentTranscriptionRow: View {
     let record: TranscriptionRecord
     let isHovered: Bool
     let onCopy: () -> Void
+    var onAddToBenchmark: ((TranscriptionRecord) -> Void)? = nil
+    @StateObject private var audioPlayer = AudioPlayerManager()
 
     var body: some View {
         HStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(Color.blue.opacity(0.1))
-                    .frame(width: 32, height: 32)
-                Image(systemName: "text.bubble")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.blue)
+            Button {
+                if record.hasAudio {
+                    if let path = record.audioPath {
+                        audioPlayer.toggle(url: URL(fileURLWithPath: path), id: record.id)
+                    }
+                }
+            } label: {
+                ZStack {
+                    Circle()
+                        .fill(record.hasAudio ? Color.blue.opacity(0.1) : Color.secondary.opacity(0.1))
+                        .frame(width: 32, height: 32)
+                    Image(systemName: record.hasAudio ? (audioPlayer.isPlaying ? "stop.fill" : "play.fill") : "text.bubble")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(record.hasAudio ? .blue : .secondary)
+                }
             }
+            .buttonStyle(.plain)
+            .disabled(!record.hasAudio)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(record.text)
@@ -2990,6 +3172,76 @@ struct RecentTranscriptionRow: View {
         .padding(.horizontal, 4)
         .background(isHovered ? Color.secondary.opacity(0.05) : Color.clear)
         .cornerRadius(8)
+        .contextMenu {
+            Button {
+                onCopy()
+            } label: {
+                Label("コピー", systemImage: "doc.on.doc")
+            }
+
+            if record.hasAudio {
+                Button {
+                    if let path = record.audioPath {
+                        audioPlayer.toggle(url: URL(fileURLWithPath: path), id: record.id)
+                    }
+                } label: {
+                    Label(audioPlayer.isPlaying ? "停止" : "再生", systemImage: audioPlayer.isPlaying ? "stop.fill" : "play.fill")
+                }
+            }
+
+            if record.hasAudio, let onAdd = onAddToBenchmark {
+                Button {
+                    onAdd(record)
+                } label: {
+                    Label("ベンチマークに追加", systemImage: "chart.bar.doc.horizontal")
+                }
+            }
+        }
+    }
+}
+
+class AudioPlayerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
+    @Published var isPlaying = false
+    @Published var currentPlayingId: UUID?
+    private var player: AVAudioPlayer?
+
+    func play(url: URL, id: UUID) {
+        stop()
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            debugLog("🔊 Audio file not found: \(url.path)")
+            return
+        }
+        do {
+            player = try AVAudioPlayer(contentsOf: url)
+            player?.delegate = self
+            if player?.play() == true {
+                isPlaying = true
+                currentPlayingId = id
+            }
+        } catch {
+            debugLog("🔊 Playback error: \(error.localizedDescription)")
+        }
+    }
+
+    func stop() {
+        player?.stop()
+        isPlaying = false
+        currentPlayingId = nil
+    }
+
+    func toggle(url: URL, id: UUID) {
+        if currentPlayingId == id && isPlaying {
+            stop()
+        } else {
+            play(url: url, id: id)
+        }
+    }
+
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        DispatchQueue.main.async {
+            self.isPlaying = false
+            self.currentPlayingId = nil
+        }
     }
 }
 
@@ -3061,11 +3313,60 @@ struct SearchField: View {
     }
 }
 
+struct AnimatedWaveformView: View {
+    @State private var animating = false
+    let barCount = 5
+    let barWidth: CGFloat = 2
+    let barSpacing: CGFloat = 2
+
+    var body: some View {
+        HStack(spacing: barSpacing) {
+            ForEach(0..<barCount, id: \.self) { index in
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(Color.blue)
+                    .frame(width: barWidth, height: animating ? CGFloat.random(in: 4...14) : 6)
+                    .animation(
+                        .easeInOut(duration: 0.3)
+                            .repeatForever(autoreverses: true)
+                            .delay(Double(index) * 0.1),
+                        value: animating
+                    )
+            }
+        }
+        .onAppear { animating = true }
+    }
+}
+
 struct ModernHistoryRowView: View {
     let record: TranscriptionRecord
     var appState: AppState
+    @ObservedObject var audioPlayer: AudioPlayerManager
     @State private var isHovered = false
     @State private var showCopiedFeedback = false
+    @State private var isTapped = false
+
+    private var isPlaying: Bool {
+        audioPlayer.currentPlayingId == record.id && audioPlayer.isPlaying
+    }
+
+    private func handleAudioTap() {
+        withAnimation(.spring(response: 0.2, dampingFraction: 0.5)) {
+            isTapped = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            withAnimation(.spring(response: 0.2, dampingFraction: 0.5)) {
+                isTapped = false
+            }
+        }
+
+        guard let path = record.audioPath else { return }
+        let url = URL(fileURLWithPath: path)
+        guard FileManager.default.fileExists(atPath: path) else {
+            debugLog("🎵 Audio file not found: \(path)")
+            return
+        }
+        audioPlayer.toggle(url: url, id: record.id)
+    }
 
     private var timeString: String {
         let formatter = DateFormatter()
@@ -3090,12 +3391,25 @@ struct ModernHistoryRowView: View {
         HStack(spacing: 14) {
             ZStack {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.blue.opacity(0.1))
+                    .fill(Color.blue.opacity(isPlaying ? 0.25 : (isTapped ? 0.2 : 0.1)))
                     .frame(width: 40, height: 40)
-                Image(systemName: "waveform")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.blue)
+                if isPlaying {
+                    AnimatedWaveformView()
+                } else {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(record.hasAudio ? .blue : .blue.opacity(0.3))
+                }
             }
+            .scaleEffect(isTapped ? 0.9 : 1.0)
+            .contentShape(Rectangle())
+            .highPriorityGesture(
+                TapGesture()
+                    .onEnded { _ in
+                        handleAudioTap()
+                    }
+            )
+            .help(record.hasAudio ? (isPlaying ? "停止" : "再生") : "音声なし")
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(record.text)
@@ -3249,6 +3563,7 @@ struct StatCard: View {
 
 struct HistoryContentView: View {
     var appState: AppState
+    @StateObject private var audioPlayer = AudioPlayerManager()
     @State private var searchText = ""
     @State private var showingClearConfirmation = false
     @State private var animateContent = false
@@ -3294,32 +3609,30 @@ struct HistoryContentView: View {
                 }
                 Spacer()
             } else {
-                List {
-                    ForEach(filteredHistory) { record in
-                        ModernHistoryRowView(record: record, appState: appState)
-                            .listRowSeparator(.hidden)
-                            .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 20))
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                Button(role: .destructive) {
-                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                        appState.removeHistoryItem(record)
+                ScrollView {
+                    LazyVStack(spacing: 4) {
+                        ForEach(filteredHistory) { record in
+                            ModernHistoryRowView(record: record, appState: appState, audioPlayer: audioPlayer)
+                                .padding(.horizontal, 20)
+                                .contextMenu {
+                                    Button {
+                                        appState.copyHistoryItem(record.text)
+                                    } label: {
+                                        Label("コピー", systemImage: "doc.on.doc")
                                     }
-                                } label: {
-                                    Label("削除", systemImage: "trash")
+                                    Divider()
+                                    Button(role: .destructive) {
+                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                            appState.removeHistoryItem(record)
+                                        }
+                                    } label: {
+                                        Label("削除", systemImage: "trash")
+                                    }
                                 }
-                            }
-                            .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                                Button {
-                                    appState.copyHistoryItem(record.text)
-                                } label: {
-                                    Label("コピー", systemImage: "doc.on.doc")
-                                }
-                                .tint(.blue)
-                            }
+                        }
                     }
+                    .padding(.vertical, 8)
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
             }
 
             HStack(spacing: 16) {
