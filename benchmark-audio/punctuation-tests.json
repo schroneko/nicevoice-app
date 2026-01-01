@@ -1,0 +1,74 @@
+[
+  {
+    "id": "demo_conjunction",
+    "input": "直近の変換でもおかしなものがありました",
+    "expected": "直近の変換でもおかしなものがありました",
+    "description": "「でも」が接続詞ではなく「〜でも」パターンの場合、句点を挿入しない"
+  },
+  {
+    "id": "particle_yo",
+    "input": "多分同じキーだと思いますよ",
+    "expected": "多分同じキーだと思いますよ",
+    "description": "終助詞「よ」の前に句点を挿入しない"
+  },
+  {
+    "id": "question_ka",
+    "input": "これをスキルの方に追加してもらってもいいですかこうやって作るんだよという話を",
+    "expected": "これをスキルの方に追加してもらってもいいですか？こうやって作るんだよという話を",
+    "description": "疑問形「ですか」の後に「？」を挿入"
+  },
+  {
+    "id": "question_yone",
+    "input": "これでいいですよね",
+    "expected": "これでいいですよね？",
+    "description": "確認表現「ですよね」の後に「？」を挿入"
+  },
+  {
+    "id": "question_kane",
+    "input": "審査を通していいですかねどうですか",
+    "expected": "審査を通していいですかね？どうですか？",
+    "description": "「ですかね」の後に「？」を挿入"
+  },
+  {
+    "id": "nanidemo",
+    "input": "何でも大丈夫です",
+    "expected": "何でも大丈夫です",
+    "description": "「何でも」の「でも」は接続詞ではない"
+  },
+  {
+    "id": "daredemo",
+    "input": "誰でも参加できます",
+    "expected": "誰でも参加できます",
+    "description": "「誰でも」の「でも」は接続詞ではない"
+  },
+  {
+    "id": "sentence_end_demo",
+    "input": "完了しましたでも問題があります",
+    "expected": "完了しました。でも問題があります",
+    "description": "文末パターンの後の「でも」には句点を挿入"
+  },
+  {
+    "id": "particle_ne",
+    "input": "いい感じだと思いますね",
+    "expected": "いい感じだと思いますね",
+    "description": "終助詞「ね」の前に句点を挿入しない"
+  },
+  {
+    "id": "polite_ending",
+    "input": "お願いします確認してください",
+    "expected": "お願いします。確認してください",
+    "description": "丁寧語の後に句点を挿入"
+  },
+  {
+    "id": "conjunction_kedo",
+    "input": "やってみましたけど動きませんでした",
+    "expected": "やってみましたけど、動きませんでした",
+    "description": "「けど」の後に読点を挿入"
+  },
+  {
+    "id": "starter_hai",
+    "input": "はい分かりました",
+    "expected": "はい。分かりました",
+    "description": "文頭の「はい」の後に句点を挿入"
+  }
+]

@@ -1,0 +1,144 @@
+{
+  "version": "1.0",
+  "rules": [
+    {
+      "id": "sentence_endings",
+      "description": "文末パターンの後に句点を挿入",
+      "type": "insert_after",
+      "patterns": ["ました", "ません", "でした"],
+      "insert": "。",
+      "skipIfNextChar": ["。", "、", "？", "！", "か", "が", "け", "ね", "よ"],
+      "skipIfNextPattern": ["でした", "っけ", "よね", "けど", "が"]
+    },
+    {
+      "id": "transition_words",
+      "description": "接続詞の前に句点を挿入（文末パターンの後のみ）",
+      "type": "insert_before",
+      "patterns": [
+        "とりあえず",
+        "ただ",
+        "でも",
+        "しかし",
+        "ちなみに",
+        "あと",
+        "それから",
+        "それで"
+      ],
+      "insert": "。",
+      "skipIfPrevChar": ["。", "、", "？", "！"],
+      "patternConditions": {
+        "ただ": { "skipIfPrevChar": ["い", "わ", "ま"] },
+        "でも": {
+          "skipIfPrevChar": ["な", "何", "誰", "ど", "い"],
+          "requirePrecedingPattern": [
+            "ました",
+            "ません",
+            "です",
+            "ます",
+            "だった",
+            "でした",
+            "ない"
+          ]
+        },
+        "あと": {
+          "skipIfPrevChar": [
+            "0",
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9",
+            "分",
+            "時",
+            "日",
+            "年"
+          ]
+        }
+      },
+      "skipIfPreceding": ["では"]
+    },
+    {
+      "id": "mid_sentence_breakers",
+      "description": "挨拶・定型句の前後に句点を挿入",
+      "type": "insert_around",
+      "patterns": [
+        "ありがとうございます",
+        "すみません",
+        "こんにちは",
+        "こんばんは",
+        "おはようございます",
+        "お疲れ様です",
+        "お疲れさまです"
+      ],
+      "insert": "。",
+      "skipIfPrevChar": ["。", "、", "？", "！"],
+      "skipIfNextChar": ["。", "、", "？", "！"]
+    },
+    {
+      "id": "polite_endings",
+      "description": "丁寧語の後に句点を挿入（終助詞除く）",
+      "type": "insert_after",
+      "patterns": [
+        "お願いいたします",
+        "お願いします",
+        "くださいませ",
+        "ください",
+        "でございます",
+        "思います"
+      ],
+      "insert": "。",
+      "skipIfNextChar": ["。", "、", "？", "！", "よ", "ね", "か", "が", "け"]
+    },
+    {
+      "id": "question_endings",
+      "description": "疑問形の後に「？」を挿入",
+      "type": "insert_after",
+      "patterns": [
+        "ですかね",
+        "ますかね",
+        "ですよね",
+        "ますよね",
+        "でしょうか",
+        "ましょうか",
+        "ですか",
+        "ますか"
+      ],
+      "insert": "？",
+      "skipIfNextChar": ["。", "、", "？", "！"],
+      "patternConditions": {
+        "ですか": { "skipIfNextChar": ["ね", "よ"] },
+        "ますか": { "skipIfNextChar": ["ね", "よ"] }
+      }
+    },
+    {
+      "id": "comma_after_conjunctions",
+      "description": "接続助詞の後に読点を挿入",
+      "type": "insert_after",
+      "patterns": ["けれども", "だけど", "ですけど", "けれど", "ですが", "けど"],
+      "insert": "、",
+      "skipIfNextChar": ["。", "、", "？", "！"]
+    },
+    {
+      "id": "starters",
+      "description": "文頭表現の後に句点を挿入",
+      "type": "insert_after_at_start",
+      "patterns": ["はい", "いいえ", "うん", "ええ", "そうですね", "なるほど", "おはよう"],
+      "insert": "。",
+      "skipIfNextChar": ["。", "、"]
+    }
+  ],
+  "dictionary": [
+    { "reading": "クロードコード", "writing": "Claude Code" },
+    { "reading": "ロードコード", "writing": "Claude Code" },
+    { "reading": "ロードコ", "writing": "Claude Code" },
+    { "reading": "ラングラー", "writing": "Wrangler" },
+    { "reading": "クロード", "writing": "Claude" },
+    { "reading": "スーパーベース", "writing": "Supabase" },
+    { "reading": "スパベース", "writing": "Supabase" },
+    { "reading": "グロック", "writing": "Grok" }
+  ]
+}
