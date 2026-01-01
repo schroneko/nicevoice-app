@@ -338,54 +338,6 @@ struct BenchmarkResult: Identifiable {
     let success: Bool
 }
 
-struct PatternCondition: Codable {
-    var skipIfPrevChar: [String]?
-    var skipIfNextChar: [String]?
-    var requirePrecedingPattern: [String]?
-}
-
-struct PunctuationRule: Codable, Identifiable {
-    var id: String
-    var description: String
-    var type: String
-    var patterns: [String]
-    var insert: String
-    var skipIfPrevChar: [String]?
-    var skipIfNextChar: [String]?
-    var skipIfNextPattern: [String]?
-    var skipIfPreceding: [String]?
-    var patternConditions: [String: PatternCondition]?
-}
-
-struct DictionaryItem: Codable {
-    var reading: String
-    var writing: String
-}
-
-struct PunctuationRulesConfig: Codable {
-    var version: String
-    var rules: [PunctuationRule]
-    var dictionary: [DictionaryItem]
-
-    static func load() -> PunctuationRulesConfig? {
-        let bundles = [Bundle.module, Bundle.main]
-        for bundle in bundles {
-            if let url = bundle.url(forResource: "punctuation-rules", withExtension: "json") {
-                do {
-                    let data = try Data(contentsOf: url)
-                    let config = try JSONDecoder().decode(PunctuationRulesConfig.self, from: data)
-                    debugLog("✅ Loaded punctuation rules v\(config.version) with \(config.rules.count) rules")
-                    return config
-                } catch {
-                    debugLog("❌ Failed to decode punctuation rules: \(error)")
-                }
-            }
-        }
-        debugLog("⚠️ punctuation-rules.json not found in any bundle")
-        return nil
-    }
-}
-
 @Observable
 final class AppState {
     var isRecording = false
@@ -413,8 +365,6 @@ final class AppState {
     var dictionaryEntries: [DictionaryEntry] = []
     @ObservationIgnored
     var fillerSettings: FillerSettings = FillerSettings()
-    @ObservationIgnored
-    var punctuationRulesConfig: PunctuationRulesConfig?
 
     private var speechService: SpeechRecognitionService?
     private var chromeSpeechService: ChromeSpeechService?
@@ -438,7 +388,6 @@ final class AppState {
         loadUsageStats()
         loadDictionary()
         loadFillerSettings()
-        punctuationRulesConfig = PunctuationRulesConfig.load()
         loadHistory()
         setupServices()
     }
@@ -780,24 +729,19 @@ final class AppState {
             result = result.replacingOccurrences(of: "　\(punct)", with: punct)
         }
 
-        if let config = punctuationRulesConfig {
-            for item in config.dictionary {
-                result = result.replacingOccurrences(of: item.reading, with: item.writing)
-            }
-        } else {
-            let builtInDictionary = [
-                ("クロードコード", "Claude Code"),
-                ("ロードコード", "Claude Code"),
-                ("ロードコ", "Claude Code"),
-                ("ラングラー", "Wrangler"),
-                ("クロード", "Claude"),
-                ("スーパーベース", "Supabase"),
-                ("スパベース", "Supabase"),
-                ("グロック", "Grok"),
-            ]
-            for (reading, writing) in builtInDictionary {
-                result = result.replacingOccurrences(of: reading, with: writing)
-            }
+        let builtInDictionary = [
+            ("クロードコード", "Claude Code"),
+            ("ロードコード", "Claude Code"),
+            ("ロードコ", "Claude Code"),
+            ("ラングラー", "Wrangler"),
+            ("クロード", "Claude"),
+            ("スーパーベース", "Supabase"),
+            ("スパベース", "Supabase"),
+            ("グロック", "Grok"),
+            ("ジェイソン", "JSON"),
+        ]
+        for (reading, writing) in builtInDictionary {
+            result = result.replacingOccurrences(of: reading, with: writing)
         }
 
         for entry in dictionaryEntries where entry.isEnabled {

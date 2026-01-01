@@ -9,10 +9,7 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "NiceVoice",
-            dependencies: [],
-            resources: [
-                .process("punctuation-rules.json")
-            ]
+            dependencies: []
         )
     ]
 )
