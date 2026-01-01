@@ -629,15 +629,15 @@ final class AppState {
         if fallbackResult.isEmpty {
             debugLog("⚠️ No speech detected, skipping")
             floatingPanel?.hide()
-            speechService?.clearAudioBuffers()
+            clearActiveServiceAudioBuffers()
             return
         }
 
-        let audioData = speechService?.getRecordedAudioData()
+        let audioData = getRecordedAudioDataFromActiveService()
         floatingPanel?.hide()
         addToHistory(fallbackResult, audioData: audioData)
         performPaste(fallbackResult)
-        speechService?.clearAudioBuffers()
+        clearActiveServiceAudioBuffers()
     }
 
     private func handleFinalResult(_ text: String) {
@@ -653,7 +653,7 @@ final class AppState {
             return
         }
 
-        let audioData = speechService?.getRecordedAudioData()
+        let audioData = getRecordedAudioDataFromActiveService()
 
         if fillerSettings.useSmartFillerDetection && fillerSettings.removeFillers {
             let ambiguous = fillerSettings.ambiguousFillers
@@ -1209,6 +1209,24 @@ final class AppState {
             }
         }
         return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+    }
+
+    private func getRecordedAudioDataFromActiveService() -> Data? {
+        if useSpeechAnalyzer {
+            if #available(macOS 26.0, *), let service = speechAnalyzerService as? SpeechAnalyzerService {
+                return service.getRecordedAudioData()
+            }
+        }
+        return speechService?.getRecordedAudioData()
+    }
+
+    private func clearActiveServiceAudioBuffers() {
+        if useSpeechAnalyzer {
+            if #available(macOS 26.0, *), let service = speechAnalyzerService as? SpeechAnalyzerService {
+                service.clearAudioBuffers()
+            }
+        }
+        speechService?.clearAudioBuffers()
     }
 
     private func handleRealtimeInput(oldText: String, newText: String) {
@@ -2197,6 +2215,9 @@ final class SpeechAnalyzerService {
     private var analyzerTask: Task<Void, Error>?
     private var inputContinuation: AsyncStream<AnalyzerInput>.Continuation?
 
+    private var audioBuffers: [AVAudioPCMBuffer] = []
+    private var recordingFormat: AVAudioFormat?
+
     private let onTranscription: (String, Bool) -> Void
     private let onError: (String) -> Void
     private let onStatusChange: ((String) -> Void)?
@@ -2257,6 +2278,7 @@ final class SpeechAnalyzerService {
         }
 
         isRunning = true
+        audioBuffers = []
 
         let locale = Locale(identifier: "ja-JP")
         transcriber = SpeechTranscriber(
@@ -2284,6 +2306,7 @@ final class SpeechAnalyzerService {
 
         let inputNode = audioEngine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
+        recordingFormat = inputFormat
         debugLog("🔊 Input format: \(inputFormat.sampleRate)Hz, \(inputFormat.channelCount)ch")
 
         if inputFormat.sampleRate != analyzerFormat.sampleRate || inputFormat.channelCount != analyzerFormat.channelCount {
@@ -2336,6 +2359,10 @@ final class SpeechAnalyzerService {
             bufferCount += 1
             if bufferCount % 50 == 1 {
                 debugLog("🔊 [DEBUG] Audio buffer #\(bufferCount), frames: \(buffer.frameLength)")
+            }
+
+            if let copy = self.copyBuffer(buffer) {
+                self.audioBuffers.append(copy)
             }
 
             if let channelData = buffer.floatChannelData {
@@ -2428,6 +2455,89 @@ final class SpeechAnalyzerService {
         analyzer = nil
         transcriber = nil
         audioConverter = nil
+    }
+
+    private func copyBuffer(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        guard let copy = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: buffer.frameCapacity) else {
+            return nil
+        }
+        copy.frameLength = buffer.frameLength
+
+        if let srcFloatData = buffer.floatChannelData, let dstFloatData = copy.floatChannelData {
+            for channel in 0..<Int(buffer.format.channelCount) {
+                memcpy(dstFloatData[channel], srcFloatData[channel], Int(buffer.frameLength) * MemoryLayout<Float>.size)
+            }
+        }
+        return copy
+    }
+
+    func getRecordedAudioData() -> Data? {
+        guard let format = recordingFormat, !audioBuffers.isEmpty else {
+            debugLog("❌ No audio buffers to convert (SpeechAnalyzer)")
+            return nil
+        }
+
+        let totalFrames = audioBuffers.reduce(0) { $0 + Int($1.frameLength) }
+        guard totalFrames > 0 else {
+            debugLog("❌ Audio buffers are empty (SpeechAnalyzer)")
+            return nil
+        }
+
+        debugLog("🎵 Converting \(audioBuffers.count) buffers (\(totalFrames) frames) to WAV (SpeechAnalyzer)")
+
+        let wavHeader = createWAVHeader(
+            sampleRate: UInt32(format.sampleRate),
+            channels: UInt16(format.channelCount),
+            totalFrames: UInt32(totalFrames)
+        )
+
+        var audioData = Data()
+        audioData.append(wavHeader)
+
+        for buffer in audioBuffers {
+            if let floatData = buffer.floatChannelData {
+                for frame in 0..<Int(buffer.frameLength) {
+                    for channel in 0..<Int(format.channelCount) {
+                        let sample = floatData[channel][frame]
+                        let clipped = max(-1.0, min(1.0, sample))
+                        var intSample = Int16(clipped * Float(Int16.max))
+                        audioData.append(Data(bytes: &intSample, count: 2))
+                    }
+                }
+            }
+        }
+
+        debugLog("🎵 WAV data created: \(audioData.count) bytes (SpeechAnalyzer)")
+        return audioData
+    }
+
+    private func createWAVHeader(sampleRate: UInt32, channels: UInt16, totalFrames: UInt32) -> Data {
+        let bitsPerSample: UInt16 = 16
+        let byteRate = sampleRate * UInt32(channels) * UInt32(bitsPerSample / 8)
+        let blockAlign = channels * (bitsPerSample / 8)
+        let dataSize = totalFrames * UInt32(channels) * UInt32(bitsPerSample / 8)
+        let fileSize = 36 + dataSize
+
+        var header = Data()
+        header.append(contentsOf: "RIFF".utf8)
+        header.append(withUnsafeBytes(of: fileSize.littleEndian) { Data($0) })
+        header.append(contentsOf: "WAVE".utf8)
+        header.append(contentsOf: "fmt ".utf8)
+        header.append(withUnsafeBytes(of: UInt32(16).littleEndian) { Data($0) })
+        header.append(withUnsafeBytes(of: UInt16(1).littleEndian) { Data($0) })
+        header.append(withUnsafeBytes(of: channels.littleEndian) { Data($0) })
+        header.append(withUnsafeBytes(of: sampleRate.littleEndian) { Data($0) })
+        header.append(withUnsafeBytes(of: byteRate.littleEndian) { Data($0) })
+        header.append(withUnsafeBytes(of: blockAlign.littleEndian) { Data($0) })
+        header.append(withUnsafeBytes(of: bitsPerSample.littleEndian) { Data($0) })
+        header.append(contentsOf: "data".utf8)
+        header.append(withUnsafeBytes(of: dataSize.littleEndian) { Data($0) })
+
+        return header
+    }
+
+    func clearAudioBuffers() {
+        audioBuffers = []
     }
 }
 
