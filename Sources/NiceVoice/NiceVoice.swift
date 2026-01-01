@@ -62,10 +62,11 @@ private func rotateLogIfNeeded() {
 }
 
 func debugLog(_ message: String) {
+    #if DEBUG
     let timestamp = ISO8601DateFormatter().string(from: Date())
     let logMessage = "[\(timestamp)] \(message)\n"
     print(logMessage, terminator: "")
-    logger.debug("\(message, privacy: .public)")
+    logger.debug("\(message, privacy: .private)")
 
     rotateLogIfNeeded()
 
@@ -77,6 +78,7 @@ func debugLog(_ message: String) {
     } else {
         FileManager.default.createFile(atPath: logFilePath, contents: logData)
     }
+    #endif
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -624,7 +626,7 @@ final class AppState {
 
         sfSpeechResult = currentTranscription
         let fallbackResult = addLocalPunctuation(sfSpeechResult)
-        debugLog("📝 Speech result: '\(fallbackResult)'")
+        debugLog("📝 Speech result: \(fallbackResult.count) chars")
 
         if fallbackResult.isEmpty {
             debugLog("⚠️ No speech detected, skipping")
@@ -642,7 +644,7 @@ final class AppState {
 
     private func handleFinalResult(_ text: String) {
         guard waitingForFinalResult else { return }
-        debugLog("✅ Final result received: '\(text)'")
+        debugLog("✅ Final result received: \(text.count) chars")
         finalResultTimer?.cancel()
         waitingForFinalResult = false
 
@@ -711,7 +713,7 @@ final class AppState {
         let originalText = text
         var result = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !result.isEmpty else { return result }
-        debugLog("🔤 [PUNCT] Input: '\(originalText)'")
+        debugLog("🔤 [PUNCT] Input: \(originalText.count) chars")
 
         if fillerSettings.removeFillers {
             let fillers = fillerSettings.allEnabledFillers
@@ -953,7 +955,7 @@ final class AppState {
         }
 
         if result != originalText.trimmingCharacters(in: .whitespacesAndNewlines) {
-            debugLog("🔤 [PUNCT] Output: '\(result)' (changed)")
+            debugLog("🔤 [PUNCT] Output: \(result.count) chars (changed)")
         }
         return result
     }
@@ -965,7 +967,7 @@ final class AppState {
             debugLog("⚠️ No text to paste - text is empty")
             return
         }
-        debugLog("🔍 [DEBUG] About to copy and paste: '\(text)'")
+        debugLog("🔍 [DEBUG] About to copy and paste: \(text.count) chars")
         pasteWithClipboardRestore(text)
     }
 
@@ -973,11 +975,11 @@ final class AppState {
         let pasteboard = NSPasteboard.general
 
         let previousContents = pasteboard.string(forType: .string)
-        debugLog("📋 Saving previous clipboard: '\(previousContents ?? "nil")'")
+        debugLog("📋 Saving previous clipboard: \(previousContents?.count ?? 0) chars")
 
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
-        debugLog("📋 Set clipboard to: '\(text)'")
+        debugLog("📋 Set clipboard to: \(text.count) chars")
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             self?.simulatePaste {
@@ -985,7 +987,7 @@ final class AppState {
                     if let previous = previousContents {
                         pasteboard.clearContents()
                         pasteboard.setString(previous, forType: .string)
-                        debugLog("📋 Restored clipboard to: '\(previous)'")
+                        debugLog("📋 Restored clipboard: \(previous.count) chars")
                     } else {
                         debugLog("📋 No previous clipboard to restore")
                     }
@@ -1164,7 +1166,7 @@ final class AppState {
             history.removeLast()
         }
         saveHistory()
-        debugLog("📚 Added to history: '\(text)' (id: \(record.id))")
+        debugLog("📚 Added to history: \(text.count) chars (id: \(record.id))")
         return record.id
     }
 
@@ -1179,7 +1181,7 @@ final class AppState {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
-        debugLog("📋 Copied from history: '\(text)'")
+        debugLog("📋 Copied from history: \(text.count) chars")
     }
 
     func clearHistory() {
@@ -1191,7 +1193,7 @@ final class AppState {
     func removeHistoryItem(_ record: TranscriptionRecord) {
         history.removeAll { $0.id == record.id }
         saveHistory()
-        debugLog("🗑️ Removed from history: '\(record.text)'")
+        debugLog("🗑️ Removed from history: \(record.text.count) chars")
     }
 
     func addToBenchmark(_ record: TranscriptionRecord, expectedText: String) -> Bool {
@@ -1531,7 +1533,7 @@ final class SpeechRecognitionService {
                 if elapsed >= self.silenceDuration && !self.lastRecognizedText.isEmpty && !self.confirmedOnSilence {
                     self.savedText = self.lastRecognizedText
                     self.confirmedOnSilence = true
-                    debugLog("🔇 [VAD] Confirmed on silence: '\(self.savedText)'")
+                    debugLog("🔇 [VAD] Confirmed on silence: \(self.savedText.count) chars")
                 }
             }
         }
@@ -1552,7 +1554,7 @@ final class SpeechRecognitionService {
             if let result {
                 let currentText = result.bestTranscription.formattedString
                 let oldText = self.lastTranscription
-                debugLog("🔍 [DEBUG] Recognition: current='\(currentText)', saved='\(self.savedText)', isFinal=\(result.isFinal)")
+                debugLog("🔍 [DEBUG] Recognition: current=\(currentText.count) chars, saved=\(self.savedText.count) chars, isFinal=\(result.isFinal)")
 
                 self.lastRecognizedText = currentText
 
@@ -1567,7 +1569,7 @@ final class SpeechRecognitionService {
 
                     let commonLen = self.commonPrefixLength(savedNormalized, currentNormalized)
                     let threshold = Int(Double(savedNormalized.count) * 0.7)
-                    debugLog("🔍 [MERGE] savedText='\(self.savedText)' (\(self.savedText.count)), currentText='\(currentText)' (\(currentText.count)), normalized: saved='\(savedNormalized)' current='\(currentNormalized)', commonLen=\(commonLen), threshold=\(threshold)")
+                    debugLog("🔍 [MERGE] savedText=\(self.savedText.count) chars, currentText=\(currentText.count) chars, commonLen=\(commonLen), threshold=\(threshold)")
 
                     let isShortFragment = savedNormalized.count <= 5
                     let isLikelyCorrection = isShortFragment && currentNormalized.count >= savedNormalized.count * 2 && commonLen < 2
@@ -1591,7 +1593,7 @@ final class SpeechRecognitionService {
                         debugLog("🔍 [MERGE] Using currentText (longer/similar with overlap)")
                     } else {
                         displayText = self.savedText + " " + currentText
-                        debugLog("🔍 [MERGE] Concatenating: '\(displayText)'")
+                        debugLog("🔍 [MERGE] Concatenating: \(displayText.count) chars")
                     }
                 }
 
@@ -2096,7 +2098,7 @@ final class ChromeSpeechService {
             debugLog("🎙️ Chrome speech recognition started")
         case "result":
             if let text = json["text"] as? String, let isFinal = json["isFinal"] as? Bool {
-                debugLog("📝 Chrome result: '\(text)' (final: \(isFinal))")
+                debugLog("📝 Chrome result: \(text.count) chars (final: \(isFinal))")
                 DispatchQueue.main.async {
                     self.onTranscription(text, isFinal)
                 }
@@ -2374,7 +2376,7 @@ final class SpeechAnalyzerService {
                 for try await result in transcriber.results {
                     let text = String(result.text.characters)
                     let isFinal = result.isFinal
-                    debugLog("🔍 [DEBUG] SpeechAnalyzer result: '\(text)' (final: \(isFinal))")
+                    debugLog("🔍 [DEBUG] SpeechAnalyzer result: \(text.count) chars (final: \(isFinal))")
 
                     if isFinal {
                         accumulated += text
