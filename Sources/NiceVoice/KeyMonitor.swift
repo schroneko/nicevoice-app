@@ -1,5 +1,55 @@
 import AppKit
 
+enum ShortcutKey: String, CaseIterable {
+    case fn = "fn"
+    case leftShift = "leftShift"
+    case rightShift = "rightShift"
+    case leftControl = "leftControl"
+    case rightControl = "rightControl"
+    case leftOption = "leftOption"
+    case rightOption = "rightOption"
+    case leftCommand = "leftCommand"
+    case rightCommand = "rightCommand"
+
+    var displayName: String {
+        switch self {
+        case .fn: return "fn"
+        case .leftShift: return "左 Shift"
+        case .rightShift: return "右 Shift"
+        case .leftControl: return "左 Control"
+        case .rightControl: return "右 Control"
+        case .leftOption: return "左 Option"
+        case .rightOption: return "右 Option"
+        case .leftCommand: return "左 Command"
+        case .rightCommand: return "右 Command"
+        }
+    }
+
+    var keyCode: UInt16 {
+        switch self {
+        case .fn: return 63
+        case .leftShift: return 56
+        case .rightShift: return 60
+        case .leftControl: return 59
+        case .rightControl: return 62
+        case .leftOption: return 58
+        case .rightOption: return 61
+        case .leftCommand: return 55
+        case .rightCommand: return 54
+        }
+    }
+
+    var modifierFlag: NSEvent.ModifierFlags {
+        switch self {
+        case .fn: return .function
+        case .leftShift, .rightShift: return .shift
+        case .leftControl, .rightControl: return .control
+        case .leftOption, .rightOption: return .option
+        case .leftCommand, .rightCommand: return .command
+        }
+    }
+}
+
 final class KeyMonitor {
     private var monitor: Any?
     private var isKeyPressed = false

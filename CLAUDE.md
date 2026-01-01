@@ -23,7 +23,18 @@ open .build/bundler/NiceVoice.app
 
 自己署名証明書「NiceVoice」で署名することで、ビルドしてもアクセシビリティ権限が維持される。
 
-ビルドエラー（disk I/O error 等）が発生した場合は `rm -rf .build` でクリーンビルドする。
+ビルドエラー（disk I/O error 等）が発生した場合：
+
+1. まず build.db のみ削除を試す（高速）：
+   ```bash
+   rm .build/build.db .build/build.db-journal
+   ```
+2. それでも解決しない場合は完全クリーンビルド：
+   ```bash
+   rm -rf .build
+   ```
+
+原因: llbuild の build.db（SQLite）やジャーナルファイルが破損すると disk I/O error が発生する。並列ビルドや中断時に起こりやすい。コンパイル済みオブジェクトファイルを保持したまま build.db のみ再生成することで、フルビルドより高速に復旧できる。
 
 ### 自己署名証明書の作成（初回のみ）
 
