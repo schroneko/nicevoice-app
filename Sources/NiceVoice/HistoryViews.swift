@@ -381,86 +381,6 @@ struct ModernRecentTranscriptionRow: View {
     }
 }
 
-struct RecentTranscriptionRow: View {
-    let record: TranscriptionRecord
-    let isHovered: Bool
-    let onCopy: () -> Void
-    var onAddToBenchmark: ((TranscriptionRecord) -> Void)? = nil
-    @StateObject private var audioPlayer = AudioPlayerManager()
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Button {
-                if record.hasAudio {
-                    if let path = record.audioPath {
-                        audioPlayer.toggle(url: URL(fileURLWithPath: path), id: record.id)
-                    }
-                }
-            } label: {
-                ZStack {
-                    Circle()
-                        .fill(record.hasAudio ? Color.blue.opacity(0.1) : Color.secondary.opacity(0.1))
-                        .frame(width: 32, height: 32)
-                    Image(systemName: record.hasAudio ? (audioPlayer.isPlaying ? "stop.fill" : "play.fill") : "text.bubble")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(record.hasAudio ? .blue : .secondary)
-                }
-            }
-            .buttonStyle(.plain)
-            .disabled(!record.hasAudio)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(record.text)
-                    .lineLimit(1)
-                    .font(.callout)
-                Text(record.timestamp, style: .relative)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
-
-            Spacer()
-
-            Button(action: onCopy) {
-                Image(systemName: "doc.on.doc")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .opacity(isHovered ? 1 : 0)
-            .animation(.easeInOut(duration: 0.15), value: isHovered)
-        }
-        .padding(.vertical, 10)
-        .padding(.horizontal, 4)
-        .background(isHovered ? Color.secondary.opacity(0.05) : Color.clear)
-        .cornerRadius(8)
-        .contextMenu {
-            Button {
-                onCopy()
-            } label: {
-                Label("コピー", systemImage: "doc.on.doc")
-            }
-
-            if record.hasAudio {
-                Button {
-                    if let path = record.audioPath {
-                        audioPlayer.toggle(url: URL(fileURLWithPath: path), id: record.id)
-                    }
-                } label: {
-                    Label(audioPlayer.isPlaying ? "停止" : "再生", systemImage: audioPlayer.isPlaying ? "stop.fill" : "play.fill")
-                }
-            }
-
-            if record.hasAudio, let onAdd = onAddToBenchmark {
-                Button {
-                    onAdd(record)
-                } label: {
-                    Label("ベンチマークに追加", systemImage: "chart.bar.doc.horizontal")
-                }
-            }
-        }
-    }
-}
-
 class AudioPlayerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
     @Published var isPlaying = false
     @Published var currentPlayingId: UUID?
@@ -596,20 +516,6 @@ struct ModernEmptyStateView: View {
         .onAppear {
             animateIcon = true
         }
-    }
-}
-
-struct EmptyStateView: View {
-    let icon: String
-    let title: String
-    let description: String
-
-    var body: some View {
-        ModernEmptyStateView(
-            icon: icon,
-            title: title,
-            description: description
-        )
     }
 }
 
@@ -1071,6 +977,7 @@ struct HistoryContentView: View {
 
 struct HistoryWindowView: View {
     var appState: AppState
+    @StateObject private var audioPlayer = AudioPlayerManager()
     @State private var searchText = ""
     @State private var animateItems = false
 
@@ -1125,7 +1032,7 @@ struct HistoryWindowView: View {
                 ScrollView {
                     LazyVStack(spacing: 4) {
                         ForEach(Array(filteredHistory.enumerated()), id: \.element.id) { index, record in
-                            HistoryRowView(record: record, appState: appState)
+                            ModernHistoryRowView(record: record, appState: appState, audioPlayer: audioPlayer)
                                 .padding(.horizontal, 12)
                                 .opacity(animateItems ? 1 : 0)
                                 .offset(y: animateItems ? 0 : 10)
@@ -1181,122 +1088,5 @@ struct HistoryWindowView: View {
         }
         .frame(width: 420, height: 520)
         .background(.ultraThinMaterial)
-    }
-}
-
-struct HistoryRowView: View {
-    let record: TranscriptionRecord
-    var appState: AppState
-    @State private var isHovered = false
-    @State private var showCopied = false
-
-    private var timeString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
-        return formatter.string(from: record.timestamp)
-    }
-
-    private var dateString: String {
-        let calendar = Calendar.current
-        if calendar.isDateInToday(record.timestamp) {
-            return "今日"
-        } else if calendar.isDateInYesterday(record.timestamp) {
-            return "昨日"
-        } else {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "M/d"
-            return formatter.string(from: record.timestamp)
-        }
-    }
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(record.text)
-                    .font(.callout)
-                    .lineLimit(2)
-
-                HStack(spacing: 4) {
-                    Text(dateString)
-                        .fontWeight(.medium)
-                    Text(timeString)
-                }
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-            }
-
-            Spacer()
-
-            HStack(alignment: .center, spacing: 4) {
-                Text(timeString)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.tertiary)
-                    .opacity(isHovered ? 0 : 1)
-
-                HStack(spacing: 6) {
-                    if showCopied {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(.green)
-                            .transition(.scale.combined(with: .opacity))
-                    }
-
-                    Button {
-                        appState.copyHistoryItem(record.text)
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            showCopied = true
-                        }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                            withAnimation { showCopied = false }
-                        }
-                    } label: {
-                        Image(systemName: "doc.on.doc")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 28, height: 28)
-                            .background(
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .fill(Color.secondary.opacity(0.1))
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .help("コピー")
-
-                    Button {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
-                            appState.removeHistoryItem(record)
-                        }
-                    } label: {
-                        Image(systemName: "trash")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.red.opacity(0.8))
-                            .frame(width: 28, height: 28)
-                            .background(
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .fill(Color.red.opacity(0.08))
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .help("削除")
-                }
-                .opacity(isHovered ? 1 : 0)
-            }
-            .animation(.easeInOut(duration: 0.15), value: isHovered)
-        }
-        .padding(12)
-        .background {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(isHovered ? Color.purple.opacity(0.04) : Color.clear)
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(isHovered ? Color.purple.opacity(0.1) : Color.clear, lineWidth: 1)
-        }
-        .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.15)) {
-                isHovered = hovering
-            }
-        }
     }
 }

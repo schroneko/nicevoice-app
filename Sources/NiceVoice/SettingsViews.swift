@@ -565,27 +565,3 @@ struct FlowLayout: Layout {
     }
 }
 
-struct FillerChip: View {
-    let text: String
-    var isSelected: Bool = true
-    var canDelete: Bool = false
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 4) {
-                Text(text)
-                if canDelete {
-                    Image(systemName: "xmark")
-                        .font(.caption2)
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(isSelected ? Color.accentColor.opacity(0.2) : Color.gray.opacity(0.1))
-            .foregroundStyle(isSelected ? .primary : .secondary)
-            .cornerRadius(16)
-        }
-        .buttonStyle(.plain)
-    }
-}
