@@ -75,33 +75,23 @@ struct DictionaryView: View {
                 }
                 Spacer()
             } else {
-                List {
-                    ForEach(appState.dictionaryEntries) { entry in
-                        DictionaryEntryRow(
-                            entry: entry,
-                            onToggle: { enabled in
-                                var updated = entry
-                                updated.isEnabled = enabled
-                                appState.updateDictionaryEntry(updated)
-                            },
-                            onEdit: { editingEntry = entry },
-                            onDelete: { appState.removeDictionaryEntry(entry) }
-                        )
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 20))
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                withAnimation {
-                                    appState.removeDictionaryEntry(entry)
+                ScrollView {
+                    FlowLayout(spacing: 10) {
+                        ForEach(appState.dictionaryEntries) { entry in
+                            DictionaryCard(
+                                entry: entry,
+                                onEdit: { editingEntry = entry },
+                                onDelete: {
+                                    withAnimation(.spring(response: 0.3)) {
+                                        appState.removeDictionaryEntry(entry)
+                                    }
                                 }
-                            } label: {
-                                Label("削除", systemImage: "trash")
-                            }
+                            )
                         }
                     }
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 16)
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
             }
 
             if !appState.dictionaryEntries.isEmpty {
@@ -115,10 +105,6 @@ struct DictionaryView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    let enabledCount = appState.dictionaryEntries.filter { $0.isEnabled }.count
-                    Text("\(enabledCount) 件が有効")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
                 }
                 .padding(.horizontal, 28)
                 .padding(.vertical, 16)
@@ -188,83 +174,55 @@ struct DictionaryView: View {
     }
 }
 
-struct DictionaryEntryRow: View {
+struct DictionaryCard: View {
     let entry: DictionaryEntry
-    let onToggle: (Bool) -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
     @State private var isHovered = false
 
     var body: some View {
-        HStack(spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(entry.isEnabled ? Color.purple.opacity(0.1) : Color.secondary.opacity(0.05))
-                    .frame(width: 40, height: 40)
-                Image(systemName: "arrow.right")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(entry.isEnabled ? .purple : .secondary)
+        HStack(spacing: 6) {
+            Text(entry.reading)
+                .font(.callout)
+                .fontWeight(.medium)
+
+            Image(systemName: "arrow.right")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.tertiary)
+
+            Text(entry.writing)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
+            Button(action: onDelete) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.secondary)
             }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(entry.reading)
-                    .font(.callout)
-                    .fontWeight(.medium)
-                    .foregroundStyle(entry.isEnabled ? .primary : .secondary)
-
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.right")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(.tertiary)
-                    Text(entry.writing)
-                        .font(.caption)
-                        .foregroundStyle(entry.isEnabled ? .secondary : .tertiary)
-                }
-            }
-
-            Spacer()
-
-            HStack(spacing: 4) {
-                Toggle("", isOn: Binding(
-                    get: { entry.isEnabled },
-                    set: onToggle
-                ))
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .scaleEffect(0.8)
-
-                Button(action: onEdit) {
-                    Image(systemName: "pencil")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 28, height: 28)
-                        .background(Color.secondary.opacity(isHovered ? 0.1 : 0))
-                        .cornerRadius(6)
-                }
-                .buttonStyle(.plain)
-                .opacity(isHovered ? 1 : 0)
-
-                Button(action: onDelete) {
-                    Image(systemName: "trash")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.red.opacity(0.8))
-                        .frame(width: 28, height: 28)
-                        .background(Color.red.opacity(isHovered ? 0.1 : 0))
-                        .cornerRadius(6)
-                }
-                .buttonStyle(.plain)
-                .opacity(isHovered ? 1 : 0)
-            }
-            .animation(.easeInOut(duration: 0.15), value: isHovered)
+            .buttonStyle(.plain)
+            .frame(width: 16, height: 16)
+            .background(Color.secondary.opacity(isHovered ? 0.2 : 0.1))
+            .clipShape(Circle())
+            .opacity(isHovered ? 1 : 0.5)
         }
-        .padding(12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
         .background {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(isHovered ? Color.secondary.opacity(0.06) : Color.clear)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.purple.opacity(isHovered ? 0.15 : 0.1))
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.purple.opacity(0.2), lineWidth: 1)
         }
         .contentShape(Rectangle())
+        .onTapGesture {
+            onEdit()
+        }
         .onHover { hovering in
-            isHovered = hovering
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovered = hovering
+            }
         }
     }
 }

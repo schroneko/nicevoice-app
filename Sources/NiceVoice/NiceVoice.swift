@@ -242,7 +242,6 @@ final class AppState {
 
     @ObservationIgnored
     var usageStats: UsageStats = UsageStats()
-    @ObservationIgnored
     var dictionaryEntries: [DictionaryEntry] = []
     @ObservationIgnored
     var fillerSettings: FillerSettings = FillerSettings()
