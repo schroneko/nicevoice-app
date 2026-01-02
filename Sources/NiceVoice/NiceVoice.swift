@@ -123,7 +123,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if !trusted {
             debugLog("⚠️ Accessibility not granted - opening System Settings")
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                    NSWorkspace.shared.open(url)
+                }
             }
         }
     }
@@ -1028,60 +1030,6 @@ final class AppState {
     private func getRecordedAudioDataFromActiveService() -> Data? {
         guard #available(macOS 26.0, *) else { return nil }
         return (speechAnalyzerService as? SpeechAnalyzerService)?.getRecordedAudioData()
-    }
-
-    private func clearActiveServiceAudioBuffers() {
-        guard #available(macOS 26.0, *) else { return }
-        (speechAnalyzerService as? SpeechAnalyzerService)?.clearAudioBuffers()
-    }
-
-    private func handleRealtimeInput(oldText: String, newText: String) {
-    }
-
-    private func deleteCharacters(count: Int) {
-        let source = CGEventSource(stateID: .privateState)
-
-        for _ in 0..<count {
-            guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_Delete), keyDown: true),
-                  let keyUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_Delete), keyDown: false) else {
-                continue
-            }
-
-            keyDown.post(tap: .cgAnnotatedSessionEventTap)
-            usleep(10000)
-            keyUp.post(tap: .cgAnnotatedSessionEventTap)
-            usleep(10000)
-        }
-    }
-
-    private func typeTextViaPaste(_ text: String) {
-        let pasteboard = NSPasteboard.general
-        let previousContents = pasteboard.string(forType: .string)
-
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
-
-        let source = CGEventSource(stateID: .combinedSessionState)
-        source?.localEventsSuppressionInterval = 0.0
-
-        guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: true),
-              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: false) else {
-            return
-        }
-
-        keyDown.flags = CGEventFlags.maskCommand
-        keyUp.flags = CGEventFlags.maskCommand
-
-        keyDown.post(tap: .cghidEventTap)
-        usleep(50000)
-        keyUp.post(tap: .cghidEventTap)
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            if let previous = previousContents {
-                pasteboard.clearContents()
-                pasteboard.setString(previous, forType: .string)
-            }
-        }
     }
 
     private func save<T: Encodable>(_ value: T, forKey key: String) {

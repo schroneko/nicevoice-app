@@ -416,7 +416,7 @@ struct BatchTranscriptionView: View {
     private func addFile(_ url: URL) {
         guard !items.contains(where: { $0.url == url }) else { return }
 
-        var item = BatchTranscriptionItem(url: url)
+        let item = BatchTranscriptionItem(url: url)
         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
             items.append(item)
         }

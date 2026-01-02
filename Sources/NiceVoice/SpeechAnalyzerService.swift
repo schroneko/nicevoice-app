@@ -306,6 +306,7 @@ final class SpeechAnalyzerService {
         }
 
         debugLog("🎵 WAV data created: \(audioData.count) bytes (SpeechAnalyzer)")
+        audioBuffers = []
         return audioData
     }
 
