@@ -1,11 +1,9 @@
 import SwiftUI
 import AVFoundation
-import Speech
 import AppKit
 import Carbon.HIToolbox
 import ApplicationServices
 import os.log
-import Network
 import CommonCrypto
 
 private let logger = Logger(subsystem: "com.nicevoice.app", category: "general")
@@ -249,16 +247,11 @@ final class AppState {
     @ObservationIgnored
     var fillerSettings: FillerSettings = FillerSettings()
 
-    private var speechService: SpeechRecognitionService?
-    private var chromeSpeechService: ChromeSpeechService?
     private var speechAnalyzerService: Any?
     private(set) var keyMonitor: KeyMonitor?
     private var floatingPanel: FloatingPanel?
     private var waitingForFinalResult = false
     private var finalResultTimer: DispatchWorkItem?
-    private var sfSpeechResult = ""
-    private var useChromeSpeech = false
-    private var useSpeechAnalyzer = false
 
     private enum UserDefaultsKey {
         static let usageStats = "usageStats"
@@ -276,52 +269,6 @@ final class AppState {
     }
 
     private func setupServices() {
-        speechService = SpeechRecognitionService(
-            onTranscription: { [weak self] text, isFinal in
-                DispatchQueue.main.async {
-                    guard let self else { return }
-                    self.currentTranscription = self.addLocalPunctuation(text, isFinal: isFinal)
-                    if isFinal {
-                        self.handleFinalResult(text)
-                    }
-                }
-            },
-            onRealtimeInput: { [weak self] oldText, newText in
-                self?.handleRealtimeInput(oldText: oldText, newText: newText)
-            },
-            onRecognitionError: { [weak self] error in
-                DispatchQueue.main.async {
-                    guard let self else { return }
-                    debugLog("❌ Apple speech error: \(error)")
-                    self.isReady = false
-                    self.isRecording = false
-                    self.statusMessage = error
-                    self.errorMessage = error
-                }
-            }
-        )
-
-        chromeSpeechService = ChromeSpeechService(
-            onTranscription: { [weak self] text, isFinal in
-                DispatchQueue.main.async {
-                    guard let self else { return }
-                    self.currentTranscription = self.addLocalPunctuation(text, isFinal: isFinal)
-                    if isFinal {
-                        self.handleFinalResult(text)
-                    }
-                }
-            },
-            onError: { [weak self] error in
-                debugLog("❌ Chrome speech error: \(error)")
-                self?.statusMessage = error
-            },
-            onStatusChange: { [weak self] status in
-                DispatchQueue.main.async {
-                    self?.statusMessage = status
-                }
-            }
-        )
-
         if #available(macOS 26.0, *) {
             speechAnalyzerService = SpeechAnalyzerService(
                 onTranscription: { [weak self] text, isFinal in
@@ -366,6 +313,14 @@ final class AppState {
     private func requestPermissions() async {
         statusMessage = "権限を確認中..."
 
+        guard #available(macOS 26.0, *) else {
+            await MainActor.run {
+                statusMessage = "macOS 26.0 以上が必要です"
+                debugLog("❌ macOS 26.0+ required")
+            }
+            return
+        }
+
         let micStatus = await AVCaptureDevice.requestAccess(for: .audio)
         guard micStatus else {
             await MainActor.run {
@@ -374,54 +329,29 @@ final class AppState {
             return
         }
 
-        if #available(macOS 26.0, *), let service = speechAnalyzerService as? SpeechAnalyzerService {
+        guard let service = speechAnalyzerService as? SpeechAnalyzerService else {
             await MainActor.run {
-                statusMessage = "SpeechAnalyzer を初期化中..."
+                statusMessage = "SpeechAnalyzer の初期化に失敗しました"
+                debugLog("❌ SpeechAnalyzer not initialized")
             }
-            await service.start()
-            await MainActor.run {
-                useSpeechAnalyzer = true
-                useChromeSpeech = false
-                isReady = true
-                statusMessage = "準備完了 - \(shortcutKey.displayName) キーを押して録音 (SpeechAnalyzer)"
-                debugLog("✅ Using Apple SpeechAnalyzer")
-            }
-        } else if ChromeSpeechService.isAvailable {
-            await MainActor.run {
-                useChromeSpeech = true
-                useSpeechAnalyzer = false
-                isReady = true
-                let browserName = ChromeSpeechService.detectBrowser()?.split(separator: "/").last?.replacingOccurrences(of: ".app", with: "") ?? "Chrome"
-                statusMessage = "準備完了 - \(shortcutKey.displayName) キーを押して録音 (\(browserName))"
-                debugLog("✅ Using Chrome Web Speech API")
-                chromeSpeechService?.start()
-            }
-        } else {
-            let speechStatus = await withCheckedContinuation { continuation in
-                SFSpeechRecognizer.requestAuthorization { status in
-                    continuation.resume(returning: status)
-                }
-            }
+            return
+        }
 
-            if speechStatus == .authorized {
-                await MainActor.run {
-                    useChromeSpeech = false
-                    useSpeechAnalyzer = false
-                    isReady = true
-                    statusMessage = "準備完了 - \(shortcutKey.displayName) キーを押して録音 (Apple Legacy)"
-                    debugLog("✅ Using Apple SFSpeechRecognizer")
-                }
-            } else {
-                await MainActor.run {
-                    statusMessage = "音声認識が利用できません"
-                    debugLog("❌ No speech recognition available")
-                }
-            }
+        await MainActor.run {
+            statusMessage = "SpeechAnalyzer を初期化中..."
+        }
+        await service.start()
+        await MainActor.run {
+            isReady = true
+            statusMessage = "準備完了 - \(shortcutKey.displayName) キーを押して録音"
+            debugLog("✅ Using Apple SpeechAnalyzer")
         }
     }
 
     func startRecording() {
-        debugLog("🔍 [DEBUG] startRecording called - isReady: \(isReady), isRecording: \(isRecording), useSpeechAnalyzer: \(useSpeechAnalyzer), useChrome: \(useChromeSpeech)")
+        guard #available(macOS 26.0, *) else { return }
+
+        debugLog("🔍 [DEBUG] startRecording called - isReady: \(isReady), isRecording: \(isRecording)")
 
         guard !isRecording else {
             debugLog("🔍 [DEBUG] startRecording guard failed - already recording")
@@ -443,27 +373,13 @@ final class AppState {
 
         floatingPanel?.show()
 
-        if useSpeechAnalyzer {
-            if #available(macOS 26.0, *), let service = speechAnalyzerService as? SpeechAnalyzerService {
-                service.startRecording()
-                debugLog("🔍 [DEBUG] speechAnalyzerService.startRecording() called")
-            }
-        } else if useChromeSpeech {
-            chromeSpeechService?.startRecording()
-            debugLog("🔍 [DEBUG] chromeSpeechService.startRecording() called")
-        } else {
-            do {
-                try speechService?.startRecording()
-                debugLog("🔍 [DEBUG] speechService.startRecording() succeeded")
-            } catch {
-                debugLog("❌ Recording error: \(error)")
-                isRecording = false
-                floatingPanel?.hide()
-            }
-        }
+        (speechAnalyzerService as? SpeechAnalyzerService)?.startRecording()
+        debugLog("🔍 [DEBUG] speechAnalyzerService.startRecording() called")
     }
 
     func stopRecording() {
+        guard #available(macOS 26.0, *) else { return }
+
         debugLog("🔍 [DEBUG] stopRecording called - isRecording: \(isRecording), errorMessage: \(errorMessage ?? "nil")")
 
         if errorMessage != nil {
@@ -479,48 +395,18 @@ final class AppState {
         }
         isRecording = false
 
-        if useSpeechAnalyzer {
-            if #available(macOS 26.0, *), let service = speechAnalyzerService as? SpeechAnalyzerService {
-                waitingForFinalResult = true
-                debugLog("🎙️ Recording stopped - waiting for SpeechAnalyzer final result")
-                floatingPanel?.hide()
-                service.stopRecording()
-                NotificationCenter.default.post(name: .recordingStateChanged, object: nil)
-
-                finalResultTimer = DispatchWorkItem { [weak self] in
-                    guard let self, self.waitingForFinalResult else { return }
-                    debugLog("⚠️ SpeechAnalyzer timeout - no final result received")
-                    self.waitingForFinalResult = false
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: finalResultTimer!)
-                return
-            }
-        }
-
-        if useChromeSpeech {
-            chromeSpeechService?.stopRecording()
-        } else {
-            speechService?.stopRecording()
-        }
-        debugLog("🎙️ Recording stopped")
+        waitingForFinalResult = true
+        debugLog("🎙️ Recording stopped - waiting for SpeechAnalyzer final result")
+        floatingPanel?.hide()
+        (speechAnalyzerService as? SpeechAnalyzerService)?.stopRecording()
         NotificationCenter.default.post(name: .recordingStateChanged, object: nil)
 
-        sfSpeechResult = currentTranscription
-        let fallbackResult = addLocalPunctuation(sfSpeechResult)
-        debugLog("📝 Speech result: \(fallbackResult.count) chars")
-
-        if fallbackResult.isEmpty {
-            debugLog("⚠️ No speech detected, skipping")
-            floatingPanel?.hide()
-            clearActiveServiceAudioBuffers()
-            return
+        finalResultTimer = DispatchWorkItem { [weak self] in
+            guard let self, self.waitingForFinalResult else { return }
+            debugLog("⚠️ SpeechAnalyzer timeout - no final result received")
+            self.waitingForFinalResult = false
         }
-
-        let audioData = getRecordedAudioDataFromActiveService()
-        floatingPanel?.hide()
-        addToHistory(fallbackResult, audioData: audioData)
-        performPaste(fallbackResult)
-        clearActiveServiceAudioBuffers()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: finalResultTimer!)
     }
 
     private func handleFinalResult(_ text: String) {
@@ -1012,7 +898,8 @@ final class AppState {
     }
 
     func cancelRecording() {
-        speechService?.stopRecording()
+        guard #available(macOS 26.0, *) else { return }
+        (speechAnalyzerService as? SpeechAnalyzerService)?.stopRecording()
         isRecording = false
         currentTranscription = ""
         floatingPanel?.hide()
@@ -1140,21 +1027,13 @@ final class AppState {
     }
 
     private func getRecordedAudioDataFromActiveService() -> Data? {
-        if useSpeechAnalyzer {
-            if #available(macOS 26.0, *), let service = speechAnalyzerService as? SpeechAnalyzerService {
-                return service.getRecordedAudioData()
-            }
-        }
-        return speechService?.getRecordedAudioData()
+        guard #available(macOS 26.0, *) else { return nil }
+        return (speechAnalyzerService as? SpeechAnalyzerService)?.getRecordedAudioData()
     }
 
     private func clearActiveServiceAudioBuffers() {
-        if useSpeechAnalyzer {
-            if #available(macOS 26.0, *), let service = speechAnalyzerService as? SpeechAnalyzerService {
-                service.clearAudioBuffers()
-            }
-        }
-        speechService?.clearAudioBuffers()
+        guard #available(macOS 26.0, *) else { return }
+        (speechAnalyzerService as? SpeechAnalyzerService)?.clearAudioBuffers()
     }
 
     private func handleRealtimeInput(oldText: String, newText: String) {

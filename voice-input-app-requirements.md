@@ -246,7 +246,7 @@ LLM オプション:
 
 | 要件             | 詳細                                     |
 | ---------------- | ---------------------------------------- |
-| macOS バージョン | macOS 14 Sonoma 以降                     |
+| macOS バージョン | macOS 26 以降                            |
 | チップ           | Apple Silicon（M1 以降）推奨、Intel 対応 |
 | アーキテクチャ   | Universal Binary（arm64 + x86_64）       |
 

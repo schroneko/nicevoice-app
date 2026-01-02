@@ -2,6 +2,7 @@ import SwiftUI
 
 enum NavigationPage: String, CaseIterable {
     case overview = "概要"
+    case transcription = "文字起こし"
     case history = "履歴"
     case dictionary = "辞書"
     case settings = "設定"
@@ -9,6 +10,7 @@ enum NavigationPage: String, CaseIterable {
     var icon: String {
         switch self {
         case .overview: return "chart.bar"
+        case .transcription: return "waveform.and.mic"
         case .history: return "clock"
         case .dictionary: return "book"
         case .settings: return "gearshape"
@@ -19,6 +21,13 @@ enum NavigationPage: String, CaseIterable {
 struct MainWindowView: View {
     var appState: AppState
     @State private var selectedPage: NavigationPage = .overview
+    @State private var showOnboarding: Bool
+
+    init(appState: AppState) {
+        self.appState = appState
+        let hasCompleted = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
+        _showOnboarding = State(initialValue: !hasCompleted)
+    }
 
     var body: some View {
         NavigationSplitView {
@@ -30,6 +39,8 @@ struct MainWindowView: View {
             switch selectedPage {
             case .overview:
                 OverviewView(appState: appState)
+            case .transcription:
+                BatchTranscriptionView(appState: appState)
             case .history:
                 HistoryContentView(appState: appState)
             case .dictionary:
@@ -39,6 +50,9 @@ struct MainWindowView: View {
             }
         }
         .frame(minWidth: 700, minHeight: 500)
+        .sheet(isPresented: $showOnboarding) {
+            OnboardingView(isPresented: $showOnboarding)
+        }
     }
 }
 

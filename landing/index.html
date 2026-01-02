@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NiceVoice - 声で、もっと速く。</title>
+  <meta name="description" content="macOS向け高精度音声入力アプリ。プッシュ・トゥ・トークで瞬時にテキスト化。日本語特化の句読点自動挿入とAIフィラー除去。">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="noise"></div>
+
+  <header class="header">
+    <nav class="nav">
+      <a href="#" class="logo">
+        <svg class="logo-icon" viewBox="0 0 32 32" fill="none">
+          <circle cx="16" cy="16" r="14" stroke="currentColor" stroke-width="2"/>
+          <path d="M12 20V12L20 16L12 20Z" fill="currentColor"/>
+        </svg>
+        <span>NiceVoice</span>
+      </a>
+      <div class="nav-links">
+        <a href="#features">機能</a>
+        <a href="#pricing">価格</a>
+        <a href="#faq">FAQ</a>
+        <a href="#download" class="nav-cta">ダウンロード</a>
+      </div>
+      <button class="mobile-menu" aria-label="メニュー">
+        <span></span>
+        <span></span>
+      </button>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-content">
+        <div class="hero-badge">
+          <span class="badge-dot"></span>
+          macOS Sonoma+ 対応
+        </div>
+        <h1 class="hero-title">
+          <span class="title-line">声で、</span>
+          <span class="title-line title-accent">もっと速く。</span>
+        </h1>
+        <p class="hero-subtitle">
+          キーを押して話すだけ。<br>
+          高精度な音声認識が、あなたの言葉を瞬時にテキストへ。
+        </p>
+        <div class="hero-actions">
+          <a href="#download" class="btn btn-primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            無料で試す
+          </a>
+          <a href="#features" class="btn btn-secondary">
+            機能を見る
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="5" y1="12" x2="19" y2="12"/>
+              <polyline points="12 5 19 12 12 19"/>
+            </svg>
+          </a>
+        </div>
+        <p class="hero-note">7日間無料トライアル・クレジットカード不要</p>
+      </div>
+      <div class="hero-visual">
+        <div class="waveform-container">
+          <div class="waveform">
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+          </div>
+          <div class="shortcut-demo">
+            <div class="key-cap">⌥</div>
+            <span class="key-label">押している間、録音</span>
+          </div>
+        </div>
+        <div class="demo-output">
+          <div class="output-cursor"></div>
+          <span class="output-text"></span>
+        </div>
+      </div>
+    </section>
+
+    <section id="features" class="features">
+      <div class="section-header">
+        <span class="section-tag">Features</span>
+        <h2 class="section-title">日本語入力を、再発明。</h2>
+        <p class="section-desc">タイピングより速く、正確に。あなたの声が最高の入力デバイスになる。</p>
+      </div>
+
+      <div class="features-grid">
+        <article class="feature-card feature-main">
+          <div class="feature-icon">
+            <svg viewBox="0 0 48 48" fill="none">
+              <circle cx="24" cy="24" r="20" stroke="currentColor" stroke-width="2" stroke-dasharray="4 2"/>
+              <circle cx="24" cy="24" r="8" fill="currentColor"/>
+              <path d="M24 12V8M24 40V36M36 24H40M8 24H12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <h3>プッシュ・トゥ・トーク</h3>
+          <p>設定したショートカットキーを押している間だけ録音。離すと即座にテキスト化してペースト。シンプルで直感的な操作。</p>
+          <div class="feature-visual">
+            <div class="ptt-demo">
+              <div class="ptt-state ptt-idle">
+                <span class="ptt-key">⌥</span>
+                <span class="ptt-status">待機中</span>
+              </div>
+              <div class="ptt-state ptt-recording">
+                <span class="ptt-key recording">⌥</span>
+                <span class="ptt-status">録音中...</span>
+              </div>
+              <div class="ptt-state ptt-done">
+                <span class="ptt-key">⌥</span>
+                <span class="ptt-status">完了</span>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 48 48" fill="none">
+              <path d="M8 12h32M8 24h24M8 36h28" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <circle cx="40" cy="24" r="4" fill="currentColor"/>
+              <circle cx="40" cy="36" r="4" fill="currentColor"/>
+            </svg>
+          </div>
+          <h3>句読点自動挿入</h3>
+          <p>日本語に最適化されたルールで、「、」「。」を自動挿入。自然な文章がそのまま出力される。</p>
+        </article>
+
+        <article class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 48 48" fill="none">
+              <path d="M12 24L20 32L36 16" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M8 8L40 40" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+            </svg>
+          </div>
+          <h3>AIフィラー除去</h3>
+          <p>「えーと」「あの」などの無駄な言葉を自動検出・除去。クリーンなテキストに整形。</p>
+        </article>
+
+        <article class="feature-card feature-vip">
+          <div class="vip-badge">VIP</div>
+          <div class="feature-icon">
+            <svg viewBox="0 0 48 48" fill="none">
+              <rect x="8" y="12" width="32" height="24" rx="2" stroke="currentColor" stroke-width="2"/>
+              <path d="M16 28L22 22L26 26L32 20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="32" cy="20" r="2" fill="currentColor"/>
+            </svg>
+          </div>
+          <h3>ファイル & YouTube 文字起こし</h3>
+          <p>音声・動画ファイルやYouTube URLをドロップするだけで高精度な文字起こし。議事録作成に最適。</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="pricing" class="pricing">
+      <div class="section-header">
+        <span class="section-tag">Pricing</span>
+        <h2 class="section-title">シンプルな料金体系</h2>
+        <p class="section-desc">すべてのプランに7日間の無料トライアル付き</p>
+      </div>
+
+      <div class="billing-toggle">
+        <button class="toggle-btn active" data-billing="monthly">月額</button>
+        <button class="toggle-btn" data-billing="yearly">年額<span class="discount">2ヶ月分お得</span></button>
+      </div>
+
+      <div class="pricing-grid">
+        <article class="pricing-card">
+          <div class="plan-header">
+            <h3 class="plan-name">Pro</h3>
+            <p class="plan-desc">個人での利用に最適</p>
+          </div>
+          <div class="plan-price">
+            <span class="price-amount" data-monthly="10" data-yearly="8">$10</span>
+            <span class="price-period">/月</span>
+          </div>
+          <ul class="plan-features">
+            <li>
+              <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+              プッシュ・トゥ・トーク
+            </li>
+            <li>
+              <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+              句読点自動挿入
+            </li>
+            <li>
+              <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+              AIフィラー除去
+            </li>
+            <li>
+              <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+              カスタムショートカット
+            </li>
+            <li>
+              <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+              辞書登録
+            </li>
+          </ul>
+          <a href="#download" class="btn btn-outline">無料で試す</a>
+        </article>
+
+        <article class="pricing-card featured">
+          <div class="featured-badge">おすすめ</div>
+          <div class="plan-header">
+            <h3 class="plan-name">VIP</h3>
+            <p class="plan-desc">プロフェッショナル向け</p>
+          </div>
+          <div class="plan-price">
+            <span class="price-amount" data-monthly="30" data-yearly="25">$30</span>
+            <span class="price-period">/月</span>
+          </div>
+          <ul class="plan-features">
+            <li>
+              <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+              Proの全機能
+            </li>
+            <li>
+              <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+              ファイル文字起こし
+            </li>
+            <li>
+              <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+              YouTube文字起こし
+            </li>
+            <li>
+              <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+              優先サポート
+            </li>
+            <li>
+              <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+              早期アクセス機能
+            </li>
+          </ul>
+          <a href="#download" class="btn btn-primary">無料で試す</a>
+        </article>
+      </div>
+    </section>
+
+    <section id="faq" class="faq">
+      <div class="section-header">
+        <span class="section-tag">FAQ</span>
+        <h2 class="section-title">よくある質問</h2>
+      </div>
+
+      <div class="faq-list">
+        <details class="faq-item">
+          <summary>
+            <span>対応しているmacOSのバージョンは？</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </summary>
+          <div class="faq-answer">
+            <p>macOS 14 (Sonoma) 以降に対応しています。Apple Silicon (M1/M2/M3/M4) と Intel Mac の両方で動作します。</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>
+            <span>音声データはどこに保存されますか？</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </summary>
+          <div class="faq-answer">
+            <p>音声データはあなたのMac上でのみ処理され、外部サーバーには送信されません。プライバシーを最優先に設計しています。</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>
+            <span>オフラインでも使えますか？</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </summary>
+          <div class="faq-answer">
+            <p>高精度モード（Chrome Web Speech API）はインターネット接続が必要です。オフライン時はApple純正の音声認識にフォールバックし、基本的な音声入力が可能です。</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>
+            <span>ショートカットキーは変更できますか？</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </summary>
+          <div class="faq-answer">
+            <p>はい、設定画面から自由にカスタマイズできます。Option、Control、Command など、お好みのキーを設定できます。</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>
+            <span>英語の音声入力にも対応していますか？</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </summary>
+          <div class="faq-answer">
+            <p>はい、日本語と英語の両方に対応しています。設定で言語を切り替えるか、自動検出モードをご利用ください。</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>
+            <span>返金ポリシーはありますか？</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </summary>
+          <div class="faq-answer">
+            <p>購入後30日以内であれば、理由を問わず全額返金いたします。まずは7日間の無料トライアルでお試しください。</p>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <section id="download" class="cta">
+      <div class="cta-content">
+        <h2 class="cta-title">今すぐ始めよう</h2>
+        <p class="cta-desc">声による入力の快適さを、7日間無料で体験してください。</p>
+        <a href="#" class="btn btn-primary btn-large">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          macOS版をダウンロード
+        </a>
+        <p class="cta-note">macOS 14+ 対応・約15MB</p>
+      </div>
+      <div class="cta-wave">
+        <svg viewBox="0 0 1200 120" preserveAspectRatio="none">
+          <path d="M0,60 C200,120 400,0 600,60 C800,120 1000,0 1200,60 L1200,120 L0,120 Z" fill="currentColor"/>
+        </svg>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-brand">
+        <a href="#" class="logo">
+          <svg class="logo-icon" viewBox="0 0 32 32" fill="none">
+            <circle cx="16" cy="16" r="14" stroke="currentColor" stroke-width="2"/>
+            <path d="M12 20V12L20 16L12 20Z" fill="currentColor"/>
+          </svg>
+          <span>NiceVoice</span>
+        </a>
+        <p>声で、もっと速く。</p>
+      </div>
+      <div class="footer-links">
+        <div class="footer-col">
+          <h4>製品</h4>
+          <a href="#features">機能</a>
+          <a href="#pricing">価格</a>
+          <a href="#">更新履歴</a>
+        </div>
+        <div class="footer-col">
+          <h4>サポート</h4>
+          <a href="#faq">FAQ</a>
+          <a href="mailto:support@nicevoice.app">お問い合わせ</a>
+        </div>
+        <div class="footer-col">
+          <h4>法的情報</h4>
+          <a href="#">プライバシーポリシー</a>
+          <a href="#">利用規約</a>
+          <a href="#">特定商取引法に基づく表記</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2025 NiceVoice. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
