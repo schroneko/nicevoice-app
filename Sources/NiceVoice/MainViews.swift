@@ -9,11 +9,26 @@ enum NavigationPage: String, CaseIterable {
 
     var icon: String {
         switch self {
-        case .overview: return "chart.bar"
-        case .transcription: return "waveform.and.mic"
-        case .history: return "clock"
-        case .dictionary: return "book"
-        case .settings: return "gearshape"
+        case .overview: return "chart.bar.fill"
+        case .transcription: return "waveform.badge.mic"
+        case .history: return "clock.fill"
+        case .dictionary: return "character.book.closed.fill"
+        case .settings: return "gearshape.fill"
+        }
+    }
+
+    var gradient: LinearGradient {
+        switch self {
+        case .overview:
+            return LinearGradient(colors: [.purple, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .transcription:
+            return LinearGradient(colors: [.blue, .cyan], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .history:
+            return LinearGradient(colors: [.orange, .pink], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .dictionary:
+            return LinearGradient(colors: [.green, .teal], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .settings:
+            return LinearGradient(colors: [.gray, .secondary], startPoint: .topLeading, endPoint: .bottomTrailing)
         }
     }
 }
@@ -22,6 +37,7 @@ struct MainWindowView: View {
     var appState: AppState
     @State private var selectedPage: NavigationPage = .overview
     @State private var showOnboarding: Bool
+    @State private var hoveredPage: NavigationPage?
 
     init(appState: AppState) {
         self.appState = appState
@@ -31,34 +47,113 @@ struct MainWindowView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(NavigationPage.allCases, id: \.self, selection: $selectedPage) { page in
-                Label(page.rawValue, systemImage: page.icon)
+            VStack(spacing: 8) {
+                ForEach(NavigationPage.allCases, id: \.self) { page in
+                    SidebarItem(
+                        page: page,
+                        isSelected: selectedPage == page,
+                        isHovered: hoveredPage == page
+                    )
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            selectedPage = page
+                        }
+                    }
+                    .onHover { hovering in
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            hoveredPage = hovering ? page : nil
+                        }
+                    }
+                }
+                Spacer()
             }
-            .navigationSplitViewColumnWidth(min: 150, ideal: 180)
+            .padding(.vertical, 16)
+            .padding(.horizontal, 12)
+            .background(.ultraThinMaterial)
+            .navigationSplitViewColumnWidth(min: 180, ideal: 200)
         } detail: {
-            switch selectedPage {
-            case .overview:
-                OverviewView(appState: appState)
-            case .transcription:
-                BatchTranscriptionView(appState: appState)
-            case .history:
-                HistoryContentView(appState: appState)
-            case .dictionary:
-                DictionaryView(appState: appState)
-            case .settings:
-                SettingsContentView(appState: appState)
+            ZStack {
+                MeshGradientBackground()
+
+                switch selectedPage {
+                case .overview:
+                    OverviewView(appState: appState)
+                case .transcription:
+                    BatchTranscriptionView(appState: appState)
+                case .history:
+                    HistoryContentView(appState: appState)
+                case .dictionary:
+                    DictionaryView(appState: appState)
+                case .settings:
+                    SettingsContentView(appState: appState)
+                }
             }
         }
-        .frame(minWidth: 700, minHeight: 500)
+        .frame(minWidth: 750, minHeight: 550)
         .sheet(isPresented: $showOnboarding) {
             OnboardingView(isPresented: $showOnboarding)
         }
     }
 }
 
+struct SidebarItem: View {
+    let page: NavigationPage
+    let isSelected: Bool
+    let isHovered: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: page.icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(isSelected ? .white : .primary)
+                .frame(width: 24, height: 24)
+
+            Text(page.rawValue)
+                .font(.system(size: 14, weight: isSelected ? .semibold : .medium))
+                .foregroundStyle(isSelected ? .white : .primary)
+
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(page.gradient)
+                    .shadow(color: .purple.opacity(0.3), radius: 8, y: 4)
+            } else if isHovered {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(.quaternary)
+            }
+        }
+        .scaleEffect(isHovered && !isSelected ? 1.02 : 1.0)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isHovered)
+    }
+}
+
+struct MeshGradientBackground: View {
+    var body: some View {
+        MeshGradient(
+            width: 3,
+            height: 3,
+            points: [
+                [0.0, 0.0], [0.5, 0.0], [1.0, 0.0],
+                [0.0, 0.5], [0.5, 0.5], [1.0, 0.5],
+                [0.0, 1.0], [0.5, 1.0], [1.0, 1.0]
+            ],
+            colors: [
+                .purple.opacity(0.05), .indigo.opacity(0.03), .blue.opacity(0.05),
+                .indigo.opacity(0.03), .clear, .purple.opacity(0.03),
+                .blue.opacity(0.05), .purple.opacity(0.03), .indigo.opacity(0.05)
+            ]
+        )
+        .ignoresSafeArea()
+    }
+}
+
 struct OverviewView: View {
     var appState: AppState
-    @State private var animateCards = false
+    @State private var cardAnimationStates: [Bool] = [false, false, false, false]
 
     private var estimatedCost: Double {
         Double(appState.usageStats.totalTokensUsed) * 0.0000005
@@ -68,65 +163,84 @@ struct OverviewView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 32) {
                 HStack(alignment: .bottom) {
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 8) {
                         Text("概要")
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
+                            .font(.system(size: 42, weight: .bold, design: .rounded))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [.purple, .indigo, .blue],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
                         Text("音声認識の使用状況")
-                            .font(.subheadline)
+                            .font(.title3)
+                            .fontWeight(.medium)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
                     StatusBadge(isReady: appState.isReady, isRecording: appState.isRecording)
                 }
+                .opacity(cardAnimationStates[0] ? 1 : 0)
+                .offset(y: cardAnimationStates[0] ? 0 : 15)
 
                 LazyVGrid(columns: [
-                    GridItem(.flexible(), spacing: 16),
-                    GridItem(.flexible(), spacing: 16),
-                    GridItem(.flexible(), spacing: 16)
-                ], spacing: 16) {
+                    GridItem(.flexible(), spacing: 20),
+                    GridItem(.flexible(), spacing: 20),
+                    GridItem(.flexible(), spacing: 20)
+                ], spacing: 20) {
                     StatCard(
                         title: "今日の変換",
                         value: "\(appState.usageStats.todayConversions)",
                         subtitle: "\(appState.usageStats.todayCharacters) 文字",
                         icon: "waveform",
-                        color: .blue
+                        color: .blue,
+                        secondaryColor: .cyan
                     )
-                    .opacity(animateCards ? 1 : 0)
-                    .offset(y: animateCards ? 0 : 20)
+                    .opacity(cardAnimationStates[1] ? 1 : 0)
+                    .offset(y: cardAnimationStates[1] ? 0 : 20)
 
                     StatCard(
                         title: "累計変換",
                         value: "\(appState.usageStats.totalConversions)",
                         subtitle: "\(appState.usageStats.totalCharacters) 文字",
                         icon: "chart.line.uptrend.xyaxis",
-                        color: .green
+                        color: .green,
+                        secondaryColor: .teal
                     )
-                    .opacity(animateCards ? 1 : 0)
-                    .offset(y: animateCards ? 0 : 20)
+                    .opacity(cardAnimationStates[1] ? 1 : 0)
+                    .offset(y: cardAnimationStates[1] ? 0 : 20)
 
                     StatCard(
                         title: "推定コスト",
                         value: String(format: "$%.4f", estimatedCost),
                         subtitle: String(format: "約 %.1f 円", estimatedCost * 150),
                         icon: "yensign.circle",
-                        color: .orange
+                        color: .orange,
+                        secondaryColor: .pink
                     )
-                    .opacity(animateCards ? 1 : 0)
-                    .offset(y: animateCards ? 0 : 20)
+                    .opacity(cardAnimationStates[1] ? 1 : 0)
+                    .offset(y: cardAnimationStates[1] ? 0 : 20)
                 }
 
                 RecentTranscriptionsCard(appState: appState)
-                    .opacity(animateCards ? 1 : 0)
-                    .offset(y: animateCards ? 0 : 20)
+                    .opacity(cardAnimationStates[2] ? 1 : 0)
+                    .offset(y: cardAnimationStates[2] ? 0 : 20)
 
                 Spacer()
             }
-            .padding(28)
+            .padding(32)
         }
         .onAppear {
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.1)) {
-                animateCards = true
+            animateCardsSequentially()
+        }
+    }
+
+    private func animateCardsSequentially() {
+        let delays: [Double] = [0.1, 0.2, 0.35, 0.5]
+        for (index, delay) in delays.enumerated() {
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.8).delay(delay)) {
+                cardAnimationStates[index] = true
             }
         }
     }
@@ -136,19 +250,56 @@ struct StatusBadge: View {
     let isReady: Bool
     let isRecording: Bool
 
+    @State private var pulseAnimation = false
+
     var body: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(statusColor)
-                .frame(width: 8, height: 8)
+        HStack(spacing: 8) {
+            ZStack {
+                if isRecording {
+                    Circle()
+                        .fill(statusColor.opacity(0.3))
+                        .frame(width: 16, height: 16)
+                        .scaleEffect(pulseAnimation ? 1.5 : 1.0)
+                        .opacity(pulseAnimation ? 0 : 0.6)
+                }
+                Circle()
+                    .fill(statusColor)
+                    .frame(width: 10, height: 10)
+                    .shadow(color: statusColor.opacity(0.5), radius: 4)
+            }
+            .frame(width: 16, height: 16)
+
             Text(statusText)
-                .font(.caption)
-                .fontWeight(.medium)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.primary)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(statusColor.opacity(0.1))
-        .cornerRadius(20)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background {
+            Capsule()
+                .fill(.ultraThinMaterial)
+                .overlay {
+                    Capsule()
+                        .stroke(statusColor.opacity(0.3), lineWidth: 1)
+                }
+                .shadow(color: statusColor.opacity(0.2), radius: 8, y: 4)
+        }
+        .onAppear {
+            if isRecording {
+                withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: false)) {
+                    pulseAnimation = true
+                }
+            }
+        }
+        .onChange(of: isRecording) { _, newValue in
+            if newValue {
+                withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: false)) {
+                    pulseAnimation = true
+                }
+            } else {
+                pulseAnimation = false
+            }
+        }
     }
 
     private var statusColor: Color {
@@ -170,65 +321,83 @@ struct StatCard: View {
     let subtitle: String
     let icon: String
     let color: Color
+    var secondaryColor: Color? = nil
     var trend: Double? = nil
 
     @State private var isHovered = false
 
+    private var gradient: LinearGradient {
+        LinearGradient(
+            colors: [color, secondaryColor ?? color.opacity(0.7)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
                 ZStack {
                     Circle()
-                        .fill(color.opacity(0.15))
-                        .frame(width: 36, height: 36)
+                        .fill(gradient.opacity(0.15))
+                        .frame(width: 44, height: 44)
                     Image(systemName: icon)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(color)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(gradient)
                 }
 
                 Text(title)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(.secondary)
 
                 Spacer()
 
                 if let trend = trend {
-                    HStack(spacing: 2) {
+                    HStack(spacing: 3) {
                         Image(systemName: trend >= 0 ? "arrow.up.right" : "arrow.down.right")
                             .font(.caption2.weight(.bold))
                         Text("\(abs(Int(trend)))%")
                             .font(.caption2.weight(.semibold))
                     }
                     .foregroundStyle(trend >= 0 ? .green : .red)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background((trend >= 0 ? Color.green : Color.red).opacity(0.1))
-                    .cornerRadius(6)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background {
+                        Capsule()
+                            .fill((trend >= 0 ? Color.green : Color.red).opacity(0.12))
+                    }
                 }
             }
 
             Text(value)
-                .font(.system(size: 32, weight: .bold, design: .rounded))
+                .font(.system(size: 36, weight: .bold, design: .rounded))
                 .foregroundStyle(.primary)
+                .contentTransition(.numericText())
 
             Text(subtitle)
-                .font(.caption)
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
+        .padding(20)
         .background {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.background)
-                .shadow(color: .black.opacity(isHovered ? 0.08 : 0.04), radius: isHovered ? 12 : 8, y: isHovered ? 4 : 2)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .shadow(color: color.opacity(isHovered ? 0.15 : 0.08), radius: isHovered ? 16 : 10, y: isHovered ? 6 : 3)
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(color.opacity(isHovered ? 0.3 : 0.1), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(
+                    LinearGradient(
+                        colors: [color.opacity(isHovered ? 0.4 : 0.2), (secondaryColor ?? color).opacity(isHovered ? 0.2 : 0.1)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
         }
-        .scaleEffect(isHovered ? 1.02 : 1.0)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isHovered)
+        .scaleEffect(isHovered ? 1.03 : 1.0)
+        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: isHovered)
         .onHover { hovering in
             isHovered = hovering
         }

@@ -6,28 +6,46 @@ struct ShortcutKeyButton: View {
     let action: () -> Void
     @State private var isHovered = false
 
+    private let selectedGradient = LinearGradient(
+        colors: [.purple, .indigo],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 4) {
+            VStack(spacing: 6) {
                 Image(systemName: iconName)
-                    .font(.system(size: 16, weight: .medium))
+                    .font(.system(size: 24, weight: .medium))
                 Text(key.displayName)
                     .font(.caption)
+                    .fontWeight(.medium)
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 52)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(isSelected ? Color.accentColor.opacity(0.15) : (isHovered ? Color.secondary.opacity(0.1) : Color.clear))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(isSelected ? Color.accentColor : Color.secondary.opacity(0.2), lineWidth: isSelected ? 2 : 1)
+            .frame(height: 64)
+            .background {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(isSelected ? AnyShapeStyle(selectedGradient.opacity(0.2)) : AnyShapeStyle(Color.secondary.opacity(isHovered ? 0.12 : 0.06)))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(
+                        isSelected ? AnyShapeStyle(selectedGradient) : AnyShapeStyle(Color.secondary.opacity(0.15)),
+                        lineWidth: isSelected ? 2 : 1
+                    )
+            }
+            .shadow(
+                color: isSelected ? .purple.opacity(0.3) : (isHovered ? .black.opacity(0.08) : .clear),
+                radius: isSelected ? 8 : 4,
+                y: isSelected ? 4 : 2
             )
         }
         .buttonStyle(.plain)
         .foregroundStyle(isSelected ? .primary : .secondary)
+        .scaleEffect(isHovered && !isSelected ? 1.02 : 1.0)
+        .animation(.spring(response: 0.25, dampingFraction: 0.8), value: isHovered)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
         .onHover { hovering in
             isHovered = hovering
         }
@@ -50,7 +68,7 @@ struct SettingsContentView: View {
     @AppStorage("shortcutKey") private var shortcutKeyRaw = ShortcutKey.fn.rawValue
     @State private var fillerSettings: FillerSettings
     @State private var newFiller = ""
-    @State private var animateContent = false
+    @State private var sectionAnimations: [Bool] = [false, false, false]
 
     private var selectedShortcutKey: ShortcutKey {
         ShortcutKey(rawValue: shortcutKeyRaw) ?? .fn
@@ -66,37 +84,43 @@ struct SettingsContentView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text("設定")
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
                     Text("アプリの動作をカスタマイズ")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
+                .padding(.bottom, 8)
 
-                SettingsSection(title: "一般", icon: "gearshape", color: .gray) {
+                SettingsSection(
+                    title: "一般",
+                    icon: "gearshape.fill",
+                    gradientColors: [.gray, .gray.opacity(0.7)]
+                ) {
                     SettingsToggleRow(
                         title: "メニューバーに常駐する",
                         description: "オフにすると Dock からのみ起動できます",
                         isOn: $showInMenuBar
                     )
 
-                    Divider()
-                        .padding(.vertical, 4)
+                    SectionDivider()
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("ショートカットキー")
-                            .font(.body)
-                        Text("録音を開始・停止するキー")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("ショートカットキー")
+                                .font(.callout)
+                                .fontWeight(.medium)
+                            Text("録音を開始・停止するキー")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
 
                         LazyVGrid(columns: [
                             GridItem(.flexible()),
                             GridItem(.flexible()),
                             GridItem(.flexible())
-                        ], spacing: 8) {
+                        ], spacing: 10) {
                             ForEach(ShortcutKey.allCases, id: \.self) { key in
                                 ShortcutKeyButton(
                                     key: key,
@@ -110,136 +134,155 @@ struct SettingsContentView: View {
                         }
                     }
                 }
-                .opacity(animateContent ? 1 : 0)
-                .offset(y: animateContent ? 0 : 10)
+                .opacity(sectionAnimations[0] ? 1 : 0)
+                .offset(y: sectionAnimations[0] ? 0 : 16)
 
-                SettingsSection(title: "書き起こし調整", icon: "text.alignleft", color: .purple) {
-                        SettingsToggleRow(
-                            title: "句読点を自動で付ける",
-                            description: "。、？を適切な位置に追加して読みやすくします",
-                            isOn: $fillerSettings.addPunctuation
-                        )
-                        .onChange(of: fillerSettings.addPunctuation) { _, _ in
-                            appState.updateFillerSettings(fillerSettings)
-                        }
-
-                        Divider()
-                            .padding(.vertical, 4)
-
-                        SettingsToggleRow(
-                            title: "言い淀み・繰り返しを整理",
-                            description: "同じ言葉を繰り返した場合に1回にまとめます",
-                            isOn: $fillerSettings.removeRepetition
-                        )
-                        .onChange(of: fillerSettings.removeRepetition) { _, _ in
-                            appState.updateFillerSettings(fillerSettings)
-                        }
+                SettingsSection(
+                    title: "書き起こし調整",
+                    icon: "text.alignleft",
+                    gradientColors: [.purple, .indigo]
+                ) {
+                    SettingsToggleRow(
+                        title: "句読点を自動で付ける",
+                        description: "。、？を適切な位置に追加して読みやすくします",
+                        isOn: $fillerSettings.addPunctuation
+                    )
+                    .onChange(of: fillerSettings.addPunctuation) { _, _ in
+                        appState.updateFillerSettings(fillerSettings)
                     }
-                    .opacity(animateContent ? 1 : 0)
-                    .offset(y: animateContent ? 0 : 10)
 
-                    SettingsSection(title: "フィラー除去", icon: "text.badge.minus", color: .orange) {
-                        SettingsToggleRow(
-                            title: "フィラーを除去する",
-                            description: "「えー」「あー」などの言葉を自動で除去します",
-                            isOn: $fillerSettings.removeFillers
-                        )
-                        .onChange(of: fillerSettings.removeFillers) { _, _ in
-                            appState.updateFillerSettings(fillerSettings)
-                        }
+                    SectionDivider()
 
-                        if fillerSettings.removeFillers {
-                            Divider()
-                                .padding(.vertical, 4)
+                    SettingsToggleRow(
+                        title: "言い淀み・繰り返しを整理",
+                        description: "同じ言葉を繰り返した場合に1回にまとめます",
+                        isOn: $fillerSettings.removeRepetition
+                    )
+                    .onChange(of: fillerSettings.removeRepetition) { _, _ in
+                        appState.updateFillerSettings(fillerSettings)
+                    }
+                }
+                .opacity(sectionAnimations[1] ? 1 : 0)
+                .offset(y: sectionAnimations[1] ? 0 : 16)
 
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("除去するフィラー")
+                SettingsSection(
+                    title: "フィラー除去",
+                    icon: "text.badge.minus",
+                    gradientColors: [.orange, .pink]
+                ) {
+                    SettingsToggleRow(
+                        title: "フィラーを除去する",
+                        description: "「えー」「あー」などの言葉を自動で除去します",
+                        isOn: $fillerSettings.removeFillers
+                    )
+                    .onChange(of: fillerSettings.removeFillers) { _, _ in
+                        appState.updateFillerSettings(fillerSettings)
+                    }
+
+                    if fillerSettings.removeFillers {
+                        SectionDivider()
+
+                        VStack(alignment: .leading, spacing: 14) {
+                            Text("除去するフィラー")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.secondary)
+                                .textCase(.uppercase)
+                                .tracking(0.5)
+
+                            FlowLayout(spacing: 8) {
+                                ForEach(presetFillers, id: \.self) { filler in
+                                    ModernFillerChip(
+                                        text: filler,
+                                        isSelected: fillerSettings.enabledPresets.contains(filler),
+                                        gradientColors: [.orange, .pink]
+                                    ) {
+                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                            if fillerSettings.enabledPresets.contains(filler) {
+                                                fillerSettings.enabledPresets.remove(filler)
+                                            } else {
+                                                fillerSettings.enabledPresets.insert(filler)
+                                            }
+                                            appState.updateFillerSettings(fillerSettings)
+                                        }
+                                    }
+                                }
+                            }
+
+                            if !fillerSettings.customFillers.isEmpty {
+                                Text("カスタム")
                                     .font(.caption)
-                                    .fontWeight(.medium)
+                                    .fontWeight(.semibold)
                                     .foregroundStyle(.secondary)
+                                    .textCase(.uppercase)
+                                    .tracking(0.5)
+                                    .padding(.top, 6)
 
                                 FlowLayout(spacing: 8) {
-                                    ForEach(presetFillers, id: \.self) { filler in
+                                    ForEach(fillerSettings.customFillers, id: \.self) { filler in
                                         ModernFillerChip(
                                             text: filler,
-                                            isSelected: fillerSettings.enabledPresets.contains(filler)
+                                            isSelected: true,
+                                            canDelete: true,
+                                            gradientColors: [.cyan, .blue]
                                         ) {
                                             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                                if fillerSettings.enabledPresets.contains(filler) {
-                                                    fillerSettings.enabledPresets.remove(filler)
-                                                } else {
-                                                    fillerSettings.enabledPresets.insert(filler)
-                                                }
+                                                fillerSettings.customFillers.removeAll { $0 == filler }
                                                 appState.updateFillerSettings(fillerSettings)
                                             }
                                         }
                                     }
                                 }
+                            }
 
-                                if !fillerSettings.customFillers.isEmpty {
-                                    Text("カスタム")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                        .foregroundStyle(.secondary)
-                                        .padding(.top, 4)
-
-                                    FlowLayout(spacing: 8) {
-                                        ForEach(fillerSettings.customFillers, id: \.self) { filler in
-                                            ModernFillerChip(text: filler, isSelected: true, canDelete: true) {
-                                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                                    fillerSettings.customFillers.removeAll { $0 == filler }
-                                                    appState.updateFillerSettings(fillerSettings)
-                                                }
-                                            }
-                                        }
+                            HStack(spacing: 10) {
+                                TextField("カスタムフィラーを追加", text: $newFiller)
+                                    .textFieldStyle(.plain)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 10)
+                                    .background {
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .fill(.ultraThinMaterial)
                                     }
-                                }
-
-                                HStack(spacing: 8) {
-                                    TextField("カスタムフィラーを追加", text: $newFiller)
-                                        .textFieldStyle(.plain)
-                                        .padding(8)
-                                        .background(Color.secondary.opacity(0.1))
-                                        .cornerRadius(8)
-                                        .frame(width: 180)
-                                        .onSubmit {
-                                            addCustomFiller()
-                                        }
-
-                                    Button {
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
+                                    }
+                                    .frame(width: 200)
+                                    .onSubmit {
                                         addCustomFiller()
-                                    } label: {
-                                        Image(systemName: "plus")
-                                            .font(.system(size: 12, weight: .bold))
                                     }
-                                    .buttonStyle(.borderedProminent)
-                                    .disabled(newFiller.isEmpty)
-                                }
 
-                                Divider()
-                                    .padding(.vertical, 8)
-
-                                SettingsToggleRow(
-                                    title: "AI でフィラーを識別",
-                                    description: "「あの」「その」など文脈依存のフィラーを Claude Haiku 4.5 で判定します",
-                                    isOn: $fillerSettings.useSmartFillerDetection
-                                )
-                                .onChange(of: fillerSettings.useSmartFillerDetection) { _, _ in
-                                    appState.updateFillerSettings(fillerSettings)
+                                ModernAddButton(disabled: newFiller.isEmpty) {
+                                    addCustomFiller()
                                 }
+                            }
+
+                            SectionDivider()
+
+                            SettingsToggleRow(
+                                title: "AI でフィラーを識別",
+                                description: "「あの」「その」など文脈依存のフィラーを Claude Haiku 4.5 で判定します",
+                                isOn: $fillerSettings.useSmartFillerDetection
+                            )
+                            .onChange(of: fillerSettings.useSmartFillerDetection) { _, _ in
+                                appState.updateFillerSettings(fillerSettings)
                             }
                         }
                     }
-                .opacity(animateContent ? 1 : 0)
-                .offset(y: animateContent ? 0 : 10)
+                }
+                .opacity(sectionAnimations[2] ? 1 : 0)
+                .offset(y: sectionAnimations[2] ? 0 : 16)
 
                 Spacer(minLength: 20)
             }
-            .padding(28)
+            .padding(32)
         }
         .onAppear {
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.1)) {
-                animateContent = true
+            for index in 0..<sectionAnimations.count {
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.8).delay(Double(index) * 0.1 + 0.1)) {
+                    sectionAnimations[index] = true
+                }
             }
         }
     }
@@ -261,37 +304,75 @@ struct SettingsContentView: View {
 struct SettingsSection<Content: View>: View {
     let title: String
     let icon: String
-    let color: Color
+    let gradientColors: [Color]
     @ViewBuilder let content: Content
+    @State private var isHovered = false
+
+    private var iconGradient: LinearGradient {
+        LinearGradient(
+            colors: gradientColors,
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(color.opacity(0.15))
-                        .frame(width: 28, height: 28)
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(iconGradient)
+                        .frame(width: 32, height: 32)
+                        .shadow(color: gradientColors[0].opacity(0.3), radius: 4, y: 2)
                     Image(systemName: icon)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(color)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
                 }
                 Text(title)
                     .font(.headline)
+                    .fontWeight(.semibold)
             }
-            .padding(.bottom, 16)
+            .padding(.bottom, 18)
 
             content
         }
-        .padding(20)
+        .padding(22)
         .background {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.background)
-                .shadow(color: .black.opacity(0.04), radius: 8, y: 2)
+                .fill(.ultraThinMaterial)
         }
         .overlay {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.secondary.opacity(0.1), lineWidth: 1)
+                .stroke(
+                    LinearGradient(
+                        colors: [.white.opacity(0.2), .white.opacity(0.05)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
         }
+        .shadow(color: .black.opacity(0.06), radius: 12, y: 4)
+        .scaleEffect(isHovered ? 1.005 : 1.0)
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isHovered)
+        .onHover { hovering in
+            isHovered = hovering
+        }
+    }
+}
+
+struct SectionDivider: View {
+    var body: some View {
+        Rectangle()
+            .fill(
+                LinearGradient(
+                    colors: [.clear, .secondary.opacity(0.15), .clear],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .frame(height: 1)
+            .padding(.vertical, 10)
     }
 }
 
@@ -299,20 +380,71 @@ struct SettingsToggleRow: View {
     let title: String
     let description: String
     @Binding var isOn: Bool
+    @State private var isHovered = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.callout)
+                    .fontWeight(.medium)
                 Text(description)
                     .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
+                    .lineSpacing(2)
             }
             Spacer()
             Toggle("", isOn: $isOn)
                 .labelsHidden()
                 .toggleStyle(.switch)
+                .tint(.purple)
+        }
+        .padding(.vertical, 4)
+        .padding(.horizontal, 8)
+        .background {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(isHovered ? Color.secondary.opacity(0.06) : Color.clear)
+        }
+        .animation(.easeOut(duration: 0.15), value: isHovered)
+        .onHover { hovering in
+            isHovered = hovering
+        }
+    }
+}
+
+struct ModernAddButton: View {
+    let disabled: Bool
+    let action: () -> Void
+    @State private var isHovered = false
+
+    private let gradient = LinearGradient(
+        colors: [.purple, .indigo],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "plus")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 36, height: 36)
+                .background {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(disabled ? AnyShapeStyle(Color.secondary.opacity(0.3)) : AnyShapeStyle(gradient))
+                }
+                .shadow(
+                    color: disabled ? .clear : .purple.opacity(isHovered ? 0.4 : 0.2),
+                    radius: isHovered ? 8 : 4,
+                    y: isHovered ? 4 : 2
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .scaleEffect(isHovered && !disabled ? 1.05 : 1.0)
+        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isHovered)
+        .onHover { hovering in
+            isHovered = hovering
         }
     }
 }
@@ -329,7 +461,7 @@ struct PriceRow: View {
             Spacer()
             Text(value)
                 .font(.callout)
-                .fontWeight(.medium)
+                .fontWeight(.semibold)
                 .foregroundStyle(.primary)
         }
     }
@@ -339,35 +471,52 @@ struct ModernFillerChip: View {
     let text: String
     var isSelected: Bool = true
     var canDelete: Bool = false
+    var gradientColors: [Color] = [.purple, .indigo]
     let action: () -> Void
 
     @State private var isHovered = false
 
+    private var chipGradient: LinearGradient {
+        LinearGradient(
+            colors: gradientColors,
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 Text(text)
                     .font(.caption)
-                    .fontWeight(.medium)
+                    .fontWeight(.semibold)
                 if canDelete {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .bold))
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
             .background {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isSelected ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.08))
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(isSelected ? AnyShapeStyle(chipGradient.opacity(0.2)) : AnyShapeStyle(Color.secondary.opacity(0.08)))
             }
             .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(isSelected ? Color.accentColor.opacity(0.3) : Color.clear, lineWidth: 1)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(
+                        isSelected ? AnyShapeStyle(chipGradient.opacity(0.5)) : AnyShapeStyle(Color.clear),
+                        lineWidth: 1.5
+                    )
             }
             .foregroundStyle(isSelected ? .primary : .secondary)
+            .shadow(
+                color: isSelected ? gradientColors[0].opacity(0.15) : .clear,
+                radius: 3,
+                y: 1
+            )
         }
         .buttonStyle(.plain)
-        .scaleEffect(isHovered ? 1.05 : 1.0)
+        .scaleEffect(isHovered ? 1.06 : 1.0)
         .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isHovered)
         .onHover { hovering in
             isHovered = hovering

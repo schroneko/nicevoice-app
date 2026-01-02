@@ -42,37 +42,76 @@ struct RecentTranscriptionsCard: View {
     @State private var showBenchmarkSheet = false
     @State private var benchmarkRecord: TranscriptionRecord?
     @State private var expectedText = ""
+    @State private var animateItems = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Label("最近の変換", systemImage: "clock.arrow.circlepath")
-                    .font(.headline)
-                    .foregroundStyle(.primary)
+                HStack(spacing: 8) {
+                    ZStack {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [.purple.opacity(0.2), .indigo.opacity(0.2)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 32, height: 32)
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [.purple, .indigo],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    }
+                    Text("最近の変換")
+                        .font(.headline)
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [.purple, .indigo],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                }
                 Spacer()
                 if !appState.history.isEmpty {
                     Text("\(appState.history.count) 件")
                         .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.secondary.opacity(0.1))
-                        .cornerRadius(8)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(
+                            Capsule()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [.purple, .indigo],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                        )
                 }
             }
 
             if appState.history.isEmpty {
-                EmptyStateView(
+                ModernEmptyStateView(
                     icon: "waveform.slash",
                     title: "まだ変換履歴がありません",
-                    description: "fn キーを押しながら話すと、\n音声がテキストに変換されます"
+                    description: "fn キーを押しながら話すと、\n音声がテキストに変換されます",
+                    showActionButton: false
                 )
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 24)
             } else {
-                VStack(spacing: 0) {
+                VStack(spacing: 8) {
                     ForEach(Array(appState.history.prefix(5).enumerated()), id: \.element.id) { index, record in
-                        RecentTranscriptionRow(
+                        ModernRecentTranscriptionRow(
                             record: record,
                             isHovered: hoveredId == record.id,
                             onCopy: { appState.copyHistoryItem(record.text) },
@@ -85,25 +124,36 @@ struct RecentTranscriptionsCard: View {
                         .onHover { isHovered in
                             hoveredId = isHovered ? record.id : nil
                         }
-
-                        if index < min(4, appState.history.count - 1) {
-                            Divider()
-                                .padding(.leading, 44)
-                        }
+                        .opacity(animateItems ? 1 : 0)
+                        .offset(y: animateItems ? 0 : 10)
+                        .animation(
+                            .spring(response: 0.4, dampingFraction: 0.8).delay(Double(index) * 0.05),
+                            value: animateItems
+                        )
                     }
+                }
+                .onAppear {
+                    animateItems = true
                 }
             }
         }
         .padding(20)
         .background {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.background)
-                .shadow(color: .black.opacity(0.04), radius: 8, y: 2)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(.ultraThinMaterial)
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.secondary.opacity(0.1), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(
+                    LinearGradient(
+                        colors: [.purple.opacity(0.3), .indigo.opacity(0.1), .clear],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
         }
+        .shadow(color: .purple.opacity(0.08), radius: 20, y: 8)
         .sheet(isPresented: $showBenchmarkSheet) {
             BenchmarkAddSheet(
                 recognizedText: benchmarkRecord?.text ?? "",
@@ -129,43 +179,205 @@ struct BenchmarkAddSheet: View {
     let onCancel: () -> Void
 
     var body: some View {
-        VStack(spacing: 20) {
-            Text("ベンチマークに追加")
-                .font(.headline)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("認識結果:")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                Text(recognizedText)
-                    .padding(8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.secondary.opacity(0.1))
-                    .cornerRadius(8)
+        VStack(spacing: 24) {
+            HStack {
+                Text("ベンチマークに追加")
+                    .font(.title3)
+                    .fontWeight(.bold)
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [.purple, .indigo],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                Spacer()
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("正解テキスト:")
+            VStack(alignment: .leading, spacing: 10) {
+                Label("認識結果", systemImage: "waveform")
                     .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.secondary)
+                Text(recognizedText)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.ultraThinMaterial)
+                    .cornerRadius(12)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.purple.opacity(0.2), lineWidth: 1)
+                    }
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                Label("正解テキスト", systemImage: "text.cursor")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
                     .foregroundStyle(.secondary)
                 TextEditor(text: $expectedText)
                     .frame(height: 80)
-                    .padding(4)
-                    .background(Color.secondary.opacity(0.1))
-                    .cornerRadius(8)
+                    .padding(8)
+                    .background(.ultraThinMaterial)
+                    .cornerRadius(12)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.purple.opacity(0.2), lineWidth: 1)
+                    }
             }
 
-            HStack {
-                Button("キャンセル", action: onCancel)
-                    .keyboardShortcut(.cancelAction)
-                Spacer()
-                Button("追加", action: onAdd)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(expectedText.isEmpty)
+            HStack(spacing: 12) {
+                Button(action: onCancel) {
+                    Text("キャンセル")
+                        .fontWeight(.medium)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(.ultraThinMaterial)
+                        .cornerRadius(12)
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut(.cancelAction)
+
+                Button(action: onAdd) {
+                    Text("追加")
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(
+                            LinearGradient(
+                                colors: expectedText.isEmpty ? [.gray] : [.purple, .indigo],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .cornerRadius(12)
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut(.defaultAction)
+                .disabled(expectedText.isEmpty)
             }
         }
-        .padding(24)
-        .frame(width: 400)
+        .padding(28)
+        .frame(width: 440)
+        .background(.ultraThinMaterial)
+    }
+}
+
+struct ModernRecentTranscriptionRow: View {
+    let record: TranscriptionRecord
+    let isHovered: Bool
+    let onCopy: () -> Void
+    var onAddToBenchmark: ((TranscriptionRecord) -> Void)? = nil
+    @StateObject private var audioPlayer = AudioPlayerManager()
+    @State private var showCopied = false
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Button {
+                if record.hasAudio {
+                    if let path = record.audioPath {
+                        audioPlayer.toggle(url: URL(fileURLWithPath: path), id: record.id)
+                    }
+                }
+            } label: {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(
+                            record.hasAudio
+                                ? LinearGradient(
+                                    colors: [.purple.opacity(0.15), .indigo.opacity(0.15)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                                : LinearGradient(
+                                    colors: [.secondary.opacity(0.1), .secondary.opacity(0.1)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                        )
+                        .frame(width: 36, height: 36)
+                    Image(systemName: record.hasAudio ? (audioPlayer.isPlaying ? "stop.fill" : "play.fill") : "text.bubble")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(
+                            record.hasAudio
+                                ? LinearGradient(colors: [.purple, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing)
+                                : LinearGradient(colors: [.secondary], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        )
+                }
+            }
+            .buttonStyle(.plain)
+            .disabled(!record.hasAudio)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(record.text)
+                    .lineLimit(1)
+                    .font(.callout)
+                Text(record.timestamp, style: .relative)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+
+            Spacer()
+
+            if showCopied {
+                Text("Copied")
+                    .font(.caption2)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.green)
+                    .transition(.scale.combined(with: .opacity))
+            }
+
+            Button(action: {
+                onCopy()
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    showCopied = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                    withAnimation { showCopied = false }
+                }
+            }) {
+                Image(systemName: "doc.on.doc")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 28, height: 28)
+                    .background(Color.secondary.opacity(isHovered ? 0.1 : 0))
+                    .cornerRadius(8)
+            }
+            .buttonStyle(.plain)
+            .opacity(isHovered ? 1 : 0)
+            .animation(.easeInOut(duration: 0.15), value: isHovered)
+        }
+        .padding(10)
+        .background {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isHovered ? Color.purple.opacity(0.04) : Color.clear)
+        }
+        .contextMenu {
+            Button {
+                onCopy()
+            } label: {
+                Label("コピー", systemImage: "doc.on.doc")
+            }
+
+            if record.hasAudio {
+                Button {
+                    if let path = record.audioPath {
+                        audioPlayer.toggle(url: URL(fileURLWithPath: path), id: record.id)
+                    }
+                } label: {
+                    Label(audioPlayer.isPlaying ? "停止" : "再生", systemImage: audioPlayer.isPlaying ? "stop.fill" : "play.fill")
+                }
+            }
+
+            if record.hasAudio, let onAdd = onAddToBenchmark {
+                Button {
+                    onAdd(record)
+                } label: {
+                    Label("ベンチマークに追加", systemImage: "chart.bar.doc.horizontal")
+                }
+            }
+        }
     }
 }
 
@@ -294,85 +506,202 @@ class AudioPlayerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
     }
 }
 
+struct ModernEmptyStateView: View {
+    let icon: String
+    let title: String
+    let description: String
+    var showActionButton: Bool = false
+    var actionTitle: String = ""
+    var onAction: (() -> Void)? = nil
+    @State private var animateIcon = false
+
+    var body: some View {
+        VStack(spacing: 20) {
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [.purple.opacity(0.15), .indigo.opacity(0.1)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 88, height: 88)
+                    .blur(radius: 1)
+
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [.purple.opacity(0.1), .indigo.opacity(0.05)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 72, height: 72)
+
+                Image(systemName: icon)
+                    .font(.system(size: 32, weight: .medium))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [.purple, .indigo],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .scaleEffect(animateIcon ? 1.05 : 1.0)
+                    .animation(
+                        .easeInOut(duration: 2).repeatForever(autoreverses: true),
+                        value: animateIcon
+                    )
+            }
+
+            VStack(spacing: 8) {
+                Text(title)
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.primary)
+
+                Text(description)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(4)
+            }
+
+            if showActionButton, let action = onAction {
+                Button(action: action) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.right.circle.fill")
+                        Text(actionTitle)
+                    }
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .background(
+                        LinearGradient(
+                            colors: [.purple, .indigo],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .cornerRadius(12)
+                    .shadow(color: .purple.opacity(0.3), radius: 8, y: 4)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 16)
+        .onAppear {
+            animateIcon = true
+        }
+    }
+}
+
 struct EmptyStateView: View {
     let icon: String
     let title: String
     let description: String
 
     var body: some View {
-        VStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(Color.secondary.opacity(0.1))
-                    .frame(width: 64, height: 64)
-                Image(systemName: icon)
-                    .font(.system(size: 24, weight: .medium))
-                    .foregroundStyle(.secondary)
-            }
-
-            Text(title)
-                .font(.headline)
-                .foregroundStyle(.secondary)
-
-            Text(description)
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
-        }
+        ModernEmptyStateView(
+            icon: icon,
+            title: title,
+            description: description
+        )
     }
 }
 
-struct SearchField: View {
+struct GlassmorphicSearchField: View {
     @Binding var text: String
     @State private var isFocused = false
+    @FocusState private var fieldFocus: Bool
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(isFocused ? .primary : .secondary)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(
+                    isFocused
+                        ? LinearGradient(colors: [.purple, .indigo], startPoint: .leading, endPoint: .trailing)
+                        : LinearGradient(colors: [.secondary], startPoint: .leading, endPoint: .trailing)
+                )
+
             TextField("検索", text: $text)
                 .textFieldStyle(.plain)
                 .font(.callout)
-                .frame(width: 140)
+                .focused($fieldFocus)
+                .onChange(of: fieldFocus) { _, newValue in
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isFocused = newValue
+                    }
+                }
+
             if !text.isEmpty {
                 Button {
-                    withAnimation(.easeInOut(duration: 0.15)) {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                         text = ""
                     }
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+                    ZStack {
+                        Circle()
+                            .fill(Color.secondary.opacity(0.15))
+                            .frame(width: 18, height: 18)
+                        Image(systemName: "xmark")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .buttonStyle(.plain)
                 .transition(.scale.combined(with: .opacity))
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
         .background {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.secondary.opacity(0.1))
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(.ultraThinMaterial)
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(isFocused ? Color.accentColor.opacity(0.5) : Color.clear, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(
+                    isFocused
+                        ? LinearGradient(colors: [.purple.opacity(0.5), .indigo.opacity(0.3)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        : LinearGradient(colors: [.secondary.opacity(0.2)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                    lineWidth: 1
+                )
         }
+        .shadow(color: isFocused ? .purple.opacity(0.1) : .clear, radius: 8, y: 2)
+    }
+}
+
+struct SearchField: View {
+    @Binding var text: String
+
+    var body: some View {
+        GlassmorphicSearchField(text: $text)
+            .frame(width: 180)
     }
 }
 
 struct AnimatedWaveformView: View {
     @State private var animating = false
     let barCount = 5
-    let barWidth: CGFloat = 2
+    let barWidth: CGFloat = 2.5
     let barSpacing: CGFloat = 2
 
     var body: some View {
         HStack(spacing: barSpacing) {
             ForEach(0..<barCount, id: \.self) { index in
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(Color.blue)
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(
+                        LinearGradient(
+                            colors: [.purple, .indigo],
+                            startPoint: .bottom,
+                            endPoint: .top
+                        )
+                    )
                     .frame(width: barWidth, height: animating ? CGFloat.random(in: 4...14) : 6)
                     .animation(
                         .easeInOut(duration: 0.3)
@@ -439,15 +768,28 @@ struct ModernHistoryRowView: View {
     var body: some View {
         HStack(spacing: 14) {
             ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.blue.opacity(isPlaying ? 0.25 : (isTapped ? 0.2 : 0.1)))
-                    .frame(width: 40, height: 40)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: isPlaying
+                                ? [.purple.opacity(0.25), .indigo.opacity(0.2)]
+                                : (isTapped ? [.purple.opacity(0.2), .indigo.opacity(0.15)] : [.purple.opacity(0.1), .indigo.opacity(0.08)]),
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 44, height: 44)
+
                 if isPlaying {
                     AnimatedWaveformView()
                 } else {
-                    Image(systemName: "waveform")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(record.hasAudio ? .blue : .blue.opacity(0.3))
+                    Image(systemName: record.hasAudio ? "waveform" : "text.bubble")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(
+                            record.hasAudio
+                                ? LinearGradient(colors: [.purple, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing)
+                                : LinearGradient(colors: [.secondary.opacity(0.5)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        )
                 }
             }
             .scaleEffect(isTapped ? 0.9 : 1.0)
@@ -460,7 +802,7 @@ struct ModernHistoryRowView: View {
             )
             .help(record.hasAudio ? (isPlaying ? "停止" : "再生") : "音声なし")
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 5) {
                 Text(record.text)
                     .font(.callout)
                     .lineLimit(2)
@@ -471,8 +813,9 @@ struct ModernHistoryRowView: View {
                         .font(.caption2)
                         .fontWeight(.medium)
                         .foregroundStyle(.tertiary)
-                    Text("·")
-                        .foregroundStyle(.quaternary)
+                    Circle()
+                        .fill(.quaternary)
+                        .frame(width: 3, height: 3)
                     Text(timeString)
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
@@ -481,12 +824,20 @@ struct ModernHistoryRowView: View {
 
             Spacer()
 
-            HStack(spacing: 4) {
+            HStack(spacing: 6) {
                 if showCopiedFeedback {
-                    Text("コピーしました")
-                        .font(.caption2)
-                        .foregroundStyle(.green)
-                        .transition(.opacity.combined(with: .scale))
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 10, weight: .bold))
+                        Text("Copied")
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundStyle(.green)
+                    .transition(.asymmetric(
+                        insertion: .scale.combined(with: .opacity),
+                        removal: .opacity
+                    ))
                 }
 
                 Button {
@@ -501,40 +852,50 @@ struct ModernHistoryRowView: View {
                     }
                 } label: {
                     Image(systemName: "doc.on.doc")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.secondary)
-                        .frame(width: 28, height: 28)
-                        .background(Color.secondary.opacity(isHovered ? 0.1 : 0))
-                        .cornerRadius(6)
+                        .frame(width: 32, height: 32)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Color.secondary.opacity(isHovered ? 0.1 : 0))
+                        )
                 }
                 .buttonStyle(.plain)
                 .opacity(isHovered ? 1 : 0)
 
                 Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
                         appState.removeHistoryItem(record)
                     }
                 } label: {
                     Image(systemName: "trash")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.red.opacity(0.8))
-                        .frame(width: 28, height: 28)
-                        .background(Color.red.opacity(isHovered ? 0.1 : 0))
-                        .cornerRadius(6)
+                        .frame(width: 32, height: 32)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Color.red.opacity(isHovered ? 0.08 : 0))
+                        )
                 }
                 .buttonStyle(.plain)
                 .opacity(isHovered ? 1 : 0)
             }
-            .animation(.easeInOut(duration: 0.15), value: isHovered)
+            .animation(.easeInOut(duration: 0.2), value: isHovered)
         }
-        .padding(12)
+        .padding(14)
         .background {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(isHovered ? Color.secondary.opacity(0.06) : Color.clear)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(isHovered ? Color.purple.opacity(0.03) : Color.clear)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(isHovered ? Color.purple.opacity(0.1) : Color.clear, lineWidth: 1)
         }
         .contentShape(Rectangle())
         .onHover { hovering in
-            isHovered = hovering
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovered = hovering
+            }
         }
     }
 }
@@ -544,7 +905,7 @@ struct HistoryContentView: View {
     @StateObject private var audioPlayer = AudioPlayerManager()
     @State private var searchText = ""
     @State private var showingClearConfirmation = false
-    @State private var animateContent = false
+    @State private var animateItems = false
 
     private var filteredHistory: [TranscriptionRecord] {
         if searchText.isEmpty {
@@ -556,70 +917,115 @@ struct HistoryContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text("履歴")
                         .font(.largeTitle)
                         .fontWeight(.bold)
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [.purple, .indigo],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
                     Text("変換した音声の記録")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                SearchField(text: $searchText)
+                GlassmorphicSearchField(text: $searchText)
+                    .frame(width: 200)
             }
             .padding(.horizontal, 28)
-            .padding(.vertical, 20)
+            .padding(.vertical, 24)
 
             if filteredHistory.isEmpty {
                 Spacer()
                 if appState.history.isEmpty {
-                    EmptyStateView(
+                    ModernEmptyStateView(
                         icon: "clock",
                         title: "履歴がありません",
-                        description: "変換した音声はここに記録されます"
+                        description: "変換した音声はここに記録されます",
+                        showActionButton: true,
+                        actionTitle: "音声入力を試す",
+                        onAction: {
+                        }
                     )
                 } else {
-                    EmptyStateView(
+                    ModernEmptyStateView(
                         icon: "magnifyingglass",
                         title: "該当する履歴がありません",
-                        description: "「\(searchText)」に一致する結果が見つかりませんでした"
+                        description: "「\(searchText)」に一致する結果が\n見つかりませんでした"
                     )
                 }
                 Spacer()
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 4) {
-                        ForEach(filteredHistory) { record in
-                            ModernHistoryRowView(record: record, appState: appState, audioPlayer: audioPlayer)
-                                .padding(.horizontal, 20)
-                                .contextMenu {
-                                    Button {
-                                        appState.copyHistoryItem(record.text)
-                                    } label: {
-                                        Label("コピー", systemImage: "doc.on.doc")
-                                    }
-                                    Divider()
-                                    Button(role: .destructive) {
-                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                            appState.removeHistoryItem(record)
-                                        }
-                                    } label: {
-                                        Label("削除", systemImage: "trash")
-                                    }
+                    LazyVStack(spacing: 6) {
+                        ForEach(Array(filteredHistory.enumerated()), id: \.element.id) { index, record in
+                            ModernHistoryRowView(
+                                record: record,
+                                appState: appState,
+                                audioPlayer: audioPlayer
+                            )
+                            .padding(.horizontal, 20)
+                            .opacity(animateItems ? 1 : 0)
+                            .offset(y: animateItems ? 0 : 15)
+                            .animation(
+                                .spring(response: 0.5, dampingFraction: 0.8).delay(Double(min(index, 10)) * 0.03),
+                                value: animateItems
+                            )
+                            .contextMenu {
+                                Button {
+                                    appState.copyHistoryItem(record.text)
+                                } label: {
+                                    Label("コピー", systemImage: "doc.on.doc")
                                 }
+                                Divider()
+                                Button(role: .destructive) {
+                                    withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                                        appState.removeHistoryItem(record)
+                                    }
+                                } label: {
+                                    Label("削除", systemImage: "trash")
+                                }
+                            }
                         }
                     }
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 10)
+                }
+                .onAppear {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        animateItems = true
+                    }
                 }
             }
 
             HStack(spacing: 16) {
-                HStack(spacing: 6) {
-                    Image(systemName: "doc.text")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+                HStack(spacing: 8) {
+                    ZStack {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [.purple.opacity(0.1), .indigo.opacity(0.1)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 24, height: 24)
+                        Image(systemName: "doc.text")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [.purple, .indigo],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    }
                     Text("\(appState.history.count) 件")
-                        .font(.caption)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
                         .foregroundStyle(.secondary)
                 }
 
@@ -628,21 +1034,34 @@ struct HistoryContentView: View {
                 Button {
                     showingClearConfirmation = true
                 } label: {
-                    Label("すべてクリア", systemImage: "trash")
-                        .font(.caption)
+                    HStack(spacing: 6) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 12, weight: .medium))
+                        Text("すべてクリア")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                    }
+                    .foregroundStyle(appState.history.isEmpty ? Color.secondary.opacity(0.5) : Color.red)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(appState.history.isEmpty ? Color.secondary.opacity(0.05) : Color.red.opacity(0.08))
+                    )
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(appState.history.isEmpty ? Color.secondary.opacity(0.5) : Color.red)
                 .disabled(appState.history.isEmpty)
             }
             .padding(.horizontal, 28)
-            .padding(.vertical, 16)
-            .background(.bar)
+            .padding(.vertical, 18)
+            .background(.ultraThinMaterial)
         }
         .alert("履歴をすべて削除しますか？", isPresented: $showingClearConfirmation) {
             Button("キャンセル", role: .cancel) {}
             Button("削除", role: .destructive) {
-                appState.clearHistory()
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                    appState.clearHistory()
+                }
             }
         } message: {
             Text("この操作は取り消せません。")
@@ -653,6 +1072,7 @@ struct HistoryContentView: View {
 struct HistoryWindowView: View {
     var appState: AppState
     @State private var searchText = ""
+    @State private var animateItems = false
 
     private var filteredHistory: [TranscriptionRecord] {
         if searchText.isEmpty {
@@ -663,67 +1083,104 @@ struct HistoryWindowView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField("検索", text: $searchText)
-                    .textFieldStyle(.plain)
-                if !searchText.isEmpty {
-                    Button {
-                        searchText = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
+            VStack(spacing: 16) {
+                HStack {
+                    Text("履歴")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [.purple, .indigo],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                    Spacer()
                 }
+
+                GlassmorphicSearchField(text: $searchText)
             }
-            .padding(8)
-            .background(Color.gray.opacity(0.1))
-            .cornerRadius(8)
-            .padding()
+            .padding(20)
 
             Divider()
+                .opacity(0.5)
 
             if filteredHistory.isEmpty {
                 Spacer()
                 if appState.history.isEmpty {
-                    VStack(spacing: 8) {
-                        Image(systemName: "clock")
-                            .font(.largeTitle)
-                            .foregroundStyle(.secondary)
-                        Text("履歴がありません")
-                            .foregroundStyle(.secondary)
-                    }
+                    ModernEmptyStateView(
+                        icon: "clock",
+                        title: "履歴がありません",
+                        description: "変換した音声はここに記録されます"
+                    )
                 } else {
-                    Text("該当する履歴がありません")
-                        .foregroundStyle(.secondary)
+                    ModernEmptyStateView(
+                        icon: "magnifyingglass",
+                        title: "該当する履歴がありません",
+                        description: "検索条件を変更してください"
+                    )
                 }
                 Spacer()
             } else {
-                List {
-                    ForEach(filteredHistory) { record in
-                        HistoryRowView(record: record, appState: appState)
+                ScrollView {
+                    LazyVStack(spacing: 4) {
+                        ForEach(Array(filteredHistory.enumerated()), id: \.element.id) { index, record in
+                            HistoryRowView(record: record, appState: appState)
+                                .padding(.horizontal, 12)
+                                .opacity(animateItems ? 1 : 0)
+                                .offset(y: animateItems ? 0 : 10)
+                                .animation(
+                                    .spring(response: 0.4, dampingFraction: 0.8).delay(Double(min(index, 15)) * 0.02),
+                                    value: animateItems
+                                )
+                        }
+                    }
+                    .padding(.vertical, 8)
+                }
+                .onAppear {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        animateItems = true
                     }
                 }
-                .listStyle(.plain)
             }
 
             Divider()
+                .opacity(0.5)
 
             HStack {
-                Text("\(appState.history.count) 件")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button("すべてクリア") {
-                    appState.clearHistory()
+                HStack(spacing: 6) {
+                    Image(systemName: "doc.text")
+                        .font(.caption)
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [.purple, .indigo],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                    Text("\(appState.history.count) 件")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
+                Spacer()
+                Button {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                        appState.clearHistory()
+                    }
+                } label: {
+                    Text("すべてクリア")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundStyle(appState.history.isEmpty ? Color.secondary.opacity(0.5) : Color.red)
+                }
+                .buttonStyle(.plain)
                 .disabled(appState.history.isEmpty)
             }
-            .padding()
+            .padding(16)
+            .background(.ultraThinMaterial)
         }
-        .frame(width: 400, height: 500)
+        .frame(width: 420, height: 520)
+        .background(.ultraThinMaterial)
     }
 }
 
@@ -731,6 +1188,7 @@ struct HistoryRowView: View {
     let record: TranscriptionRecord
     var appState: AppState
     @State private var isHovered = false
+    @State private var showCopied = false
 
     private var timeString: String {
         let formatter = DateFormatter()
@@ -752,42 +1210,93 @@ struct HistoryRowView: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(record.text)
-                    .lineLimit(3)
+                    .font(.callout)
+                    .lineLimit(2)
+
                 HStack(spacing: 4) {
                     Text(dateString)
+                        .fontWeight(.medium)
                     Text(timeString)
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
             }
-            Spacer()
-            HStack(spacing: 8) {
-                Button {
-                    appState.copyHistoryItem(record.text)
-                } label: {
-                    Image(systemName: "doc.on.doc")
-                }
-                .buttonStyle(.borderless)
-                .opacity(isHovered ? 1 : 0.3)
-                .help("コピー")
 
-                Button {
-                    appState.removeHistoryItem(record)
-                } label: {
-                    Image(systemName: "trash")
-                        .foregroundStyle(.red)
+            Spacer()
+
+            HStack(alignment: .center, spacing: 4) {
+                Text(timeString)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.tertiary)
+                    .opacity(isHovered ? 0 : 1)
+
+                HStack(spacing: 6) {
+                    if showCopied {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.green)
+                            .transition(.scale.combined(with: .opacity))
+                    }
+
+                    Button {
+                        appState.copyHistoryItem(record.text)
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            showCopied = true
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                            withAnimation { showCopied = false }
+                        }
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 28, height: 28)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .fill(Color.secondary.opacity(0.1))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .help("コピー")
+
+                    Button {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                            appState.removeHistoryItem(record)
+                        }
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.red.opacity(0.8))
+                            .frame(width: 28, height: 28)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .fill(Color.red.opacity(0.08))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .help("削除")
                 }
-                .buttonStyle(.borderless)
-                .opacity(isHovered ? 1 : 0.3)
-                .help("削除")
+                .opacity(isHovered ? 1 : 0)
             }
+            .animation(.easeInOut(duration: 0.15), value: isHovered)
         }
-        .padding(.vertical, 4)
+        .padding(12)
+        .background {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isHovered ? Color.purple.opacity(0.04) : Color.clear)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(isHovered ? Color.purple.opacity(0.1) : Color.clear, lineWidth: 1)
+        }
         .onHover { hovering in
-            isHovered = hovering
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovered = hovering
+            }
         }
     }
 }
