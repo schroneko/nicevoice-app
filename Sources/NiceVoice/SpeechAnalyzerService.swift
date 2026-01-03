@@ -237,12 +237,17 @@ final class SpeechAnalyzerService {
             try? await analyzer?.finalizeAndFinishThroughEndOfInput()
             debugLog("🔍 [DEBUG] finalizeAndFinishThroughEndOfInput completed")
 
-            try? await Task.sleep(for: .milliseconds(500))
+            try? await Task.sleep(for: .seconds(5))
 
-            transcriptionTask?.cancel()
-            transcriptionTask = nil
-            analyzerTask?.cancel()
-            analyzerTask = nil
+            if transcriptionTask != nil {
+                debugLog("⚠️ Transcription task did not finish naturally, cancelling")
+                transcriptionTask?.cancel()
+                transcriptionTask = nil
+            }
+            if analyzerTask != nil {
+                analyzerTask?.cancel()
+                analyzerTask = nil
+            }
         }
 
         debugLog("🎙️ SpeechAnalyzer recording stopped")

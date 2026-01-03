@@ -242,10 +242,8 @@ final class AppState {
         }
     }
 
-    @ObservationIgnored
     var usageStats: UsageStats = UsageStats()
     var dictionaryEntries: [DictionaryEntry] = []
-    @ObservationIgnored
     var fillerSettings: FillerSettings = FillerSettings()
 
     private var speechAnalyzerService: Any?
@@ -396,6 +394,7 @@ final class AppState {
         }
         isRecording = false
 
+        finalResultTimer?.cancel()
         waitingForFinalResult = true
         debugLog("🎙️ Recording stopped - waiting for SpeechAnalyzer final result")
         floatingPanel?.hide()
