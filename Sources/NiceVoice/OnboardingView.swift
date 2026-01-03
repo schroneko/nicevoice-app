@@ -665,10 +665,17 @@ struct OnboardingView: View {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 12, weight: .semibold))
                         Text("戻る")
+                        Text("←")
+                            .font(.system(size: 9, weight: .medium, design: .rounded))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.secondary.opacity(0.15))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
                     }
                     .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
+                .keyboardShortcut(.leftArrow, modifiers: [])
             }
 
             Spacer()
@@ -676,12 +683,20 @@ struct OnboardingView: View {
             Button {
                 skipOnboarding()
             } label: {
-                Text("スキップ")
-                    .font(.subheadline)
+                HStack(spacing: 6) {
+                    Text("スキップ")
+                    Text("esc")
+                        .font(.system(size: 9, weight: .medium, design: .rounded))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Color.secondary.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                }
+                .font(.subheadline)
             }
             .buttonStyle(.plain)
             .foregroundStyle(.tertiary)
-            .opacity(0.7)
+            .keyboardShortcut(.cancelAction)
 
             if currentStep == .complete {
                 Button {
@@ -689,8 +704,9 @@ struct OnboardingView: View {
                 } label: {
                     HStack(spacing: 8) {
                         Text("始める")
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 12, weight: .semibold))
+                        Text("⏎")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.7))
                     }
                     .font(.headline)
                     .foregroundStyle(.white)
@@ -707,6 +723,7 @@ struct OnboardingView: View {
                     .shadow(color: .green.opacity(0.3), radius: 8, y: 4)
                 }
                 .buttonStyle(.plain)
+                .keyboardShortcut(.defaultAction)
             } else {
                 Button {
                     withAnimation {
@@ -717,8 +734,9 @@ struct OnboardingView: View {
                 } label: {
                     HStack(spacing: 8) {
                         Text("次へ")
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 12, weight: .semibold))
+                        Text("→")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.7))
                     }
                     .font(.headline)
                     .foregroundStyle(.white)
@@ -735,6 +753,7 @@ struct OnboardingView: View {
                     .shadow(color: .purple.opacity(0.3), radius: 8, y: 4)
                 }
                 .buttonStyle(.plain)
+                .keyboardShortcut(.rightArrow, modifiers: [])
             }
         }
     }

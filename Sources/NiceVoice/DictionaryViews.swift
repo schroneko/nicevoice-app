@@ -414,14 +414,24 @@ struct DictionaryEditSheet: View {
             }
 
             HStack(spacing: 12) {
-                Button("キャンセル") {
+                Button {
                     dismiss()
+                } label: {
+                    HStack(spacing: 6) {
+                        Text("キャンセル")
+                        Text("esc")
+                            .font(.system(size: 9, weight: .medium, design: .rounded))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.secondary.opacity(0.15))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                    }
                 }
                 .keyboardShortcut(.cancelAction)
                 .buttonStyle(.plain)
                 .font(.callout.weight(.medium))
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, 16)
                 .padding(.vertical, 10)
                 .background(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -444,28 +454,33 @@ struct DictionaryEditSheet: View {
                     }
                     dismiss()
                 } label: {
-                    Text(isEditing ? "保存" : "追加")
-                        .font(.callout.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 24)
-                        .padding(.vertical, 10)
-                        .background(
-                            LinearGradient(
-                                colors: (reading.isEmpty || writing.isEmpty)
-                                    ? [.gray.opacity(0.5), .gray.opacity(0.4)]
-                                    : gradientColors,
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
+                    HStack(spacing: 6) {
+                        Text(isEditing ? "保存" : "追加")
+                        Text("⏎")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
+                    .background(
+                        LinearGradient(
+                            colors: (reading.isEmpty || writing.isEmpty)
+                                ? [.gray.opacity(0.5), .gray.opacity(0.4)]
+                                : gradientColors,
+                            startPoint: .leading,
+                            endPoint: .trailing
                         )
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .shadow(
-                            color: (reading.isEmpty || writing.isEmpty)
-                                ? .clear
-                                : .purple.opacity(0.3),
-                            radius: 8,
-                            y: 4
-                        )
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .shadow(
+                        color: (reading.isEmpty || writing.isEmpty)
+                            ? .clear
+                            : .purple.opacity(0.3),
+                        radius: 8,
+                        y: 4
+                    )
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.defaultAction)

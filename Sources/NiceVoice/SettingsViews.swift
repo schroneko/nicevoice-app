@@ -235,27 +235,37 @@ struct SettingsContentView: View {
                                 }
                             }
 
-                            HStack(spacing: 10) {
-                                TextField("カスタムフィラーを追加", text: $newFiller)
-                                    .textFieldStyle(.plain)
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 10)
-                                    .background {
-                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                            .fill(.ultraThinMaterial)
-                                    }
-                                    .overlay {
-                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                            .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
-                                    }
-                                    .frame(width: 200)
-                                    .onSubmit {
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack(spacing: 10) {
+                                    TextField("カスタムフィラーを追加", text: $newFiller)
+                                        .textFieldStyle(.plain)
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 10)
+                                        .background {
+                                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                                .fill(.ultraThinMaterial)
+                                        }
+                                        .overlay {
+                                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                                .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
+                                        }
+                                        .frame(width: 200)
+                                        .onSubmit {
+                                            addCustomFiller()
+                                        }
+
+                                    ModernAddButton(disabled: newFiller.isEmpty) {
                                         addCustomFiller()
                                     }
-
-                                ModernAddButton(disabled: newFiller.isEmpty) {
-                                    addCustomFiller()
                                 }
+
+                                HStack(spacing: 4) {
+                                    Text("⏎")
+                                        .font(.system(size: 10))
+                                    Text("Enter で追加")
+                                        .font(.system(size: 10))
+                                }
+                                .foregroundStyle(.tertiary)
                             }
 
                             SectionDivider()

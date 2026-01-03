@@ -228,30 +228,43 @@ struct BenchmarkAddSheet: View {
 
             HStack(spacing: 12) {
                 Button(action: onCancel) {
-                    Text("キャンセル")
-                        .fontWeight(.medium)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(.ultraThinMaterial)
-                        .cornerRadius(12)
+                    HStack(spacing: 6) {
+                        Text("キャンセル")
+                        Text("esc")
+                            .font(.system(size: 9, weight: .medium, design: .rounded))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.secondary.opacity(0.15))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                    }
+                    .fontWeight(.medium)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(.ultraThinMaterial)
+                    .cornerRadius(12)
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.cancelAction)
 
                 Button(action: onAdd) {
-                    Text("追加")
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(
-                            LinearGradient(
-                                colors: expectedText.isEmpty ? [.gray] : [.purple, .indigo],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
+                    HStack(spacing: 6) {
+                        Text("追加")
+                        Text("⏎")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(
+                        LinearGradient(
+                            colors: expectedText.isEmpty ? [.gray] : [.purple, .indigo],
+                            startPoint: .leading,
+                            endPoint: .trailing
                         )
-                        .cornerRadius(12)
+                    )
+                    .cornerRadius(12)
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.defaultAction)
