@@ -10,6 +10,7 @@ struct BatchTranscriptionView: View {
     @State private var showFileImporter = false
     @State private var selectedItemId: UUID?
     @State private var pulseAnimation = false
+    @State private var processingTasks: [UUID: Task<Void, Never>] = [:]
 
     private let supportedTypes: [UTType] = [.audio, .mpeg4Audio, .mp3, .wav, .aiff]
 
@@ -428,6 +429,8 @@ struct BatchTranscriptionView: View {
     }
 
     private func removeItem(_ item: BatchTranscriptionItem) {
+        processingTasks[item.id]?.cancel()
+        processingTasks[item.id] = nil
         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
             items.removeAll { $0.id == item.id }
             if selectedItemId == item.id {
@@ -450,56 +453,68 @@ struct BatchTranscriptionView: View {
             $0.error = nil
         }
 
-        Task {
+        let itemId = item.id
+        let fileName = item.fileName
+        let url = item.url
+
+        let task = Task {
             let service = BatchTranscriptionService.shared
             await service.requestNotificationPermission()
 
             do {
                 let result = try await service.transcribeFile(
-                    at: item.url,
+                    at: url,
                     onProgress: { progress in
+                        guard !Task.isCancelled else { return }
                         DispatchQueue.main.async {
                             withAnimation(.linear(duration: 0.1)) {
-                                updateItem(item.id) { $0.progress = progress }
+                                updateItem(itemId) { $0.progress = progress }
                             }
                         }
                     },
                     onStatusChange: { _ in }
                 )
 
+                guard !Task.isCancelled else { return }
+
                 await MainActor.run {
                     withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                        updateItem(item.id) {
+                        updateItem(itemId) {
                             $0.status = .completed
                             $0.result = result
                             $0.progress = 1.0
                         }
-                        selectedItemId = item.id
+                        selectedItemId = itemId
                     }
+                    processingTasks[itemId] = nil
                 }
 
                 await service.sendCompletionNotification(
-                    fileName: item.fileName,
+                    fileName: fileName,
                     success: true,
                     charCount: result.count
                 )
             } catch {
+                guard !Task.isCancelled else { return }
+
                 await MainActor.run {
                     withAnimation {
-                        updateItem(item.id) {
+                        updateItem(itemId) {
                             $0.status = .failed
                             $0.error = error.localizedDescription
                             $0.progress = 0
                         }
                     }
+                    processingTasks[itemId] = nil
                 }
 
                 await service.sendCompletionNotification(
-                    fileName: item.fileName,
+                    fileName: fileName,
                     success: false
                 )
             }
         }
+        processingTasks[itemId] = task
     }
 
     private func updateItem(_ id: UUID, update: (inout BatchTranscriptionItem) -> Void) {

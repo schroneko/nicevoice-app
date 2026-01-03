@@ -1,1 +1,12 @@
-[]
+[
+  {
+    "content": "デッドコード（HistoryItemView, FloatingPanel未使用関数）の削除を検討",
+    "status": "pending",
+    "activeForm": "デッドコードの削除を検討中"
+  },
+  {
+    "content": "debug-run.sh のエラーハンドリング改善を検討",
+    "status": "pending",
+    "activeForm": "debug-run.sh のエラーハンドリングを改善中"
+  }
+]
