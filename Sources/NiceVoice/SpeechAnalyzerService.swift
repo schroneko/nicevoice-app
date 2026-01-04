@@ -128,6 +128,9 @@ final class SpeechAnalyzerService {
                     let text = String(result.text.characters)
                     let isFinal = result.isFinal
                     debugLog("🔍 [DEBUG] SpeechAnalyzer result: \(text.count) chars (final: \(isFinal))")
+                    if isFinal {
+                        debugLog("🔍 [DEBUG] SpeechAnalyzer raw text: \(text)")
+                    }
 
                     if isFinal {
                         accumulated += text

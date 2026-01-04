@@ -8,7 +8,7 @@ struct TextProcessor {
         let originalText = text
         var result = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !result.isEmpty else { return result }
-        debugLog("🔤 [PUNCT] Input: \(originalText.count) chars")
+        debugLog("🔤 [PUNCT] Input (\(isFinal ? "final" : "interim")): \(result)")
 
         result = removeFillers(from: result)
         guard !result.isEmpty else { return result }
@@ -29,7 +29,7 @@ struct TextProcessor {
         }
 
         if result != originalText.trimmingCharacters(in: .whitespacesAndNewlines) {
-            debugLog("🔤 [PUNCT] Output: \(result.count) chars (changed)")
+            debugLog("🔤 [PUNCT] Output (\(isFinal ? "final" : "interim")): \(result)")
         }
         return result
     }
@@ -262,7 +262,10 @@ struct TextProcessor {
 
     private func insertQuestionMarks(in text: String) -> String {
         var result = text
-        let questionEndings = ["ですかね", "ますかね", "ですよね", "ますよね", "でしょうか", "ましょうか", "ですか", "ますか"]
+        let questionEndings = [
+            "ですかね", "ますかね", "ですよね", "ますよね", "でしょうか", "ましょうか", "ですか", "ますか",
+            "でしたっけ", "ましたっけ", "ですっけ", "ますっけ", "だっけ", "たっけ", "んだっけ"
+        ]
 
         for ending in questionEndings {
             var offset = 0
