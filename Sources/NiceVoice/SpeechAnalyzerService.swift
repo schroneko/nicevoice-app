@@ -235,21 +235,23 @@ final class SpeechAnalyzerService {
         inputContinuation?.finish()
         inputContinuation = nil
 
+        let taskToCancel = transcriptionTask
+        let analyzerToCancel = analyzerTask
+        let analyzerToFinalize = analyzer
+
         Task {
             debugLog("🔍 [DEBUG] Calling finalizeAndFinishThroughEndOfInput...")
-            try? await analyzer?.finalizeAndFinishThroughEndOfInput()
+            try? await analyzerToFinalize?.finalizeAndFinishThroughEndOfInput()
             debugLog("🔍 [DEBUG] finalizeAndFinishThroughEndOfInput completed")
 
             try? await Task.sleep(for: .seconds(5))
 
-            if transcriptionTask != nil {
+            if taskToCancel != nil {
                 debugLog("⚠️ Transcription task did not finish naturally, cancelling")
-                transcriptionTask?.cancel()
-                transcriptionTask = nil
+                taskToCancel?.cancel()
             }
-            if analyzerTask != nil {
-                analyzerTask?.cancel()
-                analyzerTask = nil
+            if analyzerToCancel != nil {
+                analyzerToCancel?.cancel()
             }
         }
 
