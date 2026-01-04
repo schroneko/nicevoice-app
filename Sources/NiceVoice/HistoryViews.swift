@@ -1,41 +1,6 @@
 import SwiftUI
 import AVFoundation
 
-struct HistoryItemView: View {
-    let record: TranscriptionRecord
-    var appState: AppState
-    @State private var isHovered = false
-
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(record.text)
-                    .font(.caption)
-                    .lineLimit(2)
-                Text(record.timestamp, style: .time)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Button {
-                appState.copyHistoryItem(record.text)
-            } label: {
-                Image(systemName: "doc.on.doc")
-                    .font(.caption)
-            }
-            .buttonStyle(.plain)
-            .opacity(isHovered ? 1 : 0.5)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(isHovered ? Color.gray.opacity(0.1) : Color.clear)
-        .cornerRadius(4)
-        .onHover { hovering in
-            isHovered = hovering
-        }
-    }
-}
-
 struct RecentTranscriptionsCard: View {
     var appState: AppState
     @State private var hoveredId: UUID?

@@ -1,8 +1,23 @@
 #!/bin/bash
-set -e
 
-echo "🔨 Building..."
-~/.mint/bin/swift-bundler bundle 2>&1 | grep -v "disk I/O error" || true
+echo "🔨 Building (step 1/2: compile)..."
+if ! swift build --product NiceVoice 2>&1 | grep -v "disk I/O error"; then
+    echo "❌ Build failed"
+    exit 1
+fi
+
+if [ ! -f .build/debug/NiceVoice ]; then
+    echo "❌ Build output not found"
+    exit 1
+fi
+
+echo "📦 Building (step 2/2: bundle)..."
+~/.mint/bin/swift-bundler bundle --skip-build --products-directory .build/debug 2>&1 | grep -v "disk I/O error" || true
+
+if [ ! -d .build/bundler/NiceVoice.app ]; then
+    echo "❌ Bundle not created"
+    exit 1
+fi
 
 echo "🔏 Signing..."
 codesign -fs "NiceVoice" --deep .build/bundler/NiceVoice.app
