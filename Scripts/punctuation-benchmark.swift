@@ -19,14 +19,19 @@ struct TestResult {
 
 func removeLeadingFillers(_ text: String) -> String {
     var result = text
-    let leadingFillers = ["あの", "その", "えっと", "えーと"]
+    let headFillers = ["あの", "えっと", "えーと"]
+    let contextFillers = ["あの", "えっと", "えーと"]
 
-    for filler in leadingFillers {
+    for filler in headFillers {
         if result.hasPrefix(filler) {
             result = String(result.dropFirst(filler.count))
         }
+    }
+
+    for filler in contextFillers {
         result = result.replacingOccurrences(of: "、\(filler)", with: "、")
         result = result.replacingOccurrences(of: "。\(filler)", with: "。")
+        result = result.replacingOccurrences(of: "に\(filler)", with: "に")
     }
 
     let fillerPronounPatterns = [
@@ -45,8 +50,8 @@ func addLocalPunctuation(_ text: String) -> String {
     var result = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !result.isEmpty else { return result }
 
-    let leadingFillers = ["あの", "その", "えっと", "えーと"]
-    for filler in leadingFillers {
+    let headFillers = ["あの", "えっと", "えーと"]
+    for filler in headFillers {
         if result.hasPrefix(filler) {
             result = String(result.dropFirst(filler.count))
         }

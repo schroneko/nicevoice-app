@@ -12,6 +12,12 @@
     "description": "文頭の「あの」を削除"
   },
   {
+    "id": "filler_ni_ano",
+    "input": "その配下にあのGeminiのNano Bananaを使った画像生成のスキルを中に入れてください",
+    "expected": "その配下にGeminiのNano Bananaを使った画像生成のスキルを中に入れてください",
+    "description": "「にあの」から「あの」を削除"
+  },
+  {
     "id": "demo_conjunction",
     "input": "直近の変換でもおかしなものがありました",
     "expected": "直近の変換でもおかしなものがありました",
