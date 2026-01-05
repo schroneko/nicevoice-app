@@ -65,6 +65,7 @@ struct TextProcessor {
             result = result.replacingOccurrences(of: "、\(filler)", with: "、")
             result = result.replacingOccurrences(of: "。\(filler)", with: "。")
             result = result.replacingOccurrences(of: "に\(filler)", with: "に")
+            result = result.replacingOccurrences(of: "もう\(filler)", with: "もう")
         }
 
         let fillerPronounPatterns = [
