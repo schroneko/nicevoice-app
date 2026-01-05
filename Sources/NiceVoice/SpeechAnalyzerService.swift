@@ -17,6 +17,7 @@ final class SpeechAnalyzerService {
     private var recordingFormat: AVAudioFormat?
 
     private let onTranscription: (String, Bool) -> Void
+    private let onFinalCompletion: ((String) -> Void)?
     private let onError: (String) -> Void
     private let onStatusChange: ((String) -> Void)?
     private let onAudioLevel: ((Float) -> Void)?
@@ -30,11 +31,13 @@ final class SpeechAnalyzerService {
 
     init(
         onTranscription: @escaping (String, Bool) -> Void,
+        onFinalCompletion: ((String) -> Void)? = nil,
         onError: @escaping (String) -> Void,
         onStatusChange: ((String) -> Void)? = nil,
         onAudioLevel: ((Float) -> Void)? = nil
     ) {
         self.onTranscription = onTranscription
+        self.onFinalCompletion = onFinalCompletion
         self.onError = onError
         self.onStatusChange = onStatusChange
         self.onAudioLevel = onAudioLevel
@@ -141,7 +144,13 @@ final class SpeechAnalyzerService {
                         self.onTranscription(outputText, isFinal)
                     }
                 }
-                debugLog("🔍 [DEBUG] Transcription loop ended normally")
+                let finalText = accumulated
+                debugLog("🔍 [DEBUG] Transcription loop ended normally, accumulated: \(finalText.count) chars")
+                if !finalText.isEmpty {
+                    await MainActor.run {
+                        self.onFinalCompletion?(finalText)
+                    }
+                }
             } catch {
                 await MainActor.run {
                     debugLog("❌ Transcription error: \(error)")

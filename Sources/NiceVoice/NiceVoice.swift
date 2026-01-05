@@ -274,10 +274,10 @@ final class AppState {
                     DispatchQueue.main.async {
                         guard let self else { return }
                         self.currentTranscription = self.addLocalPunctuation(text, isFinal: isFinal)
-                        if isFinal {
-                            self.handleFinalResult(text)
-                        }
                     }
+                },
+                onFinalCompletion: { [weak self] text in
+                    self?.handleFinalResult(text)
                 },
                 onError: { [weak self] error in
                     debugLog("❌ SpeechAnalyzer error: \(error)")
