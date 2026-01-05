@@ -109,6 +109,7 @@ struct TextProcessor {
             ("ワンパスワード", "1Password"),
             ("ジェミニ", "Gemini"),
             ("ナノバナナ", "Nano Banana"),
+            ("API機", "APIキー"),
         ]
         for (reading, writing) in builtInDictionary {
             result = result.replacingOccurrences(of: reading, with: writing)
