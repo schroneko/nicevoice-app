@@ -67,14 +67,11 @@ struct SettingsContentView: View {
     @AppStorage("showInMenuBar") private var showInMenuBar = true
     @AppStorage("shortcutKey") private var shortcutKeyRaw = ShortcutKey.fn.rawValue
     @State private var fillerSettings: FillerSettings
-    @State private var newFiller = ""
     @State private var sectionAnimations: [Bool] = [false, false, false]
 
     private var selectedShortcutKey: ShortcutKey {
         ShortcutKey(rawValue: shortcutKeyRaw) ?? .fn
     }
-
-    private let presetFillers = ["えー", "あー", "うーん", "まあ", "なんか", "やっぱり"]
 
     init(appState: AppState) {
         self.appState = appState
@@ -182,102 +179,13 @@ struct SettingsContentView: View {
                     if fillerSettings.removeFillers {
                         SectionDivider()
 
-                        VStack(alignment: .leading, spacing: 14) {
-                            Text("除去するフィラー")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(.secondary)
-                                .textCase(.uppercase)
-                                .tracking(0.5)
-
-                            FlowLayout(spacing: 8) {
-                                ForEach(presetFillers, id: \.self) { filler in
-                                    ModernFillerChip(
-                                        text: filler,
-                                        isSelected: fillerSettings.enabledPresets.contains(filler),
-                                        gradientColors: [.orange, .pink]
-                                    ) {
-                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                            if fillerSettings.enabledPresets.contains(filler) {
-                                                fillerSettings.enabledPresets.remove(filler)
-                                            } else {
-                                                fillerSettings.enabledPresets.insert(filler)
-                                            }
-                                            appState.updateFillerSettings(fillerSettings)
-                                        }
-                                    }
-                                }
-                            }
-
-                            if !fillerSettings.customFillers.isEmpty {
-                                Text("カスタム")
-                                    .font(.caption)
-                                    .fontWeight(.semibold)
-                                    .foregroundStyle(.secondary)
-                                    .textCase(.uppercase)
-                                    .tracking(0.5)
-                                    .padding(.top, 6)
-
-                                FlowLayout(spacing: 8) {
-                                    ForEach(fillerSettings.customFillers, id: \.self) { filler in
-                                        ModernFillerChip(
-                                            text: filler,
-                                            isSelected: true,
-                                            canDelete: true,
-                                            gradientColors: [.cyan, .blue]
-                                        ) {
-                                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                                fillerSettings.customFillers.removeAll { $0 == filler }
-                                                appState.updateFillerSettings(fillerSettings)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack(spacing: 10) {
-                                    TextField("カスタムフィラーを追加", text: $newFiller)
-                                        .textFieldStyle(.plain)
-                                        .padding(.horizontal, 14)
-                                        .padding(.vertical, 10)
-                                        .background {
-                                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                                .fill(.ultraThinMaterial)
-                                        }
-                                        .overlay {
-                                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                                .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
-                                        }
-                                        .frame(width: 200)
-                                        .onSubmit {
-                                            addCustomFiller()
-                                        }
-
-                                    ModernAddButton(disabled: newFiller.isEmpty) {
-                                        addCustomFiller()
-                                    }
-                                }
-
-                                HStack(spacing: 4) {
-                                    Text("⏎")
-                                        .font(.system(size: 10))
-                                    Text("Enter で追加")
-                                        .font(.system(size: 10))
-                                }
-                                .foregroundStyle(.tertiary)
-                            }
-
-                            SectionDivider()
-
-                            SettingsToggleRow(
-                                title: "AI でフィラーを識別",
-                                description: "「あの」「その」など文脈依存のフィラーを Claude Haiku 4.5 で判定します",
-                                isOn: $fillerSettings.useSmartFillerDetection
-                            )
-                            .onChange(of: fillerSettings.useSmartFillerDetection) { _, _ in
-                                appState.updateFillerSettings(fillerSettings)
-                            }
+                        SettingsToggleRow(
+                            title: "AI でフィラーを識別",
+                            description: "「あの」「その」など文脈依存のフィラーを AI で判定します",
+                            isOn: $fillerSettings.useSmartFillerDetection
+                        )
+                        .onChange(of: fillerSettings.useSmartFillerDetection) { _, _ in
+                            appState.updateFillerSettings(fillerSettings)
                         }
                     }
                 }
@@ -294,19 +202,6 @@ struct SettingsContentView: View {
                     sectionAnimations[index] = true
                 }
             }
-        }
-    }
-
-    private func addCustomFiller() {
-        guard !newFiller.isEmpty else { return }
-        guard !fillerSettings.customFillers.contains(newFiller) else {
-            newFiller = ""
-            return
-        }
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-            fillerSettings.customFillers.append(newFiller)
-            appState.updateFillerSettings(fillerSettings)
-            newFiller = ""
         }
     }
 }

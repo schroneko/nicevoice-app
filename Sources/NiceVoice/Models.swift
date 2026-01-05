@@ -74,7 +74,6 @@ struct FillerSettings: Codable {
         "あー", "あぁ",
         "うーん"
     ]
-    var customFillers: [String] = []
 
     var addPunctuation: Bool = true
     var removeRepetition: Bool = true
@@ -88,9 +87,7 @@ struct FillerSettings: Codable {
     ]
 
     var allEnabledFillers: [String] {
-        var fillers = Array(enabledPresets)
-        fillers.append(contentsOf: customFillers)
-        return fillers.sorted { $0.count > $1.count }
+        enabledPresets.sorted { $0.count > $1.count }
     }
 }
 

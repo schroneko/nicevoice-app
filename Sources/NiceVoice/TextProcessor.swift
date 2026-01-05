@@ -23,6 +23,7 @@ struct TextProcessor {
         result = insertQuestionMarks(in: result)
         result = insertConjunctionCommas(in: result)
         result = insertStarterPunctuation(in: result)
+        result = removeLeadingFillers(from: result)
 
         if !isFinal {
             result = removeTrailingSentenceEnd(from: result)
@@ -37,11 +38,39 @@ struct TextProcessor {
     private func removeFillers(from text: String) -> String {
         guard fillerSettings.removeFillers else { return text }
         var result = text
+
         for filler in fillerSettings.allEnabledFillers {
             result = result.replacingOccurrences(of: filler, with: "")
         }
+
+        result = removeLeadingFillers(from: result)
+
         result = result.trimmingCharacters(in: .whitespacesAndNewlines)
         result = result.replacingOccurrences(of: "  ", with: " ")
+        return result
+    }
+
+    private func removeLeadingFillers(from text: String) -> String {
+        var result = text
+        let leadingFillers = ["あの", "その", "えっと", "えーと"]
+
+        for filler in leadingFillers {
+            if result.hasPrefix(filler) {
+                result = String(result.dropFirst(filler.count))
+            }
+            result = result.replacingOccurrences(of: "、\(filler)", with: "、")
+            result = result.replacingOccurrences(of: "。\(filler)", with: "。")
+        }
+
+        let fillerPronounPatterns = [
+            "あの私", "あの僕", "あの俺", "あの彼", "あの彼女", "あのあなた", "あの君",
+            "その私", "その僕", "その俺", "その彼", "その彼女", "そのあなた", "その君"
+        ]
+        for pattern in fillerPronounPatterns {
+            let pronoun = String(pattern.dropFirst(2))
+            result = result.replacingOccurrences(of: pattern, with: pronoun)
+        }
+
         return result
     }
 
@@ -60,14 +89,18 @@ struct TextProcessor {
 
         let builtInDictionary = [
             ("クロードコード", "Claude Code"),
-            ("ロードコード", "Claude Code"),
-            ("ロードコ", "Claude Code"),
+            ("クロードエムディー", "CLAUDE.md"),
             ("ラングラー", "Wrangler"),
             ("クロード", "Claude"),
             ("スーパーベース", "Supabase"),
             ("スパベース", "Supabase"),
             ("グロック", "Grok"),
             ("ジェイソン", "JSON"),
+            ("チャットGPT", "ChatGPT"),
+            ("ウルトラシンク", "ultrathink"),
+            ("シェモア", "chezmoi"),
+            ("でぃすこーど", "Discord"),
+            ("ワンパスワード", "1Password"),
         ]
         for (reading, writing) in builtInDictionary {
             result = result.replacingOccurrences(of: reading, with: writing)

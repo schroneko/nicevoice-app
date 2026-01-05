@@ -17,9 +17,40 @@ struct TestResult {
     let passed: Bool
 }
 
+func removeLeadingFillers(_ text: String) -> String {
+    var result = text
+    let leadingFillers = ["あの", "その", "えっと", "えーと"]
+
+    for filler in leadingFillers {
+        if result.hasPrefix(filler) {
+            result = String(result.dropFirst(filler.count))
+        }
+        result = result.replacingOccurrences(of: "、\(filler)", with: "、")
+        result = result.replacingOccurrences(of: "。\(filler)", with: "。")
+    }
+
+    let fillerPronounPatterns = [
+        "あの私", "あの僕", "あの俺", "あの彼", "あの彼女", "あのあなた", "あの君",
+        "その私", "その僕", "その俺", "その彼", "その彼女", "そのあなた", "その君"
+    ]
+    for pattern in fillerPronounPatterns {
+        let pronoun = String(pattern.dropFirst(2))
+        result = result.replacingOccurrences(of: pattern, with: pronoun)
+    }
+
+    return result
+}
+
 func addLocalPunctuation(_ text: String) -> String {
     var result = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !result.isEmpty else { return result }
+
+    let leadingFillers = ["あの", "その", "えっと", "えーと"]
+    for filler in leadingFillers {
+        if result.hasPrefix(filler) {
+            result = String(result.dropFirst(filler.count))
+        }
+    }
 
     let punctuations = ["。", "、", "？", "！", "?", "!", ".", ","]
     for punct in punctuations {
@@ -29,13 +60,18 @@ func addLocalPunctuation(_ text: String) -> String {
 
     let builtInDictionary = [
         ("クロードコード", "Claude Code"),
-        ("ロードコード", "Claude Code"),
-        ("ロードコ", "Claude Code"),
+        ("クロードエムディー", "CLAUDE.md"),
         ("ラングラー", "Wrangler"),
         ("クロード", "Claude"),
         ("スーパーベース", "Supabase"),
         ("スパベース", "Supabase"),
         ("グロック", "Grok"),
+        ("ジェイソン", "JSON"),
+        ("チャットGPT", "ChatGPT"),
+        ("ウルトラシンク", "ultrathink"),
+        ("シェモア", "chezmoi"),
+        ("でぃすこーど", "Discord"),
+        ("ワンパスワード", "1Password"),
     ]
     for (reading, writing) in builtInDictionary {
         result = result.replacingOccurrences(of: reading, with: writing)
@@ -216,6 +252,8 @@ func addLocalPunctuation(_ text: String) -> String {
             }
         }
     }
+
+    result = removeLeadingFillers(result)
 
     return result
 }
