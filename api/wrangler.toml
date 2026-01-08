@@ -1,0 +1,11 @@
+name = "nicevoice-api"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+[vars]
+STRIPE_SUCCESS_URL = "nicevoice://checkout/success"
+STRIPE_CANCEL_URL = "nicevoice://checkout/cancel"
+PORTAL_RETURN_URL = "nicevoice://portal/return"
+
+[assets]
+directory = "../landing"

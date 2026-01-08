@@ -1,27 +1,57 @@
 import Foundation
 
 final class FillerDetectionService {
-    private static let configDirectory: URL = {
-        let appSupport = FileManager.default.homeDirectoryForCurrentUser
+    private static let legacyConfigDirectory: URL = {
+        FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/NiceVoice")
-        try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
-        return appSupport
     }()
 
-    private static let configPath: URL = {
-        configDirectory.appendingPathComponent("config.json")
+    private static let legacyConfigPath: URL = {
+        legacyConfigDirectory.appendingPathComponent("config.json")
     }()
 
-    private struct Config: Codable {
+    private struct LegacyConfig: Codable {
         var anthropicAPIKey: String?
     }
 
     static func getAPIKey() -> String? {
-        guard let data = try? Data(contentsOf: configPath),
-              let config = try? JSONDecoder().decode(Config.self, from: data) else {
-            return nil
+        migrateFromLegacyConfigIfNeeded()
+        return try? KeychainService.shared.loadString(for: .anthropicAPIKey)
+    }
+
+    static func setAPIKey(_ key: String) {
+        do {
+            try KeychainService.shared.saveString(key, for: .anthropicAPIKey)
+            debugLog("✅ Anthropic API key saved to Keychain")
+        } catch {
+            debugLog("❌ Failed to save API key: \(error)")
         }
-        return config.anthropicAPIKey
+    }
+
+    static func hasAPIKey() -> Bool {
+        KeychainService.shared.exists(for: .anthropicAPIKey)
+    }
+
+    static func deleteAPIKey() {
+        try? KeychainService.shared.delete(for: .anthropicAPIKey)
+    }
+
+    private static func migrateFromLegacyConfigIfNeeded() {
+        guard !KeychainService.shared.exists(for: .anthropicAPIKey) else { return }
+
+        guard let data = try? Data(contentsOf: legacyConfigPath),
+              let config = try? JSONDecoder().decode(LegacyConfig.self, from: data),
+              let key = config.anthropicAPIKey, !key.isEmpty else {
+            return
+        }
+
+        do {
+            try KeychainService.shared.saveString(key, for: .anthropicAPIKey)
+            try FileManager.default.removeItem(at: legacyConfigPath)
+            debugLog("✅ Migrated API key from config.json to Keychain")
+        } catch {
+            debugLog("⚠️ Migration failed: \(error)")
+        }
     }
 
     static func setupAPIKey(from devVarsPath: String) {
@@ -44,11 +74,7 @@ final class FillerDetectionService {
             return
         }
 
-        let config = Config(anthropicAPIKey: key)
-        if let data = try? JSONEncoder().encode(config) {
-            try? data.write(to: configPath)
-            debugLog("✅ Anthropic API key configured")
-        }
+        setAPIKey(key)
     }
 
     static func detectFillers(in text: String, ambiguousWords: Set<String>) async -> [String] {

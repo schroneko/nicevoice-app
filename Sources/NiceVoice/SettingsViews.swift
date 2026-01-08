@@ -67,7 +67,7 @@ struct SettingsContentView: View {
     @AppStorage("showInMenuBar") private var showInMenuBar = true
     @AppStorage("shortcutKey") private var shortcutKeyRaw = ShortcutKey.fn.rawValue
     @State private var fillerSettings: FillerSettings
-    @State private var sectionAnimations: [Bool] = [false, false, false]
+    @State private var sectionAnimations: [Bool] = [false, false, false, false]
 
     private var selectedShortcutKey: ShortcutKey {
         ShortcutKey(rawValue: shortcutKeyRaw) ?? .fn
@@ -191,6 +191,16 @@ struct SettingsContentView: View {
                 }
                 .opacity(sectionAnimations[2] ? 1 : 0)
                 .offset(y: sectionAnimations[2] ? 0 : 16)
+
+                SettingsSection(
+                    title: "プラン",
+                    icon: "creditcard.fill",
+                    gradientColors: [.blue, .cyan]
+                ) {
+                    PlanStatusView()
+                }
+                .opacity(sectionAnimations[3] ? 1 : 0)
+                .offset(y: sectionAnimations[3] ? 0 : 16)
 
                 Spacer(minLength: 20)
             }
@@ -467,6 +477,131 @@ struct FlowLayout: Layout {
         }
 
         return (CGSize(width: maxWidth, height: totalHeight), positions)
+    }
+}
+
+struct PlanStatusView: View {
+    @State private var isUpgrading = false
+
+    private var licenseManager: LicenseManager { LicenseManager.shared }
+    private var usageTracker: UsageTracker { UsageTracker.shared }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text(licenseManager.effectivePlan.displayName)
+                            .font(.title3)
+                            .fontWeight(.bold)
+
+                        if licenseManager.isTrialActive {
+                            Text("トライアル")
+                                .font(.caption2)
+                                .fontWeight(.semibold)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(.orange.opacity(0.2))
+                                .foregroundStyle(.orange)
+                                .clipShape(Capsule())
+                        }
+                    }
+
+                    if licenseManager.isTrialActive {
+                        Text("残り \(licenseManager.trialDaysRemaining) 日")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else if let days = licenseManager.licenseInfo?.daysUntilExpiration {
+                        Text("次回更新まで \(days) 日")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Spacer()
+
+                if licenseManager.effectivePlan == .free || licenseManager.isTrialActive {
+                    Button {
+                        isUpgrading = true
+                        Task {
+                            do {
+                                try await licenseManager.upgrade(to: .plus)
+                            } catch {
+                                debugLog("Upgrade error: \(error)")
+                            }
+                            isUpgrading = false
+                        }
+                    } label: {
+                        Text("アップグレード")
+                            .font(.callout)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(
+                                LinearGradient(
+                                    colors: [.blue, .cyan],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isUpgrading)
+                } else {
+                    Button {
+                        Task {
+                            try? await licenseManager.manageSubscription()
+                        }
+                    } label: {
+                        Text("プラン管理")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            if licenseManager.effectivePlan == .free {
+                SectionDivider()
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("今月の使用量")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text("\(usageTracker.creditsUsed) / 300 クレジット")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                    }
+
+                    GeometryReader { geometry in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color.secondary.opacity(0.2))
+                                .frame(height: 6)
+
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(
+                                    LinearGradient(
+                                        colors: usageTracker.usagePercentage > 0.8 ? [.orange, .red] : [.blue, .cyan],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .frame(width: geometry.size.width * usageTracker.usagePercentage, height: 6)
+                        }
+                    }
+                    .frame(height: 6)
+
+                    Text("\(usageTracker.daysUntilReset) 日後にリセット")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
     }
 }
 

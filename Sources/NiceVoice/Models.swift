@@ -115,3 +115,124 @@ struct BenchmarkResult: Identifiable {
     let duration: TimeInterval
     let success: Bool
 }
+
+enum Plan: String, Codable, CaseIterable {
+    case free
+    case plus
+    case pro
+
+    var displayName: String {
+        switch self {
+        case .free: return "Free"
+        case .plus: return "Plus"
+        case .pro: return "Pro"
+        }
+    }
+
+    var monthlyPrice: Int {
+        switch self {
+        case .free: return 0
+        case .plus: return 10
+        case .pro: return 30
+        }
+    }
+
+    var yearlyPrice: Int {
+        switch self {
+        case .free: return 0
+        case .plus: return 96
+        case .pro: return 300
+        }
+    }
+
+    var stripePriceIdMonthly: String {
+        switch self {
+        case .free: return ""
+        case .plus: return "price_plus_monthly"
+        case .pro: return "price_pro_monthly"
+        }
+    }
+
+    var stripePriceIdYearly: String {
+        switch self {
+        case .free: return ""
+        case .plus: return "price_plus_yearly"
+        case .pro: return "price_pro_yearly"
+        }
+    }
+}
+
+enum SubscriptionStatus: String, Codable {
+    case active
+    case trialing
+    case pastDue
+    case canceled
+    case unpaid
+    case none
+
+    var isActive: Bool {
+        switch self {
+        case .active, .trialing:
+            return true
+        case .pastDue, .canceled, .unpaid, .none:
+            return false
+        }
+    }
+}
+
+struct LicenseInfo: Codable {
+    let customerId: String
+    let subscriptionId: String?
+    let plan: Plan
+    let status: SubscriptionStatus
+    let currentPeriodEnd: Date?
+    let trialEnd: Date?
+    let lastVerified: Date
+
+    var isValid: Bool {
+        guard status.isActive else { return false }
+        if let periodEnd = currentPeriodEnd {
+            return periodEnd > Date()
+        }
+        return true
+    }
+
+    var daysUntilExpiration: Int? {
+        guard let periodEnd = currentPeriodEnd else { return nil }
+        let calendar = Calendar.current
+        let components = calendar.dateComponents([.day], from: Date(), to: periodEnd)
+        return components.day
+    }
+}
+
+struct MonthlyUsage: Codable {
+    var creditsUsed: Int = 0
+    var periodStart: Date
+    var periodEnd: Date
+
+    var isCurrentPeriod: Bool {
+        let now = Date()
+        return now >= periodStart && now < periodEnd
+    }
+
+    init() {
+        let now = Date()
+        self.periodStart = now
+        self.periodEnd = Calendar.current.date(byAdding: .month, value: 1, to: now) ?? now
+    }
+
+    init(creditsUsed: Int, periodStart: Date, periodEnd: Date) {
+        self.creditsUsed = creditsUsed
+        self.periodStart = periodStart
+        self.periodEnd = periodEnd
+    }
+
+    mutating func resetIfNewPeriod() {
+        if !isCurrentPeriod {
+            let now = Date()
+            self.creditsUsed = 0
+            self.periodStart = now
+            self.periodEnd = Calendar.current.date(byAdding: .month, value: 1, to: now) ?? now
+        }
+    }
+}

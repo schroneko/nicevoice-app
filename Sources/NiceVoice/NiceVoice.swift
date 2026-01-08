@@ -90,6 +90,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         checkAccessibilityPermission()
         setupStatusItem()
         setupFillerDetection()
+        initializeLicenseManager()
 
         NotificationCenter.default.addObserver(
             self,
@@ -104,6 +105,64 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             name: .recordingStateChanged,
             object: nil
         )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(licenseDidChange),
+            name: .licenseDidChange,
+            object: nil
+        )
+    }
+
+    private func initializeLicenseManager() {
+        Task {
+            await LicenseManager.shared.initialize()
+            debugLog("✅ LicenseManager initialized: plan=\(LicenseManager.shared.effectivePlan)")
+        }
+    }
+
+    @objc private func licenseDidChange() {
+        debugLog("🔄 License changed: plan=\(LicenseManager.shared.effectivePlan)")
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            handleURLScheme(url)
+        }
+    }
+
+    private func handleURLScheme(_ url: URL) {
+        debugLog("📥 URL scheme received: \(url)")
+
+        guard let result = StripeService.shared.handleURLScheme(url) else {
+            debugLog("⚠️ Unhandled URL scheme: \(url)")
+            return
+        }
+
+        switch result {
+        case .checkoutSuccess(let sessionId):
+            debugLog("✅ Checkout success: \(sessionId)")
+            Task {
+                do {
+                    try await LicenseManager.shared.handleCheckoutSuccess(sessionId: sessionId)
+                } catch {
+                    debugLog("❌ Checkout success handling failed: \(error)")
+                }
+            }
+
+        case .checkoutCanceled:
+            debugLog("⚠️ Checkout canceled")
+
+        case .portalReturn:
+            debugLog("🔄 Portal return")
+            Task {
+                do {
+                    try await LicenseManager.shared.handlePortalReturn()
+                } catch {
+                    debugLog("❌ Portal return handling failed: \(error)")
+                }
+            }
+        }
     }
 
     private func setupFillerDetection() {
