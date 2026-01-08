@@ -5,7 +5,6 @@ enum StripeError: LocalizedError {
     case networkError(Error)
     case serverError(Int, String?)
     case invalidResponse
-    case noCheckoutURL
 
     var errorDescription: String? {
         switch self {
@@ -18,15 +17,8 @@ enum StripeError: LocalizedError {
             return "サーバーエラー: \(code)"
         case .invalidResponse:
             return "サーバーからの応答が不正です"
-        case .noCheckoutURL:
-            return "チェックアウト URL を取得できませんでした"
         }
     }
-}
-
-struct CheckoutSessionResponse: Codable {
-    let url: String
-    let sessionId: String
 }
 
 struct CustomerPortalResponse: Codable {
@@ -64,44 +56,6 @@ final class StripeService {
 
     private init() {}
 
-    func createCheckoutSession(
-        plan: Plan,
-        interval: BillingInterval,
-        customerId: String?
-    ) async throws -> CheckoutSessionResponse {
-        let deviceId = KeychainService.shared.getOrCreateDeviceId()
-
-        var params: [String: Any] = [
-            "plan": plan.rawValue,
-            "interval": interval.rawValue,
-            "device_id": deviceId
-        ]
-
-        if let customerId = customerId {
-            params["customer_id"] = customerId
-        }
-
-        let response: CheckoutSessionResponse = try await post(
-            endpoint: "/checkout",
-            body: params
-        )
-
-        return response
-    }
-
-    func createCustomerPortalSession(customerId: String) async throws -> CustomerPortalResponse {
-        let params: [String: Any] = [
-            "customer_id": customerId
-        ]
-
-        let response: CustomerPortalResponse = try await post(
-            endpoint: "/portal",
-            body: params
-        )
-
-        return response
-    }
-
     func verifyLicense() async throws -> LicenseVerificationResponse {
         let deviceId = KeychainService.shared.getOrCreateDeviceId()
 
@@ -131,22 +85,9 @@ final class StripeService {
         return response
     }
 
-    func openCheckout(plan: Plan, interval: BillingInterval = .monthly) async throws {
-        let customerId = (try? KeychainService.shared.loadCodable(for: .licenseInfo) as LicenseInfo)?.customerId
-
-        let response = try await createCheckoutSession(
-            plan: plan,
-            interval: interval,
-            customerId: customerId
-        )
-
-        guard let url = URL(string: response.url) else {
-            throw StripeError.noCheckoutURL
-        }
-
-        await MainActor.run {
-            NSWorkspace.shared.open(url)
-        }
+    func openPricingPage() {
+        guard let url = URL(string: "https://nicevoice.app/pricing") else { return }
+        NSWorkspace.shared.open(url)
     }
 
     func openCustomerPortal() async throws {
@@ -162,9 +103,14 @@ final class StripeService {
             throw StripeError.invalidResponse
         }
 
-        await MainActor.run {
-            NSWorkspace.shared.open(url)
-        }
+        await MainActor.run { _ = NSWorkspace.shared.open(url) }
+    }
+
+    private func createCustomerPortalSession(customerId: String) async throws -> CustomerPortalResponse {
+        let params: [String: Any] = [
+            "customer_id": customerId
+        ]
+        return try await post(endpoint: "/portal", body: params)
     }
 
     func handleURLScheme(_ url: URL) -> URLSchemeResult? {
@@ -229,11 +175,6 @@ final class StripeService {
             throw StripeError.invalidResponse
         }
     }
-}
-
-enum BillingInterval: String {
-    case monthly
-    case yearly
 }
 
 extension Bundle {

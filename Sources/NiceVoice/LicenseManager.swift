@@ -148,8 +148,8 @@ final class LicenseManager {
         }
     }
 
-    func upgrade(to plan: Plan, interval: BillingInterval = .monthly) async throws {
-        try await StripeService.shared.openCheckout(plan: plan, interval: interval)
+    func openPricingPage() {
+        StripeService.shared.openPricingPage()
     }
 
     func manageSubscription() async throws {

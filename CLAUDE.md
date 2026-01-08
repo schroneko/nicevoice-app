@@ -98,6 +98,14 @@ open .build/bundler/NiceVoice.app
 
 **重要**: ビルド後は必ず `killall -9 NiceVoice` でアプリを終了してから再起動すること。終了しないと古いバイナリが実行されたままになる。
 
+#### symlink 問題
+
+`.build/debug` は symlink であり、swift-bundler がこれを正しく処理できない場合がある。その場合は直接パスを指定する：
+
+```bash
+swift-bundler bundle --skip-build --products-directory .build/arm64-apple-macosx/debug
+```
+
 ### 自己署名証明書の作成（初回のみ）
 
 1. Keychain Access を開く

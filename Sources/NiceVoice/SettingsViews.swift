@@ -481,8 +481,6 @@ struct FlowLayout: Layout {
 }
 
 struct PlanStatusView: View {
-    @State private var isUpgrading = false
-
     private var licenseManager: LicenseManager { LicenseManager.shared }
     private var usageTracker: UsageTracker { UsageTracker.shared }
 
@@ -522,15 +520,7 @@ struct PlanStatusView: View {
 
                 if licenseManager.effectivePlan == .free || licenseManager.isTrialActive {
                     Button {
-                        isUpgrading = true
-                        Task {
-                            do {
-                                try await licenseManager.upgrade(to: .plus)
-                            } catch {
-                                debugLog("Upgrade error: \(error)")
-                            }
-                            isUpgrading = false
-                        }
+                        licenseManager.openPricingPage()
                     } label: {
                         Text("アップグレード")
                             .font(.callout)
@@ -548,7 +538,6 @@ struct PlanStatusView: View {
                             .clipShape(Capsule())
                     }
                     .buttonStyle(.plain)
-                    .disabled(isUpgrading)
                 } else {
                     Button {
                         Task {

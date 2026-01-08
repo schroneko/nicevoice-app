@@ -237,8 +237,9 @@ final class SpeechAnalyzerService {
         guard isRunning else { return }
         isRunning = false
 
-        audioEngine?.inputNode.removeTap(onBus: 0)
         audioEngine?.stop()
+        Thread.sleep(forTimeInterval: 0.05)
+        audioEngine?.inputNode.removeTap(onBus: 0)
         audioEngine = nil
 
         inputContinuation?.finish()
