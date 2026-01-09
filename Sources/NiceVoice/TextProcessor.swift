@@ -106,6 +106,7 @@ struct TextProcessor {
             ("ウルトラシンク", "ultrathink"),
             ("シェモア", "chezmoi"),
             ("でぃすこーど", "Discord"),
+            ("ディスコード", "Discord"),
             ("ワンパスワード", "1Password"),
             ("ジェミニ", "Gemini"),
             ("ナノバナナ", "Nano Banana"),
