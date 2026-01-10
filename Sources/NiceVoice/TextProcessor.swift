@@ -52,16 +52,15 @@ struct TextProcessor {
 
     private func removeLeadingFillers(from text: String) -> String {
         var result = text
-        let headFillers = ["あの", "えっと", "えーと"]
-        let contextFillers = ["あの", "えっと", "えーと"]
+        let fillers = ["あの", "えっと", "えーと"]
 
-        for filler in headFillers {
+        for filler in fillers {
             if result.hasPrefix(filler) {
                 result = String(result.dropFirst(filler.count))
             }
         }
 
-        for filler in contextFillers {
+        for filler in fillers {
             result = result.replacingOccurrences(of: "、\(filler)", with: "、")
             result = result.replacingOccurrences(of: "。\(filler)", with: "。")
             result = result.replacingOccurrences(of: "に\(filler)", with: "に")

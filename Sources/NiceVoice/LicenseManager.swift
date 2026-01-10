@@ -133,14 +133,14 @@ final class LicenseManager {
     }
 
     func handleCheckoutSuccess(sessionId: String) async throws {
-        try await verifyLicense()
-
-        await MainActor.run {
-            NotificationCenter.default.post(name: .licenseDidChange, object: nil)
-        }
+        try await refreshLicenseAndNotify()
     }
 
     func handlePortalReturn() async throws {
+        try await refreshLicenseAndNotify()
+    }
+
+    private func refreshLicenseAndNotify() async throws {
         try await verifyLicense()
 
         await MainActor.run {

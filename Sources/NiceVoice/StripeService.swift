@@ -103,7 +103,7 @@ final class StripeService {
             throw StripeError.invalidResponse
         }
 
-        await MainActor.run { _ = NSWorkspace.shared.open(url) }
+        _ = await MainActor.run { NSWorkspace.shared.open(url) }
     }
 
     private func createCustomerPortalSession(customerId: String) async throws -> CustomerPortalResponse {
