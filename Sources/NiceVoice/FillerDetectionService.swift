@@ -60,16 +60,12 @@ final class FillerDetectionService {
             return
         }
 
-        var anthropicKey: String?
-        for line in content.split(separator: "\n") {
-            let parts = line.split(separator: "=", maxSplits: 1)
-            if parts.count == 2 && parts[0] == "ANTHROPIC_API_KEY" {
-                anthropicKey = String(parts[1])
-                break
-            }
-        }
-
-        guard let key = anthropicKey else {
+        guard let key = content.components(separatedBy: .newlines)
+            .first(where: { $0.hasPrefix("ANTHROPIC_API_KEY=") })?
+            .components(separatedBy: "=")
+            .dropFirst()
+            .joined(separator: "="),
+            !key.isEmpty else {
             debugLog("⚠️ ANTHROPIC_API_KEY not found in .dev.vars")
             return
         }

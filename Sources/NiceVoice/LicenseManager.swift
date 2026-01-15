@@ -12,16 +12,17 @@ final class LicenseManager {
     private let trialDurationDays = 7
     private let offlineGracePeriodDays = 7
 
-    var isTrialActive: Bool {
+    private var trialEndDate: Date {
         let firstLaunch = KeychainService.shared.getFirstLaunchDate()
-        let trialEnd = Calendar.current.date(byAdding: .day, value: trialDurationDays, to: firstLaunch) ?? firstLaunch
-        return Date() < trialEnd && !hasEverSubscribed
+        return Calendar.current.date(byAdding: .day, value: trialDurationDays, to: firstLaunch) ?? firstLaunch
+    }
+
+    var isTrialActive: Bool {
+        Date() < trialEndDate && !hasEverSubscribed
     }
 
     var trialDaysRemaining: Int {
-        let firstLaunch = KeychainService.shared.getFirstLaunchDate()
-        let trialEnd = Calendar.current.date(byAdding: .day, value: trialDurationDays, to: firstLaunch) ?? firstLaunch
-        let components = Calendar.current.dateComponents([.day], from: Date(), to: trialEnd)
+        let components = Calendar.current.dateComponents([.day], from: Date(), to: trialEndDate)
         return max(0, components.day ?? 0)
     }
 

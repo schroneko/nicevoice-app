@@ -4,6 +4,67 @@ struct TextProcessor {
     let fillerSettings: FillerSettings
     let dictionaryEntries: [DictionaryEntry]
 
+    private static let leadingFillers = ["あの", "えっと", "えーと"]
+    private static let leadingFillerCleanupPrefixes = ["、", "。", "に", "もう"]
+    private static let fillerPrefixes = ["あの", "その"]
+    private static let fillerPronouns = ["私", "僕", "俺", "彼", "彼女", "あなた", "君"]
+
+    private static let spaceVariants = [" ", "　"]
+    private static let spacingPunctuations = ["。", "、", "？", "！", "?", "!", ".", ","]
+
+    private static let builtInDictionary: [(String, String)] = [
+        ("クロードコード", "Claude Code"),
+        ("クロードエムディー", "CLAUDE.md"),
+        ("ラングラー", "Wrangler"),
+        ("クロード", "Claude"),
+        ("スーパーベース", "Supabase"),
+        ("スパベース", "Supabase"),
+        ("グロック", "Grok"),
+        ("ジェイソン", "JSON"),
+        ("チャットGPT", "ChatGPT"),
+        ("ウルトラシンク", "ultrathink"),
+        ("シェモア", "chezmoi"),
+        ("でぃすこーど", "Discord"),
+        ("ディスコード", "Discord"),
+        ("ワンパスワード", "1Password"),
+        ("ジェミニ", "Gemini"),
+        ("ナノバナナ", "Nano Banana"),
+        ("API機", "APIキー"),
+    ]
+
+    private static let sentenceEndings = ["ました", "ません", "でした"]
+    private static let transitionWords = ["とりあえず", "ただ", "でも", "しかし", "ちなみに", "あと", "それから", "それで"]
+    private static let transitionSentenceEndPatterns = ["ました", "ません", "です", "ます", "だった", "でした", "ない"]
+    private static let transitionTimeRelatedCharacters: Set<Character> = [
+        "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "分", "時", "日", "年"
+    ]
+
+    private static let greetingPhrases = [
+        "ありがとうございます", "すみません",
+        "こんにちは", "こんばんは", "おはようございます", "お疲れ様です", "お疲れさまです"
+    ]
+    private static let greetingPhrasesByLength: [String] = {
+        Self.greetingPhrases.sorted { $0.count > $1.count }
+    }()
+
+    private static let politeEndings = ["お願いいたします", "お願いします", "くださいませ", "ください", "でございます", "思います"]
+    private static let politeEndingSkipCharacters: Set<Character> = ["。", "、", "？", "！", "よ", "ね", "か", "が", "け"]
+
+    private static let questionEndings = [
+        "ですかね", "ますかね", "ですよね", "ますよね", "でしょうか", "ましょうか", "ですか", "ますか",
+        "でしたっけ", "ましたっけ", "ですっけ", "ますっけ", "だっけ", "たっけ", "んだっけ"
+    ]
+
+    private static let conjunctions = ["けど", "けれど", "けれども", "だけど", "ですが", "ですけど"]
+    private static let conjunctionsByLength: [String] = {
+        Self.conjunctions.sorted { $0.count > $1.count }
+    }()
+
+    private static let starterPhrases = ["はい", "いいえ", "うん", "ええ", "そうですね", "なるほど", "おはよう"]
+
+    private static let punctuationCharacters: Set<Character> = ["。", "、", "？", "！"]
+    private static let particleCharacters: Set<Character> = ["か", "が", "け", "ね", "よ"]
+
     func process(_ text: String, isFinal: Bool = true) -> String {
         let originalText = text
         var result = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -52,28 +113,23 @@ struct TextProcessor {
 
     private func removeLeadingFillers(from text: String) -> String {
         var result = text
-        let fillers = ["あの", "えっと", "えーと"]
 
-        for filler in fillers {
+        for filler in Self.leadingFillers {
             if result.hasPrefix(filler) {
-                result = String(result.dropFirst(filler.count))
+                result.removeFirst(filler.count)
             }
         }
 
-        for filler in fillers {
-            result = result.replacingOccurrences(of: "、\(filler)", with: "、")
-            result = result.replacingOccurrences(of: "。\(filler)", with: "。")
-            result = result.replacingOccurrences(of: "に\(filler)", with: "に")
-            result = result.replacingOccurrences(of: "もう\(filler)", with: "もう")
+        for filler in Self.leadingFillers {
+            for prefix in Self.leadingFillerCleanupPrefixes {
+                result = result.replacingOccurrences(of: "\(prefix)\(filler)", with: prefix)
+            }
         }
 
-        let fillerPronounPatterns = [
-            "あの私", "あの僕", "あの俺", "あの彼", "あの彼女", "あのあなた", "あの君",
-            "その私", "その僕", "その俺", "その彼", "その彼女", "そのあなた", "その君"
-        ]
-        for pattern in fillerPronounPatterns {
-            let pronoun = String(pattern.dropFirst(2))
-            result = result.replacingOccurrences(of: pattern, with: pronoun)
+        for prefix in Self.fillerPrefixes {
+            for pronoun in Self.fillerPronouns {
+                result = result.replacingOccurrences(of: prefix + pronoun, with: pronoun)
+            }
         }
 
         return result
@@ -81,10 +137,10 @@ struct TextProcessor {
 
     private func removeSpacesBeforePunctuation(from text: String) -> String {
         var result = text
-        let punctuations = ["。", "、", "？", "！", "?", "!", ".", ","]
-        for punct in punctuations {
-            result = result.replacingOccurrences(of: " \(punct)", with: punct)
-            result = result.replacingOccurrences(of: "　\(punct)", with: punct)
+        for punct in Self.spacingPunctuations {
+            for space in Self.spaceVariants {
+                result = result.replacingOccurrences(of: "\(space)\(punct)", with: punct)
+            }
         }
         return result
     }
@@ -92,26 +148,7 @@ struct TextProcessor {
     private func applyDictionaryReplacements(to text: String) -> String {
         var result = text
 
-        let builtInDictionary = [
-            ("クロードコード", "Claude Code"),
-            ("クロードエムディー", "CLAUDE.md"),
-            ("ラングラー", "Wrangler"),
-            ("クロード", "Claude"),
-            ("スーパーベース", "Supabase"),
-            ("スパベース", "Supabase"),
-            ("グロック", "Grok"),
-            ("ジェイソン", "JSON"),
-            ("チャットGPT", "ChatGPT"),
-            ("ウルトラシンク", "ultrathink"),
-            ("シェモア", "chezmoi"),
-            ("でぃすこーど", "Discord"),
-            ("ディスコード", "Discord"),
-            ("ワンパスワード", "1Password"),
-            ("ジェミニ", "Gemini"),
-            ("ナノバナナ", "Nano Banana"),
-            ("API機", "APIキー"),
-        ]
-        for (reading, writing) in builtInDictionary {
+        for (reading, writing) in Self.builtInDictionary {
             result = result.replacingOccurrences(of: reading, with: writing)
         }
 
@@ -148,9 +185,8 @@ struct TextProcessor {
 
     private func insertSentenceEndPunctuation(in text: String) -> String {
         var result = text
-        let sentenceEndings = ["ました", "ません", "でした"]
 
-        for ending in sentenceEndings {
+        for ending in Self.sentenceEndings {
             var searchStart = result.startIndex
             while let range = result.range(of: ending, range: searchStart..<result.endIndex) {
                 let afterEnd = range.upperBound
@@ -173,9 +209,8 @@ struct TextProcessor {
 
     private func insertTransitionPunctuation(in text: String) -> String {
         var result = text
-        let transitionWords = ["とりあえず", "ただ", "でも", "しかし", "ちなみに", "あと", "それから", "それで"]
 
-        for word in transitionWords {
+        for word in Self.transitionWords {
             var offset = 0
             while offset < result.count {
                 guard let startIdx = result.index(result.startIndex, offsetBy: offset, limitedBy: result.endIndex),
@@ -211,9 +246,8 @@ struct TextProcessor {
             if ["な", "何", "誰", "ど", "い"].contains(String(prevChar)) {
                 return true
             }
-            let sentenceEndPatterns = ["ました", "ません", "です", "ます", "だった", "でした", "ない"]
             var hasSentenceEnd = false
-            for pattern in sentenceEndPatterns {
+            for pattern in Self.transitionSentenceEndPatterns {
                 if text.distance(from: text.startIndex, to: range.lowerBound) >= pattern.count {
                     let patternStart = text.index(range.lowerBound, offsetBy: -pattern.count)
                     let preceding = String(text[patternStart..<range.lowerBound])
@@ -227,8 +261,7 @@ struct TextProcessor {
         }
 
         if word == "あと" {
-            let timeRelatedChars: [Character] = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "分", "時", "日", "年"]
-            if timeRelatedChars.contains(prevChar) { return true }
+            if Self.transitionTimeRelatedCharacters.contains(prevChar) { return true }
         }
 
         if text.distance(from: text.startIndex, to: range.lowerBound) >= 2 {
@@ -242,12 +275,8 @@ struct TextProcessor {
 
     private func insertGreetingPunctuation(in text: String) -> String {
         var result = text
-        let greetings = [
-            "ありがとうございます", "すみません",
-            "こんにちは", "こんばんは", "おはようございます", "お疲れ様です", "お疲れさまです"
-        ]
 
-        for phrase in greetings.sorted(by: { $0.count > $1.count }) {
+        for phrase in Self.greetingPhrasesByLength {
             var offset = 0
             while offset < result.count {
                 guard let startIdx = result.index(result.startIndex, offsetBy: offset, limitedBy: result.endIndex),
@@ -278,9 +307,8 @@ struct TextProcessor {
 
     private func insertPoliteEndingPunctuation(in text: String) -> String {
         var result = text
-        let politeEndings = ["お願いいたします", "お願いします", "くださいませ", "ください", "でございます", "思います"]
 
-        for phrase in politeEndings {
+        for phrase in Self.politeEndings {
             var offset = 0
             while offset < result.count {
                 guard let startIdx = result.index(result.startIndex, offsetBy: offset, limitedBy: result.endIndex),
@@ -289,8 +317,7 @@ struct TextProcessor {
                 let afterEnd = range.upperBound
                 if afterEnd < result.endIndex {
                     let nextChar = result[afterEnd]
-                    let skipChars: [Character] = ["。", "、", "？", "！", "よ", "ね", "か", "が", "け"]
-                    if !skipChars.contains(nextChar) {
+                    if !Self.politeEndingSkipCharacters.contains(nextChar) {
                         result.insert("。", at: afterEnd)
                         offset = result.distance(from: result.startIndex, to: afterEnd) + 1
                         continue
@@ -304,12 +331,8 @@ struct TextProcessor {
 
     private func insertQuestionMarks(in text: String) -> String {
         var result = text
-        let questionEndings = [
-            "ですかね", "ますかね", "ですよね", "ますよね", "でしょうか", "ましょうか", "ですか", "ますか",
-            "でしたっけ", "ましたっけ", "ですっけ", "ますっけ", "だっけ", "たっけ", "んだっけ"
-        ]
 
-        for ending in questionEndings {
+        for ending in Self.questionEndings {
             var offset = 0
             while offset < result.count {
                 guard let startIdx = result.index(result.startIndex, offsetBy: offset, limitedBy: result.endIndex),
@@ -339,9 +362,8 @@ struct TextProcessor {
 
     private func insertConjunctionCommas(in text: String) -> String {
         var result = text
-        let conjunctions = ["けど", "けれど", "けれども", "だけど", "ですが", "ですけど"]
 
-        for conj in conjunctions.sorted(by: { $0.count > $1.count }) {
+        for conj in Self.conjunctionsByLength {
             var offset = 0
             while offset < result.count {
                 guard let startIdx = result.index(result.startIndex, offsetBy: offset, limitedBy: result.endIndex),
@@ -361,9 +383,8 @@ struct TextProcessor {
 
     private func insertStarterPunctuation(in text: String) -> String {
         var result = text
-        let starters = ["はい", "いいえ", "うん", "ええ", "そうですね", "なるほど", "おはよう"]
 
-        for starter in starters {
+        for starter in Self.starterPhrases {
             if result.hasPrefix(starter) && result.count > starter.count {
                 let afterStarter = result.dropFirst(starter.count)
                 if let first = afterStarter.first, first != "。" && first != "、" {
@@ -383,10 +404,10 @@ struct TextProcessor {
     }
 
     private func isPunctuation(_ char: Character) -> Bool {
-        ["。", "、", "？", "！"].contains(char)
+        Self.punctuationCharacters.contains(char)
     }
 
     private func isParticle(_ char: Character) -> Bool {
-        ["か", "が", "け", "ね", "よ"].contains(char)
+        Self.particleCharacters.contains(char)
     }
 }

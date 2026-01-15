@@ -618,21 +618,20 @@ final class AppState {
     }
 
     private func isSpotlightOpen() -> Bool {
-        let apps = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Spotlight")
-        guard let spotlightApp = apps.first else { return false }
+        guard let spotlightApp = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Spotlight").first else {
+            return false
+        }
 
         let axApp = AXUIElementCreateApplication(spotlightApp.processIdentifier)
         var windows: CFTypeRef?
-        let result = AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &windows)
-
-        if result == .success, let windowArray = windows as? [AXUIElement] {
-            let isOpen = !windowArray.isEmpty
-            if isOpen {
-                debugLog("🔍 Spotlight windows found: \(windowArray.count)")
-            }
-            return isOpen
+        guard AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &windows) == .success,
+              let windowArray = windows as? [AXUIElement],
+              !windowArray.isEmpty else {
+            return false
         }
-        return false
+
+        debugLog("🔍 Spotlight windows found: \(windowArray.count)")
+        return true
     }
 
     private func setTextToSpotlight(_ text: String) {
