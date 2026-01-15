@@ -150,7 +150,7 @@ struct DictionaryView: View {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.json]
         panel.nameFieldStringValue = "nicevoice-dictionary.json"
-        panel.title = "辞書をエクスポート"
+        panel.title = String(localized: "辞書をエクスポート")
 
         panel.begin { result in
             guard result == .OK, let url = panel.url else { return }
@@ -171,7 +171,7 @@ struct DictionaryView: View {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false
-        panel.title = "辞書をインポート"
+        panel.title = String(localized: "辞書をインポート")
 
         panel.begin { result in
             guard result == .OK, let url = panel.url else { return }
@@ -188,7 +188,7 @@ struct DictionaryView: View {
                 }
                 debugLog("Imported \(entries.count) dictionary entries")
             } catch {
-                importErrorMessage = "ファイルの読み込みに失敗しました: \(error.localizedDescription)"
+                importErrorMessage = String(localized: "ファイルの読み込みに失敗しました: \(error.localizedDescription)")
                 showingImportError = true
                 debugLog("Import failed: \(error)")
             }

@@ -406,10 +406,10 @@ class AudioPlayerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
 
 struct ModernEmptyStateView: View {
     let icon: String
-    let title: String
-    let description: String
+    let title: LocalizedStringKey
+    let description: LocalizedStringKey
     var showActionButton: Bool = false
-    var actionTitle: String = ""
+    var actionTitle: LocalizedStringKey = ""
     var onAction: (() -> Void)? = nil
     @State private var animateIcon = false
 
@@ -639,9 +639,9 @@ struct ModernHistoryRowView: View {
     private var dateString: String {
         let calendar = Calendar.current
         if calendar.isDateInToday(record.timestamp) {
-            return "今日"
+            return String(localized: "今日")
         } else if calendar.isDateInYesterday(record.timestamp) {
-            return "昨日"
+            return String(localized: "昨日")
         } else {
             let formatter = DateFormatter()
             formatter.dateFormat = "M/d"
@@ -684,7 +684,7 @@ struct ModernHistoryRowView: View {
                         handleAudioTap()
                     }
             )
-            .help(record.hasAudio ? (isPlaying ? "停止" : "再生") : "音声なし")
+            .help(record.hasAudio ? (isPlaying ? String(localized: "停止") : String(localized: "再生")) : String(localized: "音声なし"))
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(record.text)

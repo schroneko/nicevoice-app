@@ -9,7 +9,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "NiceVoice",
-            dependencies: []
+            dependencies: [],
+            resources: [
+                .process("Resources")
+            ]
         )
     ],
     swiftLanguageModes: [.v5]

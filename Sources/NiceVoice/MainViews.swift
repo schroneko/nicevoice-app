@@ -1,11 +1,21 @@
 import SwiftUI
 
 enum NavigationPage: String, CaseIterable {
-    case overview = "概要"
-    case transcription = "文字起こし"
-    case history = "履歴"
-    case dictionary = "辞書"
-    case settings = "設定"
+    case overview
+    case transcription
+    case history
+    case dictionary
+    case settings
+
+    var localizedName: String {
+        switch self {
+        case .overview: return String(localized: "概要")
+        case .transcription: return String(localized: "文字起こし")
+        case .history: return String(localized: "履歴")
+        case .dictionary: return String(localized: "辞書")
+        case .settings: return String(localized: "設定")
+        }
+    }
 
     var icon: String {
         switch self {
@@ -108,7 +118,7 @@ struct SidebarItem: View {
                 .foregroundStyle(isSelected ? .white : .primary)
                 .frame(width: 24, height: 24)
 
-            Text(page.rawValue)
+            Text(page.localizedName)
                 .font(.system(size: 14, weight: isSelected ? .semibold : .medium))
                 .foregroundStyle(isSelected ? .white : .primary)
 
@@ -190,9 +200,9 @@ struct OverviewView: View {
                     GridItem(.flexible(), spacing: 20)
                 ], spacing: 20) {
                     StatCard(
-                        title: "今日の変換",
+                        title: String(localized: "今日の変換"),
                         value: "\(appState.usageStats.todayConversions)",
-                        subtitle: "\(appState.usageStats.todayCharacters) 文字",
+                        subtitle: String(localized: "\(appState.usageStats.todayCharacters) 文字"),
                         icon: "waveform",
                         color: .blue,
                         secondaryColor: .cyan
@@ -201,9 +211,9 @@ struct OverviewView: View {
                     .offset(y: cardAnimationStates[1] ? 0 : 20)
 
                     StatCard(
-                        title: "累計変換",
+                        title: String(localized: "累計変換"),
                         value: "\(appState.usageStats.totalConversions)",
-                        subtitle: "\(appState.usageStats.totalCharacters) 文字",
+                        subtitle: String(localized: "\(appState.usageStats.totalCharacters) 文字"),
                         icon: "chart.line.uptrend.xyaxis",
                         color: .green,
                         secondaryColor: .teal
@@ -212,9 +222,9 @@ struct OverviewView: View {
                     .offset(y: cardAnimationStates[1] ? 0 : 20)
 
                     StatCard(
-                        title: "推定コスト",
+                        title: String(localized: "推定コスト"),
                         value: String(format: "$%.4f", estimatedCost),
-                        subtitle: String(format: "約 %.1f 円", estimatedCost * 150),
+                        subtitle: String(format: String(localized: "約 %.1f 円"), estimatedCost * 150),
                         icon: "yensign.circle",
                         color: .orange,
                         secondaryColor: .pink
@@ -309,9 +319,9 @@ struct StatusBadge: View {
     }
 
     private var statusText: String {
-        if isRecording { return "録音中" }
-        if isReady { return "準備完了" }
-        return "初期化中"
+        if isRecording { return String(localized: "録音中") }
+        if isReady { return String(localized: "準備完了") }
+        return String(localized: "初期化中")
     }
 }
 

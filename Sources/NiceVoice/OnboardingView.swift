@@ -64,11 +64,11 @@ struct GradientIcon: View {
 }
 
 struct GradientText: View {
-    let text: String
+    let text: LocalizedStringKey
     let font: Font
     let colors: [Color]
 
-    init(_ text: String, font: Font = .largeTitle, colors: [Color] = [.purple, .indigo]) {
+    init(_ text: LocalizedStringKey, font: Font = .largeTitle, colors: [Color] = [.purple, .indigo]) {
         self.text = text
         self.font = font
         self.colors = colors
@@ -89,12 +89,12 @@ struct GradientText: View {
 }
 
 struct GradientButton: View {
-    let title: String
+    let title: LocalizedStringKey
     let icon: String?
     let colors: [Color]
     let action: () -> Void
 
-    init(_ title: String, icon: String? = nil, colors: [Color] = [.purple, .indigo], action: @escaping () -> Void) {
+    init(_ title: LocalizedStringKey, icon: String? = nil, colors: [Color] = [.purple, .indigo], action: @escaping () -> Void) {
         self.title = title
         self.icon = icon
         self.colors = colors
@@ -814,8 +814,8 @@ struct OnboardingView: View {
 struct ModernFeatureCard: View {
     let icon: String
     let colors: [Color]
-    let title: String
-    let description: String
+    let title: LocalizedStringKey
+    let description: LocalizedStringKey
 
     @State private var isHovered = false
 
@@ -880,7 +880,7 @@ struct ModernFeatureCard: View {
 }
 
 struct SuccessBadge: View {
-    let text: String
+    let text: LocalizedStringKey
     @State private var animate = false
 
     var body: some View {
@@ -972,7 +972,7 @@ struct ModernAccessibilityInstructions: View {
 
 struct ModernInstructionStep: View {
     let number: Int
-    let text: String
+    let text: LocalizedStringKey
     let color: Color
 
     var body: some View {
@@ -1004,8 +1004,8 @@ struct ModernInstructionStep: View {
 struct ModernUsageStep: View {
     let step: Int
     let icon: String
-    let title: String
-    let description: String
+    let title: LocalizedStringKey
+    let description: LocalizedStringKey
     let colors: [Color]
 
     @State private var isHovered = false

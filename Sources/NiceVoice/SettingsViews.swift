@@ -217,7 +217,7 @@ struct SettingsContentView: View {
 }
 
 struct SettingsSection<Content: View>: View {
-    let title: String
+    let title: LocalizedStringKey
     let icon: String
     let gradientColors: [Color]
     @ViewBuilder let content: Content
@@ -292,8 +292,8 @@ struct SectionDivider: View {
 }
 
 struct SettingsToggleRow: View {
-    let title: String
-    let description: String
+    let title: LocalizedStringKey
+    let description: LocalizedStringKey
     @Binding var isOn: Bool
     @State private var isHovered = false
 
