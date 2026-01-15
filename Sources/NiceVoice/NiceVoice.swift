@@ -330,12 +330,14 @@ final class AppState {
         if #available(macOS 26.0, *) {
             speechAnalyzerService = SpeechAnalyzerService(
                 onTranscription: { [weak self] text, isFinal in
+                    debugLog("📥 onTranscription called: isFinal=\(isFinal), len=\(text.count), text='\(text.prefix(50))'")
                     DispatchQueue.main.async {
                         guard let self else { return }
                         self.currentTranscription = self.addLocalPunctuation(text, isFinal: isFinal)
                     }
                 },
                 onFinalCompletion: { [weak self] text in
+                    debugLog("📥 onFinalCompletion called: len=\(text.count), text='\(text.prefix(50))'")
                     self?.handleFinalResult(text)
                 },
                 onError: { [weak self] error in
@@ -351,6 +353,12 @@ final class AppState {
                     guard let self else { return }
                     self.audioLevels.removeFirst()
                     self.audioLevels.append(level)
+                },
+                onLanguageDetected: { [weak self] language in
+                    DispatchQueue.main.async {
+                        debugLog("🌍 Language detected: \(language.displayName)")
+                        self?.statusMessage = "検出: \(language.displayName)"
+                    }
                 }
             )
         }
