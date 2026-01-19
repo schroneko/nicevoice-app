@@ -4,7 +4,7 @@ set -e
 cd "$(dirname "$0")/.."
 
 swift build --product NiceVoice || true
-swift-bundler bundle --skip-build --products-directory .build/arm64-apple-macosx/debug
+mint run stackotter/swift-bundler bundle --skip-build --products-directory .build/arm64-apple-macosx/debug
 
 killall -9 NiceVoice 2>/dev/null || true
 

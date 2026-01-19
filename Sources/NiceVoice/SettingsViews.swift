@@ -1,4 +1,6 @@
 import SwiftUI
+import AVFoundation
+import AppKit
 
 struct ShortcutKeyButton: View {
     let key: ShortcutKey
@@ -67,7 +69,7 @@ struct SettingsContentView: View {
     @AppStorage("showInMenuBar") private var showInMenuBar = true
     @AppStorage("shortcutKey") private var shortcutKeyRaw = ShortcutKey.fn.rawValue
     @State private var fillerSettings: FillerSettings
-    @State private var sectionAnimations: [Bool] = [false, false, false, false]
+    @State private var sectionAnimations: [Bool] = [false, false, false, false, false]
 
     private var selectedShortcutKey: ShortcutKey {
         ShortcutKey(rawValue: shortcutKeyRaw) ?? .fn
@@ -89,6 +91,16 @@ struct SettingsContentView: View {
                         .foregroundStyle(.secondary)
                 }
                 .padding(.bottom, 8)
+
+                SettingsSection(
+                    title: "権限",
+                    icon: "lock.shield.fill",
+                    gradientColors: [.green, .teal]
+                ) {
+                    PermissionStatusView()
+                }
+                .opacity(sectionAnimations[0] ? 1 : 0)
+                .offset(y: sectionAnimations[0] ? 0 : 16)
 
                 SettingsSection(
                     title: "一般",
@@ -131,8 +143,8 @@ struct SettingsContentView: View {
                         }
                     }
                 }
-                .opacity(sectionAnimations[0] ? 1 : 0)
-                .offset(y: sectionAnimations[0] ? 0 : 16)
+                .opacity(sectionAnimations[1] ? 1 : 0)
+                .offset(y: sectionAnimations[1] ? 0 : 16)
 
                 SettingsSection(
                     title: "書き起こし調整",
@@ -159,8 +171,8 @@ struct SettingsContentView: View {
                         appState.updateFillerSettings(fillerSettings)
                     }
                 }
-                .opacity(sectionAnimations[1] ? 1 : 0)
-                .offset(y: sectionAnimations[1] ? 0 : 16)
+                .opacity(sectionAnimations[2] ? 1 : 0)
+                .offset(y: sectionAnimations[2] ? 0 : 16)
 
                 SettingsSection(
                     title: "フィラー除去",
@@ -189,8 +201,8 @@ struct SettingsContentView: View {
                         }
                     }
                 }
-                .opacity(sectionAnimations[2] ? 1 : 0)
-                .offset(y: sectionAnimations[2] ? 0 : 16)
+                .opacity(sectionAnimations[3] ? 1 : 0)
+                .offset(y: sectionAnimations[3] ? 0 : 16)
 
                 SettingsSection(
                     title: "プラン",
@@ -199,8 +211,8 @@ struct SettingsContentView: View {
                 ) {
                     PlanStatusView()
                 }
-                .opacity(sectionAnimations[3] ? 1 : 0)
-                .offset(y: sectionAnimations[3] ? 0 : 16)
+                .opacity(sectionAnimations[4] ? 1 : 0)
+                .offset(y: sectionAnimations[4] ? 0 : 16)
 
                 Spacer(minLength: 20)
             }
@@ -477,6 +489,108 @@ struct FlowLayout: Layout {
         }
 
         return (CGSize(width: maxWidth, height: totalHeight), positions)
+    }
+}
+
+struct PermissionStatusView: View {
+    @State private var microphoneStatus: Bool = false
+    @State private var accessibilityStatus: Bool = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            PermissionRow(
+                title: "マイク",
+                description: "音声を録音するために必要",
+                isGranted: microphoneStatus,
+                action: { openSystemPreferences("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") }
+            )
+
+            SectionDivider()
+
+            PermissionRow(
+                title: "アクセシビリティ",
+                description: "ショートカットキーを監視するために必要",
+                isGranted: accessibilityStatus,
+                action: { openSystemPreferences("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") }
+            )
+        }
+        .onAppear { checkPermissions() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            checkPermissions()
+        }
+    }
+
+    private func checkPermissions() {
+        microphoneStatus = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+        accessibilityStatus = AXIsProcessTrusted()
+    }
+
+    private func openSystemPreferences(_ urlString: String) {
+        if let url = URL(string: urlString) {
+            NSWorkspace.shared.open(url)
+        }
+    }
+}
+
+struct PermissionRow: View {
+    let title: LocalizedStringKey
+    let description: LocalizedStringKey
+    let isGranted: Bool
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(isGranted ? Color.green.opacity(0.15) : Color.red.opacity(0.15))
+                    .frame(width: 32, height: 32)
+                Image(systemName: isGranted ? "checkmark.circle.fill" : "xmark.circle.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(isGranted ? .green : .red)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.callout)
+                    .fontWeight(.medium)
+                Text(description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            if !isGranted {
+                Button(action: action) {
+                    Text("設定を開く")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(
+                            LinearGradient(
+                                colors: [.blue, .cyan],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 4)
+        .padding(.horizontal, 8)
+        .background {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(isHovered ? Color.secondary.opacity(0.06) : Color.clear)
+        }
+        .animation(.easeOut(duration: 0.15), value: isHovered)
+        .onHover { hovering in
+            isHovered = hovering
+        }
     }
 }
 

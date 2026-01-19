@@ -7,6 +7,7 @@ version = '0.1.0'
 icon = 'AppIcon.icns'
 
 [apps.NiceVoice.plist]
+CFBundleIdentifier = "app.nicevoice.NiceVoice"
 NSMicrophoneUsageDescription = "音声入力のためにマイクを使用します"
 NSSpeechRecognitionUsageDescription = "音声をテキストに変換するために使用します"
 NSAppleEventsUsageDescription = "テキストを入力欄に貼り付けるために使用します"

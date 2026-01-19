@@ -176,7 +176,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func checkAccessibilityPermission() {
-        let trusted = AXIsProcessTrusted()
+        let options = [kAXTrustedCheckOptionPrompt.takeRetainedValue() as String: true] as CFDictionary
+        let trusted = AXIsProcessTrustedWithOptions(options)
         debugLog("🔐 Accessibility permission: \(trusted)")
     }
 
@@ -562,13 +563,11 @@ final class AppState {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             self?.simulatePaste {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                    if let previous = previousContents {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    if let prev = previousContents {
                         pasteboard.clearContents()
-                        pasteboard.setString(previous, forType: .string)
-                        debugLog("📋 Restored clipboard: \(previous.count) chars")
-                    } else {
-                        debugLog("📋 No previous clipboard to restore")
+                        pasteboard.setString(prev, forType: .string)
+                        debugLog("📋 Restored previous clipboard: \(prev.count) chars")
                     }
                 }
             }
