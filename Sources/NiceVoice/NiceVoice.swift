@@ -178,15 +178,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func checkAccessibilityPermission() {
         let trusted = AXIsProcessTrusted()
         debugLog("🔐 Accessibility permission: \(trusted)")
-
-        if !trusted {
-            debugLog("⚠️ Accessibility not granted - opening System Settings")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-                    NSWorkspace.shared.open(url)
-                }
-            }
-        }
     }
 
     private func setupStatusItem() {

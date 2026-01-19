@@ -56,55 +56,36 @@ OpenAI Whisper（API・ローカル問わず）は絶対に使わない。ハル
 ## ビルド方法
 
 ```bash
-swift-bundler bundle
-killall -9 NiceVoice
-codesign -fs "NiceVoice" --deep .build/bundler/NiceVoice.app
-open .build/bundler/NiceVoice.app
+./Scripts/debug-run.sh
 ```
+
+このスクリプトが以下を自動実行する:
+
+1. `swift build` でコンパイル
+2. `swift-bundler` でバンドル作成
+3. `codesign -fs "NiceVoice"` で自己署名証明書による署名
+4. 既存プロセスを終了して起動
+5. ログを tail -f で表示
 
 自己署名証明書「NiceVoice」で署名することで、ビルドしてもアクセシビリティ権限が維持される。
 
-ビルドエラー（disk I/O error 等）が発生した場合：
-
-1. まず build.db のみ削除を試す（高速）：
-   ```bash
-   rm .build/build.db .build/build.db-journal
-   ```
-2. それでも解決しない場合は完全クリーンビルド：
-   ```bash
-   rm -rf .build
-   ```
-
-原因: llbuild の build.db（SQLite）やジャーナルファイルが破損すると disk I/O error が発生する。並列ビルドや中断時に起こりやすい。コンパイル済みオブジェクトファイルを保持したまま build.db のみ再生成することで、フルビルドより高速に復旧できる。
-
-### Google Drive 環境での 2 段階ビルド
-
-Google Drive（クラウドストレージ）上では SQLite ベースの build.db が破損しやすく、`swift-bundler bundle` が途中で失敗することがある。build.db エラーで `swift build` が exit code 1 を返すと、バンドル処理がスキップされてしまう。
-
-回避策として 2 段階でビルドする：
+署名が正しく適用されているか確認するには:
 
 ```bash
-swift build --product NiceVoice
-swift-bundler bundle --skip-build --products-directory .build/debug
-killall -9 NiceVoice
-codesign -fs "NiceVoice" --deep .build/bundler/NiceVoice.app
-open .build/bundler/NiceVoice.app
+codesign -dvvv .build/bundler/NiceVoice.app 2>&1 | grep "Signature"
 ```
 
-1. `swift build` でコンパイル（build.db エラーが出ても実際のビルドは成功する）
-2. `--skip-build` でバンドル処理のみ実行
-3. `killall -9 NiceVoice` で既存プロセスを終了（必須）
-4. 署名して `open` で起動
+`Signature=adhoc` ではなく証明書名が表示されれば OK。
 
-**重要**: ビルド後は必ず `killall -9 NiceVoice` でアプリを終了してから再起動すること。終了しないと古いバイナリが実行されたままになる。
+### ビルドエラー時
 
-#### symlink 問題
-
-`.build/debug` は symlink であり、swift-bundler がこれを正しく処理できない場合がある。その場合は直接パスを指定する：
+disk I/O error 等が発生した場合:
 
 ```bash
-swift-bundler bundle --skip-build --products-directory .build/arm64-apple-macosx/debug
+rm .build/build.db .build/build.db-journal
 ```
+
+それでも解決しない場合は `rm -rf .build` で完全クリーンビルド。
 
 ### 自己署名証明書の作成（初回のみ）
 
