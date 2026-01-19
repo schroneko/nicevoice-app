@@ -56,52 +56,54 @@ struct MainWindowView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
-            VStack(spacing: 8) {
-                ForEach(NavigationPage.allCases, id: \.self) { page in
-                    SidebarItem(
-                        page: page,
-                        isSelected: selectedPage == page,
-                        isHovered: hoveredPage == page
-                    )
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                            selectedPage = page
-                        }
-                    }
-                    .onHover { hovering in
-                        withAnimation(.easeInOut(duration: 0.15)) {
-                            hoveredPage = hovering ? page : nil
-                        }
-                    }
-                }
-                Spacer()
-            }
-            .padding(.vertical, 16)
-            .padding(.horizontal, 12)
-            .background(.ultraThinMaterial)
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200)
-        } detail: {
-            ZStack {
-                MeshGradientBackground()
-
-                switch selectedPage {
-                case .overview:
-                    OverviewView(appState: appState)
-                case .transcription:
-                    BatchTranscriptionView(appState: appState)
-                case .history:
-                    HistoryContentView(appState: appState)
-                case .dictionary:
-                    DictionaryView(appState: appState)
-                case .settings:
-                    SettingsContentView(appState: appState)
-                }
-            }
-        }
-        .frame(minWidth: 750, minHeight: 550)
-        .sheet(isPresented: $showOnboarding) {
+        if showOnboarding {
             OnboardingView(isPresented: $showOnboarding)
+                .frame(minWidth: 560, minHeight: 720)
+        } else {
+            NavigationSplitView {
+                VStack(spacing: 8) {
+                    ForEach(NavigationPage.allCases, id: \.self) { page in
+                        SidebarItem(
+                            page: page,
+                            isSelected: selectedPage == page,
+                            isHovered: hoveredPage == page
+                        )
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                selectedPage = page
+                            }
+                        }
+                        .onHover { hovering in
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                hoveredPage = hovering ? page : nil
+                            }
+                        }
+                    }
+                    Spacer()
+                }
+                .padding(.vertical, 16)
+                .padding(.horizontal, 12)
+                .background(.ultraThinMaterial)
+                .navigationSplitViewColumnWidth(min: 180, ideal: 200)
+            } detail: {
+                ZStack {
+                    MeshGradientBackground()
+
+                    switch selectedPage {
+                    case .overview:
+                        OverviewView(appState: appState)
+                    case .transcription:
+                        BatchTranscriptionView(appState: appState)
+                    case .history:
+                        HistoryContentView(appState: appState)
+                    case .dictionary:
+                        DictionaryView(appState: appState)
+                    case .settings:
+                        SettingsContentView(appState: appState)
+                    }
+                }
+            }
+            .frame(minWidth: 750, minHeight: 550)
         }
     }
 }

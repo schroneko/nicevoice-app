@@ -296,7 +296,7 @@ struct OnboardingView: View {
                     .allowsHitTesting(false)
             }
         }
-        .frame(width: 560, height: 720)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .onAppear {
             checkPermissions()

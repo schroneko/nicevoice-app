@@ -256,21 +256,10 @@ final class SpeechAnalyzerService {
     }
 
     private func detectLanguageAndStartTranscription(buffers: [AVAudioPCMBuffer]) async {
-        debugLog("🌍 Starting language detection with \(buffers.count) buffers")
-
-        async let japaneseTask = transcribeBuffersWithLanguage(buffers, language: .japanese)
-        async let englishTask = transcribeBuffersWithLanguage(buffers, language: .english)
-
-        let japaneseResult = await japaneseTask
-        let englishResult = await englishTask
-
-        debugLog("🌍 Japanese result: '\(japaneseResult ?? "nil")'")
-        debugLog("🌍 English result: '\(englishResult ?? "nil")'")
-
-        let language = detectBestLanguage(japaneseResult: japaneseResult, englishResult: englishResult)
+        let language: SupportedLanguage = .japanese
+        debugLog("🌍 Using fixed language: \(language.displayName)")
 
         detectedLanguage = language
-        debugLog("🌍 Detected language: \(language.displayName)")
 
         await MainActor.run {
             self.onLanguageDetected?(language)
