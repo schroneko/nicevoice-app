@@ -14,6 +14,13 @@ enum Constants {
         static let finalizationWaitMilliseconds: UInt64 = 500
     }
 
+    enum Waveform {
+        static let minAmplitude: CGFloat = 0.08
+        static let amplificationFactor: CGFloat = 15.0
+        static let animationSpeed: Double = 2.5
+        static let maxAmplitudeRatio: CGFloat = 0.48
+    }
+
     enum Timing {
         static let finalResultTimeoutSeconds: Double = 3.0
         static let pastePreDelaySeconds: Double = 0.1
@@ -24,8 +31,9 @@ enum Constants {
     }
 
     enum UI {
-        static let floatingPanelWidth: CGFloat = 80
-        static let floatingPanelBottomOffset: CGFloat = 30
+        static let floatingPanelWidth: CGFloat = 120
+        static let floatingPanelHeight: CGFloat = 52
+        static let floatingPanelBottomOffset: CGFloat = 40
         static let maxFocusedElementHeight: CGFloat = 100
         static let maxAXTreeSearchDepth = 10
     }

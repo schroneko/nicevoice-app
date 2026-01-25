@@ -60,6 +60,12 @@ enum AppGradient {
         startPoint: .leading,
         endPoint: .trailing
     )
+
+    static let waveform = LinearGradient(
+        colors: [.cyan.opacity(0.6), .purple, .cyan.opacity(0.6)],
+        startPoint: .leading,
+        endPoint: .trailing
+    )
 }
 
 enum AppSpacing {

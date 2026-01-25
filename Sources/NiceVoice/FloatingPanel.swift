@@ -21,7 +21,7 @@ final class FloatingPanel {
         guard let appState else { return }
 
         let panel = NonActivatingPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 80, height: 40),
+            contentRect: NSRect(x: 0, y: 0, width: Constants.UI.floatingPanelWidth, height: Constants.UI.floatingPanelHeight),
             styleMask: [.nonactivatingPanel, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -46,9 +46,9 @@ final class FloatingPanel {
         guard let window, let screen = NSScreen.main else { return }
 
         let screenFrame = screen.frame
-        let panelWidth: CGFloat = 80
+        let panelWidth = Constants.UI.floatingPanelWidth
         let x = screenFrame.midX - panelWidth / 2
-        let y = screenFrame.minY + 30
+        let y = screenFrame.minY + Constants.UI.floatingPanelBottomOffset
 
         debugLog("📍 Position: fixed center-bottom (\(x), \(y)), panelWidth: \(panelWidth)")
         window.setFrameOrigin(NSPoint(x: x, y: y))

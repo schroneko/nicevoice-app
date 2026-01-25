@@ -1004,58 +1004,100 @@ struct FloatingPanelView: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
-            if let error = appState.errorMessage {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                    .font(.system(size: 12))
-                Text(error)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
+            if isError {
+                ErrorIndicatorView(message: appState.errorMessage ?? "")
             } else {
-                EqualizerView(level: appState.audioLevels.last ?? 0)
+                WaveformVisualizerView(level: appState.audioLevels.last ?? 0)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(.black.opacity(0.7), in: Capsule())
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .glassEffect(
+            isError ? .regular.tint(.orange.opacity(0.3)) : .regular,
+            in: .capsule
+        )
     }
 }
 
-struct EqualizerView: View {
+struct WaveformVisualizerView: View {
     let level: Float
-    private let barCount = 10
-    @State private var barHeights: [CGFloat] = Array(repeating: 2, count: 10)
+    @State private var smoothedLevel: CGFloat = 0
 
     var body: some View {
-        HStack(alignment: .center, spacing: 2) {
-            ForEach(0..<barCount, id: \.self) { index in
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(
-                        LinearGradient(
-                            colors: [.cyan.opacity(0.5), .cyan, .cyan.opacity(0.5)],
-                            startPoint: .bottom,
-                            endPoint: .top
-                        )
-                    )
-                    .frame(width: 2.5, height: barHeights[index])
-                    .animation(.easeOut(duration: 0.06), value: barHeights[index])
+        TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { timeline in
+            Canvas { context, size in
+                let time = timeline.date.timeIntervalSinceReferenceDate
+                drawWaveform(context: context, size: size, time: time)
             }
         }
-        .frame(height: 24, alignment: .center)
+        .frame(width: 88, height: 36)
         .onChange(of: level) { _, newLevel in
-            updateBars(level: newLevel)
-        }
-        .onAppear {
-            updateBars(level: level)
+            withAnimation(.spring(response: 0.15, dampingFraction: 0.7)) {
+                let scaled = CGFloat(newLevel) * Constants.Waveform.amplificationFactor
+                smoothedLevel = Constants.Waveform.minAmplitude + min(1.0 - Constants.Waveform.minAmplitude, scaled)
+            }
         }
     }
 
-    private func updateBars(level: Float) {
-        for i in 0..<barCount {
-            let randomFactor = Float.random(in: 0.5...1.5)
-            let height = CGFloat(level * randomFactor * 40) + 2
-            barHeights[i] = min(24, max(2, height))
+    private func drawWaveform(context: GraphicsContext, size: CGSize, time: Double) {
+        let midY = size.height / 2
+        let normalizedLevel = smoothedLevel
+        let amplitude = normalizedLevel * size.height * Constants.Waveform.maxAmplitudeRatio
+        let frequency1 = 1.5
+        let frequency2 = 2.5
+        let frequency3 = 3.5
+        let speed = Constants.Waveform.animationSpeed
+
+        var path = Path()
+        path.move(to: CGPoint(x: 0, y: midY))
+
+        for x in stride(from: 0, through: size.width, by: 1) {
+            let progress = x / size.width
+            let envelope = sin(progress * .pi)
+            let wave1 = sin((progress * frequency1 + time * speed) * .pi * 2) * 0.5
+            let wave2 = sin((progress * frequency2 + time * speed * 1.3) * .pi * 2) * 0.3
+            let wave3 = sin((progress * frequency3 + time * speed * 0.7) * .pi * 2) * 0.2
+            let combinedWave = (wave1 + wave2 + wave3) * envelope * normalizedLevel
+            let y = midY + combinedWave * amplitude
+            path.addLine(to: CGPoint(x: x, y: y))
+        }
+
+        let gradient = Gradient(colors: [.cyan, .purple, .cyan])
+
+        var glowContext = context
+        glowContext.addFilter(.blur(radius: 4))
+        glowContext.stroke(
+            path,
+            with: .linearGradient(gradient, startPoint: .zero, endPoint: CGPoint(x: size.width, y: 0)),
+            lineWidth: 3
+        )
+
+        context.stroke(
+            path,
+            with: .linearGradient(gradient, startPoint: .zero, endPoint: CGPoint(x: size.width, y: 0)),
+            lineWidth: 2
+        )
+    }
+}
+
+struct ErrorIndicatorView: View {
+    let message: String
+    @State private var isPulsing = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .font(.system(size: 14))
+                .scaleEffect(isPulsing ? 1.1 : 1.0)
+                .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: isPulsing)
+            Text(message)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+        }
+        .onAppear {
+            isPulsing = true
         }
     }
 }
