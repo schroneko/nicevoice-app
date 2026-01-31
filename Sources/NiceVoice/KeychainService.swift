@@ -2,7 +2,6 @@ import Foundation
 import Security
 
 enum KeychainKey: String {
-    case anthropicAPIKey = "com.nicevoice.anthropic-api-key"
     case licenseInfo = "com.nicevoice.license-info"
     case deviceId = "com.nicevoice.device-id"
     case firstLaunchDate = "com.nicevoice.first-launch-date"

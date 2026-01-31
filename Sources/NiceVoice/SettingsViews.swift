@@ -187,19 +187,6 @@ struct SettingsContentView: View {
                     .onChange(of: fillerSettings.removeFillers) { _, _ in
                         appState.updateFillerSettings(fillerSettings)
                     }
-
-                    if fillerSettings.removeFillers {
-                        SectionDivider()
-
-                        SettingsToggleRow(
-                            title: "AI でフィラーを識別",
-                            description: "「あの」「その」など文脈依存のフィラーを AI で判定します",
-                            isOn: $fillerSettings.useSmartFillerDetection
-                        )
-                        .onChange(of: fillerSettings.useSmartFillerDetection) { _, _ in
-                            appState.updateFillerSettings(fillerSettings)
-                        }
-                    }
                 }
                 .opacity(sectionAnimations[3] ? 1 : 0)
                 .offset(y: sectionAnimations[3] ? 0 : 16)

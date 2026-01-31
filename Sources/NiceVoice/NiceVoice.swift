@@ -89,7 +89,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         debugLog("✅ NiceVoice started")
         checkAccessibilityPermission()
         setupStatusItem()
-        setupFillerDetection()
         initializeLicenseManager()
 
         NotificationCenter.default.addObserver(
@@ -165,11 +164,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func setupFillerDetection() {
-        let devVarsPath = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("nicevoice-app/.dev.vars").path
-        FillerDetectionService.setupAPIKey(from: devVarsPath)
-    }
 
     @objc private func recordingStateChanged() {
         updateStatusItemIcon()
@@ -482,36 +476,6 @@ final class AppState {
         }
 
         let audioData = getRecordedAudioDataFromActiveService()
-
-        if fillerSettings.useSmartFillerDetection && fillerSettings.removeFillers {
-            let ambiguous = fillerSettings.ambiguousFillers
-            let hasAmbiguousWords = ambiguous.contains { processedText.contains($0) }
-
-            if hasAmbiguousWords {
-                let textToProcess = processedText
-                Task {
-                    let detectedFillers = await FillerDetectionService.detectFillers(
-                        in: textToProcess,
-                        ambiguousWords: ambiguous
-                    )
-                    var result = textToProcess
-                    for filler in detectedFillers {
-                        result = result.replacingOccurrences(of: filler, with: "")
-                    }
-                    result = self.cleanupOrphanedParticles(result)
-                    let finalText = result.replacingOccurrences(of: "  ", with: " ")
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-
-                    await MainActor.run {
-                        if !finalText.isEmpty {
-                            self.addToHistory(finalText, audioData: audioData)
-                            self.performPaste(finalText)
-                        }
-                    }
-                }
-                return
-            }
-        }
 
         addToHistory(processedText, audioData: audioData)
         performPaste(processedText)
@@ -880,34 +844,7 @@ final class AppState {
     }
 
     private func loadFillerSettings() {
-        if var settings: FillerSettings = load(forKey: UserDefaultsKey.fillerSettings) {
-            var needsSave = false
-
-            let fillersToMigrate: Set<String> = ["なんか", "まあ", "まぁ", "やっぱり", "やっぱ"]
-            let migratedFillers = settings.enabledPresets.intersection(fillersToMigrate)
-            if !migratedFillers.isEmpty {
-                settings.enabledPresets.subtract(fillersToMigrate)
-                settings.ambiguousFillers.formUnion(fillersToMigrate)
-                debugLog("🔄 Migrated fillers to ambiguous: \(migratedFillers)")
-                needsSave = true
-            }
-
-            let requiredAmbiguous: Set<String> = [
-                "あの", "その", "ちょっと",
-                "なんか", "まあ", "まぁ",
-                "こう", "ほら",
-                "やっぱり", "やっぱ"
-            ]
-            let missingAmbiguous = requiredAmbiguous.subtracting(settings.ambiguousFillers)
-            if !missingAmbiguous.isEmpty {
-                settings.ambiguousFillers.formUnion(missingAmbiguous)
-                debugLog("🔄 Added missing ambiguous fillers: \(missingAmbiguous)")
-                needsSave = true
-            }
-
-            if needsSave {
-                save(settings, forKey: UserDefaultsKey.fillerSettings)
-            }
+        if let settings: FillerSettings = load(forKey: UserDefaultsKey.fillerSettings) {
             fillerSettings = settings
         }
     }

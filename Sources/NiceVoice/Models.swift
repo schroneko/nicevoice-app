@@ -78,14 +78,6 @@ struct FillerSettings: Codable {
     var addPunctuation: Bool = true
     var removeRepetition: Bool = true
 
-    var useSmartFillerDetection: Bool = false
-    var ambiguousFillers: Set<String> = [
-        "あの", "その", "ちょっと",
-        "なんか", "まあ", "まぁ",
-        "こう", "ほら",
-        "やっぱり", "やっぱ"
-    ]
-
     var allEnabledFillers: [String] {
         enabledPresets.sorted { $0.count > $1.count }
     }
