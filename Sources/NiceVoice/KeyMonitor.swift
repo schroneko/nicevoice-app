@@ -48,6 +48,20 @@ enum ShortcutKey: String, CaseIterable {
         case .leftCommand, .rightCommand: return .command
         }
     }
+
+    var deviceDependentFlag: UInt {
+        switch self {
+        case .fn: return 0
+        case .leftShift: return 0x00000002
+        case .rightShift: return 0x00000004
+        case .leftControl: return 0x00000001
+        case .rightControl: return 0x00002000
+        case .leftOption: return 0x00000020
+        case .rightOption: return 0x00000040
+        case .leftCommand: return 0x00000008
+        case .rightCommand: return 0x00000010
+        }
+    }
 }
 
 final class KeyMonitor {
@@ -111,11 +125,10 @@ final class KeyMonitor {
     }
 
     private func isShortcutKeyPressed(event: NSEvent) -> Bool {
-        let hasModifier = event.modifierFlags.contains(shortcutKey.modifierFlag)
         if shortcutKey == .fn {
-            return hasModifier
+            return event.modifierFlags.contains(.function)
         }
-        return hasModifier && event.keyCode == shortcutKey.keyCode
+        return event.modifierFlags.rawValue & shortcutKey.deviceDependentFlag != 0
     }
 
     deinit {
