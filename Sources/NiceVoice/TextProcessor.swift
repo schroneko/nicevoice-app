@@ -31,6 +31,7 @@ struct TextProcessor {
         ("ナノバナナ", "Nano Banana"),
         ("API機", "APIキー"),
         ("クラウドフレア", "Cloudflare"),
+        ("アンソロピック", "Anthropic"),
     ]
 
     private static let sentenceEndings = ["ました", "ません", "でした"]
