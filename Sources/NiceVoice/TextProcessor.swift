@@ -5,7 +5,7 @@ struct TextProcessor {
     let dictionaryEntries: [DictionaryEntry]
 
     private static let leadingFillers = ["あの", "えっと", "えーと"]
-    private static let leadingFillerCleanupPrefixes = ["、", "。", "に", "もう"]
+    private static let leadingFillerCleanupPrefixes = ["、", "。", "に", "もう", "ば"]
     private static let fillerPrefixes = ["あの", "その"]
     private static let fillerPronouns = ["私", "僕", "俺", "彼", "彼女", "あなた", "君"]
 
