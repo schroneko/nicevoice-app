@@ -438,16 +438,17 @@ final class SpeechAnalyzerService {
                     }
 
                     if isFinal {
-                        debugLog("🔴 [FINAL] Received final result: '\(text.prefix(50))...' (len=\(text.count))")
-                        finalText = text
-                        let textToSend = text
+                        finalText += text
+                        debugLog("🔴 [FINAL] Received final result: '\(text.prefix(50))...' (len=\(text.count), totalLen=\(finalText.count))")
+                        let textToSend = finalText
                         await MainActor.run {
                             self.onTranscription(textToSend, true)
                         }
                     } else {
-                        if text != lastVolatileText {
-                            lastVolatileText = text
-                            let textToSend = text
+                        let fullText = finalText + text
+                        if fullText != lastVolatileText {
+                            lastVolatileText = fullText
+                            let textToSend = fullText
                             await MainActor.run {
                                 self.onTranscription(textToSend, false)
                             }
