@@ -85,6 +85,7 @@ struct TextProcessor {
         result = insertPoliteEndingPunctuation(in: result)
         result = insertQuestionMarks(in: result)
         result = insertConjunctionCommas(in: result)
+        result = removeCommasBeforeFinalParticles(from: result)
         result = insertStarterPunctuation(in: result)
         result = removeLeadingFillers(from: result)
 
@@ -373,7 +374,7 @@ struct TextProcessor {
 
                 if range.upperBound < result.endIndex {
                     let nextChar = result[range.upperBound]
-                    if !isPunctuation(nextChar) {
+                    if !isPunctuation(nextChar) && !isSentenceFinalParticle(nextChar, in: result, at: range.upperBound) {
                         result.insert("、", at: range.upperBound)
                     }
                 }
@@ -403,6 +404,26 @@ struct TextProcessor {
             result = String(result.dropLast())
         }
         return result
+    }
+
+    private func removeCommasBeforeFinalParticles(from text: String) -> String {
+        var result = text
+        for particle in ["ね", "よ"] {
+            for pattern in ["、\(particle)。", "、\(particle)？", "、\(particle)！"] {
+                result = result.replacingOccurrences(of: pattern, with: "\(particle)\(String(pattern.last!))")
+            }
+            if result.hasSuffix("、\(particle)") {
+                result = String(result.dropLast(2)) + particle
+            }
+        }
+        return result
+    }
+
+    private func isSentenceFinalParticle(_ char: Character, in text: String, at index: String.Index) -> Bool {
+        guard char == "ね" || char == "よ" else { return false }
+        let afterParticle = text.index(after: index)
+        if afterParticle >= text.endIndex { return true }
+        return isPunctuation(text[afterParticle])
     }
 
     private func isPunctuation(_ char: Character) -> Bool {

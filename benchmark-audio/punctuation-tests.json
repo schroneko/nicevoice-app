@@ -100,5 +100,17 @@
     "input": "はい分かりました",
     "expected": "はい。分かりました",
     "description": "文頭の「はい」の後に句点を挿入"
+  },
+  {
+    "id": "particle_comma_ne",
+    "input": "それはなくした方がいいと思うんですけど、ね。",
+    "expected": "それはなくした方がいいと思うんですけどね。",
+    "description": "終助詞「ね」の前の不要なカンマを削除"
+  },
+  {
+    "id": "particle_comma_yo",
+    "input": "それでいいと思いますけど、よ。",
+    "expected": "それでいいと思いますけどよ。",
+    "description": "終助詞「よ」の前の不要なカンマを削除"
   }
 ]
