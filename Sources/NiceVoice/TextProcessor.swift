@@ -85,8 +85,8 @@ struct TextProcessor {
         result = insertPoliteEndingPunctuation(in: result)
         result = insertQuestionMarks(in: result)
         result = insertConjunctionCommas(in: result)
-        result = removeCommasBeforeFinalParticles(from: result)
         result = insertStarterPunctuation(in: result)
+        result = removePunctuationBeforeFinalParticles(from: result)
         result = removeLeadingFillers(from: result)
 
         if !isFinal {
@@ -406,14 +406,16 @@ struct TextProcessor {
         return result
     }
 
-    private func removeCommasBeforeFinalParticles(from text: String) -> String {
+    private func removePunctuationBeforeFinalParticles(from text: String) -> String {
         var result = text
         for particle in ["ね", "よ"] {
-            for pattern in ["、\(particle)。", "、\(particle)？", "、\(particle)！"] {
-                result = result.replacingOccurrences(of: pattern, with: "\(particle)\(String(pattern.last!))")
-            }
-            if result.hasSuffix("、\(particle)") {
-                result = String(result.dropLast(2)) + particle
+            for separator in ["、", "。"] {
+                for pattern in ["\(separator)\(particle)。", "\(separator)\(particle)？", "\(separator)\(particle)！"] {
+                    result = result.replacingOccurrences(of: pattern, with: "\(particle)\(String(pattern.last!))")
+                }
+                if result.hasSuffix("\(separator)\(particle)") {
+                    result = String(result.dropLast(2)) + particle
+                }
             }
         }
         return result

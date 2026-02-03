@@ -47,6 +47,21 @@ func removeLeadingFillers(_ text: String) -> String {
     return result
 }
 
+func removePunctuationBeforeFinalParticles(_ text: String) -> String {
+    var result = text
+    for particle in ["ね", "よ"] {
+        for separator in ["、", "。"] {
+            for pattern in ["\(separator)\(particle)。", "\(separator)\(particle)？", "\(separator)\(particle)！"] {
+                result = result.replacingOccurrences(of: pattern, with: "\(particle)\(String(pattern.last!))")
+            }
+            if result.hasSuffix("\(separator)\(particle)") {
+                result = String(result.dropLast(2)) + particle
+            }
+        }
+    }
+    return result
+}
+
 func addLocalPunctuation(_ text: String) -> String {
     var result = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !result.isEmpty else { return result }
@@ -259,6 +274,7 @@ func addLocalPunctuation(_ text: String) -> String {
         }
     }
 
+    result = removePunctuationBeforeFinalParticles(result)
     result = removeLeadingFillers(result)
 
     return result
