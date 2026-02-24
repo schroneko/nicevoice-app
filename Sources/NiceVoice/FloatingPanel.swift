@@ -20,8 +20,13 @@ final class FloatingPanel {
     private func setupWindow() {
         guard let appState else { return }
 
+        let hostingView = NSHostingView(rootView: FloatingPanelView(appState: appState))
+        let fittingSize = hostingView.fittingSize
+        let width = max(fittingSize.width, Constants.UI.floatingPanelWidth)
+        let height = max(fittingSize.height, Constants.UI.floatingPanelHeight)
+
         let panel = NonActivatingPanel(
-            contentRect: NSRect(x: 0, y: 0, width: Constants.UI.floatingPanelWidth, height: Constants.UI.floatingPanelHeight),
+            contentRect: NSRect(x: 0, y: 0, width: width, height: height),
             styleMask: [.nonactivatingPanel, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -29,14 +34,12 @@ final class FloatingPanel {
 
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.hasShadow = true
+        panel.hasShadow = false
         panel.hidesOnDeactivate = false
         panel.becomesKeyOnlyIfNeeded = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.isFloatingPanel = true
         panel.level = .screenSaver
-
-        let hostingView = NSHostingView(rootView: FloatingPanelView(appState: appState))
         panel.contentView = hostingView
 
         self.window = panel

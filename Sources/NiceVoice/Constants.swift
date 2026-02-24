@@ -31,8 +31,8 @@ enum Constants {
     }
 
     enum UI {
-        static let floatingPanelWidth: CGFloat = 120
-        static let floatingPanelHeight: CGFloat = 52
+        static let floatingPanelWidth: CGFloat = 180
+        static let floatingPanelHeight: CGFloat = 48
         static let floatingPanelBottomOffset: CGFloat = 40
         static let maxFocusedElementHeight: CGFloat = 100
         static let maxAXTreeSearchDepth = 10

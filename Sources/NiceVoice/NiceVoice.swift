@@ -275,6 +275,7 @@ final class AppState {
     var errorMessage: String?
     var history: [TranscriptionRecord] = []
     var audioLevels: [Float] = Array(repeating: 0, count: 20)
+    var recordingStartDate: Date?
 
     @ObservationIgnored
     @AppStorage("shortcutKey") var shortcutKeyRaw = ShortcutKey.fn.rawValue
@@ -420,6 +421,7 @@ final class AppState {
         errorMessage = nil
         isRecording = true
         currentTranscription = ""
+        recordingStartDate = Date()
         debugLog("🎙️ Recording started")
         NotificationCenter.default.post(name: .recordingStateChanged, object: nil)
 
@@ -446,6 +448,7 @@ final class AppState {
             return
         }
         isRecording = false
+        recordingStartDate = nil
 
         finalResultTimer?.cancel()
         waitingForFinalResult = true
@@ -675,6 +678,7 @@ final class AppState {
         guard #available(macOS 26.0, *) else { return }
         (speechAnalyzerService as? SpeechAnalyzerService)?.stopRecording()
         isRecording = false
+        recordingStartDate = nil
         currentTranscription = ""
         floatingPanel?.hide()
         debugLog("🚫 Recording cancelled")
@@ -934,29 +938,75 @@ struct SpinningIcon: View {
 
 struct FloatingPanelView: View {
     var appState: AppState
+    @State private var isVisible = false
 
     private var isError: Bool {
         appState.errorMessage != nil
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 10) {
+        Group {
             if isError {
                 ErrorIndicatorView(message: appState.errorMessage ?? "")
             } else {
-                WaveformVisualizerView(level: appState.audioLevels.last ?? 0)
+                RecordingIndicatorView(
+                    level: appState.audioLevels.last ?? 0,
+                    startDate: appState.recordingStartDate
+                )
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
         .glassEffect(
-            isError ? .regular.tint(.orange.opacity(0.3)) : .regular,
+            isError ? .regular.tint(.orange.opacity(0.3)) : .regular.tint(.red.opacity(0.15)),
             in: .capsule
         )
+        .scaleEffect(isVisible ? 1 : 0.6)
+        .opacity(isVisible ? 1 : 0)
+        .onAppear {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                isVisible = true
+            }
+        }
     }
 }
 
-struct WaveformVisualizerView: View {
+struct RecordingIndicatorView: View {
+    let level: Float
+    let startDate: Date?
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "mic.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.red)
+
+            FluidGlowView(level: level)
+                .frame(width: 80, height: 28)
+
+            if let startDate {
+                RecordingTimerView(startDate: startDate)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+    }
+}
+
+struct RecordingTimerView: View {
+    let startDate: Date
+
+    var body: some View {
+        TimelineView(.periodic(from: startDate, by: 1)) { timeline in
+            let elapsed = Int(timeline.date.timeIntervalSince(startDate))
+            let minutes = elapsed / 60
+            let seconds = elapsed % 60
+            Text(String(format: "%d:%02d", minutes, seconds))
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+struct FluidGlowView: View {
     let level: Float
     @State private var smoothedLevel: CGFloat = 0
 
@@ -964,10 +1014,9 @@ struct WaveformVisualizerView: View {
         TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { timeline in
             Canvas { context, size in
                 let time = timeline.date.timeIntervalSinceReferenceDate
-                drawWaveform(context: context, size: size, time: time)
+                drawFluidGlow(context: context, size: size, time: time)
             }
         }
-        .frame(width: 88, height: 36)
         .onChange(of: level) { _, newLevel in
             withAnimation(.spring(response: 0.15, dampingFraction: 0.7)) {
                 let scaled = CGFloat(newLevel) * Constants.Waveform.amplificationFactor
@@ -976,44 +1025,54 @@ struct WaveformVisualizerView: View {
         }
     }
 
-    private func drawWaveform(context: GraphicsContext, size: CGSize, time: Double) {
-        let midY = size.height / 2
-        let normalizedLevel = smoothedLevel
-        let amplitude = normalizedLevel * size.height * Constants.Waveform.maxAmplitudeRatio
-        let frequency1 = 1.5
-        let frequency2 = 2.5
-        let frequency3 = 3.5
-        let speed = Constants.Waveform.animationSpeed
+    private func drawFluidGlow(context: GraphicsContext, size: CGSize, time: Double) {
+        let intensity = smoothedLevel
+        let speed = 1.2
 
-        var path = Path()
-        path.move(to: CGPoint(x: 0, y: midY))
-
-        for x in stride(from: 0, through: size.width, by: 1) {
-            let progress = x / size.width
-            let envelope = sin(progress * .pi)
-            let wave1 = sin((progress * frequency1 + time * speed) * .pi * 2) * 0.5
-            let wave2 = sin((progress * frequency2 + time * speed * 1.3) * .pi * 2) * 0.3
-            let wave3 = sin((progress * frequency3 + time * speed * 0.7) * .pi * 2) * 0.2
-            let combinedWave = (wave1 + wave2 + wave3) * envelope * normalizedLevel
-            let y = midY + combinedWave * amplitude
-            path.addLine(to: CGPoint(x: x, y: y))
-        }
-
-        let gradient = Gradient(colors: [.cyan, .purple, .cyan])
+        let blobs: [(color: Color, xPhase: Double, yPhase: Double, scale: Double)] = [
+            (.red, 0.0, 0.5, 1.0),
+            (.orange, 2.1, 1.3, 0.8),
+            (.pink, 4.2, 2.6, 0.9),
+        ]
 
         var glowContext = context
-        glowContext.addFilter(.blur(radius: 4))
-        glowContext.stroke(
-            path,
-            with: .linearGradient(gradient, startPoint: .zero, endPoint: CGPoint(x: size.width, y: 0)),
-            lineWidth: 3
-        )
+        glowContext.addFilter(.blur(radius: 12))
+        glowContext.opacity = 0.7 + Double(intensity) * 0.3
 
-        context.stroke(
-            path,
-            with: .linearGradient(gradient, startPoint: .zero, endPoint: CGPoint(x: size.width, y: 0)),
-            lineWidth: 2
-        )
+        for blob in blobs {
+            let baseSize = size.height * (0.5 + Double(intensity) * 0.5) * blob.scale
+            let cx = size.width * (0.5 + 0.3 * sin(time * speed + blob.xPhase))
+            let cy = size.height * (0.5 + 0.2 * cos(time * speed * 0.8 + blob.yPhase))
+            let rect = CGRect(
+                x: cx - baseSize * 0.6,
+                y: cy - baseSize * 0.5,
+                width: baseSize * 1.2,
+                height: baseSize
+            )
+            let gradient = Gradient(colors: [blob.color.opacity(0.8), blob.color.opacity(0)])
+            glowContext.fill(
+                Path(ellipseIn: rect),
+                with: .radialGradient(gradient, center: CGPoint(x: cx, y: cy), startRadius: 0, endRadius: baseSize * 0.6)
+            )
+        }
+
+        context.opacity = 0.9
+        for blob in blobs {
+            let baseSize = size.height * (0.3 + Double(intensity) * 0.3) * blob.scale
+            let cx = size.width * (0.5 + 0.25 * sin(time * speed * 1.1 + blob.xPhase + 0.5))
+            let cy = size.height * (0.5 + 0.15 * cos(time * speed * 0.9 + blob.yPhase + 0.5))
+            let rect = CGRect(
+                x: cx - baseSize * 0.5,
+                y: cy - baseSize * 0.5,
+                width: baseSize,
+                height: baseSize
+            )
+            let gradient = Gradient(colors: [blob.color.opacity(0.6), blob.color.opacity(0)])
+            context.fill(
+                Path(ellipseIn: rect),
+                with: .radialGradient(gradient, center: CGPoint(x: cx, y: cy), startRadius: 0, endRadius: baseSize * 0.5)
+            )
+        }
     }
 }
 
@@ -1025,7 +1084,7 @@ struct ErrorIndicatorView: View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
-                .font(.system(size: 14))
+                .font(.system(size: 13))
                 .scaleEffect(isPulsing ? 1.1 : 1.0)
                 .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: isPulsing)
             Text(message)
@@ -1033,6 +1092,8 @@ struct ErrorIndicatorView: View {
                 .foregroundStyle(.primary)
                 .lineLimit(1)
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
         .onAppear {
             isPulsing = true
         }
