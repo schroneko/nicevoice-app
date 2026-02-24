@@ -292,7 +292,18 @@ final class AppState {
     var dictionaryEntries: [DictionaryEntry] = []
     var fillerSettings: FillerSettings = FillerSettings()
 
+    @ObservationIgnored
+    @AppStorage("transcriptionEngine") var transcriptionEngineRaw = TranscriptionEngine.speechAnalyzer.rawValue
+
+    private var mistralApiKey = ""
+
+    var transcriptionEngine: TranscriptionEngine {
+        get { TranscriptionEngine(rawValue: transcriptionEngineRaw) ?? .speechAnalyzer }
+        set { transcriptionEngineRaw = newValue.rawValue }
+    }
+
     private var speechAnalyzerService: Any?
+    private var voxtralService: VoxtralRealtimeService?
     private(set) var keyMonitor: KeyMonitor?
     private var floatingPanel: FloatingPanel?
     private var waitingForFinalResult = false
@@ -314,6 +325,8 @@ final class AppState {
     }
 
     private func setupServices() {
+        setupTranscriptionService()
+
         if #available(macOS 26.0, *) {
             speechAnalyzerService = SpeechAnalyzerService(
                 onTranscription: { [weak self] text, isFinal in
@@ -363,6 +376,53 @@ final class AppState {
         }
     }
 
+    func setupTranscriptionService() {
+        voxtralService = nil
+
+        if transcriptionEngine == .voxtral && !mistralApiKey.isEmpty {
+            voxtralService = VoxtralRealtimeService(
+                apiKey: mistralApiKey,
+                onTranscription: { [weak self] text, isFinal in
+                    debugLog("📥 [Voxtral] onTranscription: isFinal=\(isFinal), len=\(text.count)")
+                    DispatchQueue.main.async {
+                        guard let self else { return }
+                        self.currentTranscription = self.addLocalPunctuation(text, isFinal: isFinal)
+                    }
+                },
+                onFinalCompletion: { [weak self] text in
+                    debugLog("📥 [Voxtral] onFinalCompletion: len=\(text.count)")
+                    self?.handleFinalResult(text)
+                },
+                onError: { [weak self] error in
+                    debugLog("❌ Voxtral error: \(error)")
+                    DispatchQueue.main.async {
+                        self?.statusMessage = error
+                    }
+                },
+                onStatusChange: { [weak self] status in
+                    DispatchQueue.main.async {
+                        self?.statusMessage = status
+                    }
+                },
+                onAudioLevel: { [weak self] level in
+                    guard let self else { return }
+                    self.audioLevels.removeFirst()
+                    self.audioLevels.append(level)
+                }
+            )
+        }
+    }
+
+    func setMistralAPIKey(_ key: String) {
+        mistralApiKey = key
+    }
+
+    func reinitializeAfterEngineChange() async {
+        isReady = false
+        statusMessage = "エンジンを切り替え中..."
+        await requestPermissions()
+    }
+
     private func requestPermissions() async {
         statusMessage = "権限を確認中..."
 
@@ -378,6 +438,20 @@ final class AppState {
         guard micStatus else {
             await MainActor.run {
                 statusMessage = "マイクの権限が必要です"
+            }
+            return
+        }
+
+        if transcriptionEngine == .voxtral {
+            await MainActor.run {
+                if mistralApiKey.isEmpty {
+                    statusMessage = "Mistral API キーを設定してください"
+                    debugLog("⚠️ Voxtral: API key not set")
+                } else {
+                    isReady = true
+                    statusMessage = "準備完了 (Voxtral) - \(shortcutKey.displayName) キーを押して録音"
+                    debugLog("✅ Using Voxtral Realtime")
+                }
             }
             return
         }
@@ -427,8 +501,13 @@ final class AppState {
 
         floatingPanel?.show()
 
-        (speechAnalyzerService as? SpeechAnalyzerService)?.startRecording()
-        debugLog("🔍 [DEBUG] speechAnalyzerService.startRecording() called")
+        if transcriptionEngine == .voxtral {
+            voxtralService?.startRecording()
+            debugLog("🔍 [DEBUG] voxtralService.startRecording() called")
+        } else {
+            (speechAnalyzerService as? SpeechAnalyzerService)?.startRecording()
+            debugLog("🔍 [DEBUG] speechAnalyzerService.startRecording() called")
+        }
     }
 
     func stopRecording() {
@@ -454,7 +533,11 @@ final class AppState {
         waitingForFinalResult = true
         debugLog("🎙️ Recording stopped - waiting for SpeechAnalyzer final result")
         floatingPanel?.hide()
-        (speechAnalyzerService as? SpeechAnalyzerService)?.stopRecording()
+        if transcriptionEngine == .voxtral {
+            voxtralService?.stopRecording()
+        } else {
+            (speechAnalyzerService as? SpeechAnalyzerService)?.stopRecording()
+        }
         NotificationCenter.default.post(name: .recordingStateChanged, object: nil)
 
         finalResultTimer = DispatchWorkItem { [weak self] in
@@ -675,8 +758,11 @@ final class AppState {
     }
 
     func cancelRecording() {
-        guard #available(macOS 26.0, *) else { return }
-        (speechAnalyzerService as? SpeechAnalyzerService)?.stopRecording()
+        if transcriptionEngine == .voxtral {
+            voxtralService?.stop()
+        } else if #available(macOS 26.0, *) {
+            (speechAnalyzerService as? SpeechAnalyzerService)?.stopRecording()
+        }
         isRecording = false
         recordingStartDate = nil
         currentTranscription = ""
@@ -805,6 +891,9 @@ final class AppState {
     }
 
     private func getRecordedAudioDataFromActiveService() -> Data? {
+        if transcriptionEngine == .voxtral {
+            return voxtralService?.getRecordedAudioData()
+        }
         guard #available(macOS 26.0, *) else { return nil }
         return (speechAnalyzerService as? SpeechAnalyzerService)?.getRecordedAudioData()
     }
@@ -1056,7 +1145,8 @@ struct FluidGlowView: View {
             )
         }
 
-        context.opacity = 0.9
+        var coreContext = context
+        coreContext.opacity = 0.9
         for blob in blobs {
             let baseSize = size.height * (0.3 + Double(intensity) * 0.3) * blob.scale
             let cx = size.width * (0.5 + 0.25 * sin(time * speed * 1.1 + blob.xPhase + 0.5))
@@ -1068,7 +1158,7 @@ struct FluidGlowView: View {
                 height: baseSize
             )
             let gradient = Gradient(colors: [blob.color.opacity(0.6), blob.color.opacity(0)])
-            context.fill(
+            coreContext.fill(
                 Path(ellipseIn: rect),
                 with: .radialGradient(gradient, center: CGPoint(x: cx, y: cy), startRadius: 0, endRadius: baseSize * 0.5)
             )

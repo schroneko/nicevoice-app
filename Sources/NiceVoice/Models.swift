@@ -83,6 +83,25 @@ struct FillerSettings: Codable {
     }
 }
 
+enum TranscriptionEngine: String, CaseIterable, Codable {
+    case speechAnalyzer
+    case voxtral
+
+    var displayName: String {
+        switch self {
+        case .speechAnalyzer: return "Apple SpeechAnalyzer"
+        case .voxtral: return "Voxtral (Mistral AI)"
+        }
+    }
+
+    var engineDescription: String {
+        switch self {
+        case .speechAnalyzer: return "macOS 内蔵の音声認識。オフラインで動作し、遅延が少ない"
+        case .voxtral: return "Mistral AI のリアルタイム音声認識。API キーが必要"
+        }
+    }
+}
+
 struct BenchmarkSample: Identifiable, Codable {
     let id: UUID
     let name: String

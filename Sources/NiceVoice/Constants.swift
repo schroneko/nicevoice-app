@@ -47,4 +47,13 @@ enum Constants {
         static let delete = UInt16(kVK_Delete)
         static let v = UInt16(kVK_ANSI_V)
     }
+
+    enum Voxtral {
+        static let wsEndpoint = "wss://api.mistral.ai/v1/audio/transcriptions/realtime"
+        static let model = "voxtral-mini-transcribe-realtime-2602"
+        static let sampleRate: Double = 16000
+        static let audioChunkSize: Int = 4096
+        static let handshakeTimeoutSeconds: Double = 10.0
+        static let doneTimeoutSeconds: Double = 10.0
+    }
 }

@@ -6,6 +6,7 @@ enum NavigationPage: String, CaseIterable {
     case history
     case dictionary
     case settings
+    case developer
 
     var localizedName: String {
         switch self {
@@ -14,6 +15,7 @@ enum NavigationPage: String, CaseIterable {
         case .history: return String(localized: "履歴")
         case .dictionary: return String(localized: "辞書")
         case .settings: return String(localized: "設定")
+        case .developer: return String(localized: "開発者")
         }
     }
 
@@ -24,6 +26,7 @@ enum NavigationPage: String, CaseIterable {
         case .history: return "clock.fill"
         case .dictionary: return "character.book.closed.fill"
         case .settings: return "gearshape.fill"
+        case .developer: return "hammer.fill"
         }
     }
 
@@ -39,6 +42,8 @@ enum NavigationPage: String, CaseIterable {
             return LinearGradient(colors: [.green, .teal], startPoint: .topLeading, endPoint: .bottomTrailing)
         case .settings:
             return LinearGradient(colors: [.gray, .secondary], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .developer:
+            return LinearGradient(colors: [.red, .orange], startPoint: .topLeading, endPoint: .bottomTrailing)
         }
     }
 }
@@ -100,6 +105,8 @@ struct MainWindowView: View {
                         DictionaryView(appState: appState)
                     case .settings:
                         SettingsContentView(appState: appState)
+                    case .developer:
+                        DeveloperView(appState: appState)
                     }
                 }
             }
