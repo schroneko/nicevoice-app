@@ -881,6 +881,7 @@ final class AppState {
     private var inlinePreviewVerified = false
     private var useKeyboardPreview = false
     private var keyboardPreviewText = ""
+    private var currentAXPreviewText = ""
 
     @discardableResult
     private func updateInlinePreview(_ text: String) -> Bool {
@@ -893,42 +894,68 @@ final class AppState {
 
         let nsText = text as NSString
         let newLength = nsText.length
+        let oldNSText = currentAXPreviewText as NSString
+        let commonPrefixStr = currentAXPreviewText.commonPrefix(with: text)
+        let commonPrefixLen = (commonPrefixStr as NSString).length
 
-        var range = CFRange(location: insertionPointLocation, length: inlinePreviewLength)
-        guard let rangeValue = AXValueCreate(.cfRange, &range) else { return false }
+        if commonPrefixLen == oldNSText.length && newLength > oldNSText.length {
+            let suffix = nsText.substring(from: commonPrefixLen)
+            var cursorRange = CFRange(location: insertionPointLocation + inlinePreviewLength, length: 0)
+            guard let cursorRangeValue = AXValueCreate(.cfRange, &cursorRange) else { return false }
 
-        let setRangeResult = AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, rangeValue)
-        guard setRangeResult == .success else {
-            debugLog("🔍 [InlinePreview] AX set range failed, switching to keyboard mode")
-            switchToKeyboardPreview(text)
-            return true
+            let setRangeResult = AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, cursorRangeValue)
+            guard setRangeResult == .success else {
+                debugLog("🔍 [InlinePreview] AX append cursor failed, switching to keyboard mode")
+                switchToKeyboardPreview(text)
+                return true
+            }
+
+            let setTextResult = AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, suffix as CFTypeRef)
+            guard setTextResult == .success else {
+                debugLog("🔍 [InlinePreview] AX append text failed, switching to keyboard mode")
+                switchToKeyboardPreview(text)
+                return true
+            }
+
+            inlinePreviewLength = newLength
+            currentAXPreviewText = text
+        } else if text != currentAXPreviewText {
+            var range = CFRange(location: insertionPointLocation, length: inlinePreviewLength)
+            guard let rangeValue = AXValueCreate(.cfRange, &range) else { return false }
+
+            let setRangeResult = AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, rangeValue)
+            guard setRangeResult == .success else {
+                debugLog("🔍 [InlinePreview] AX set range failed, switching to keyboard mode")
+                switchToKeyboardPreview(text)
+                return true
+            }
+
+            let setTextResult = AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, text as CFTypeRef)
+            guard setTextResult == .success else {
+                debugLog("🔍 [InlinePreview] AX set text failed, switching to keyboard mode")
+                switchToKeyboardPreview(text)
+                return true
+            }
+
+            inlinePreviewLength = newLength
+            currentAXPreviewText = text
         }
 
-        let setTextResult = AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, text as CFTypeRef)
-        guard setTextResult == .success else {
-            debugLog("🔍 [InlinePreview] AX set text failed, switching to keyboard mode")
-            switchToKeyboardPreview(text)
-            return true
-        }
-
-        if !inlinePreviewVerified {
+        if !inlinePreviewVerified && newLength > 0 {
             var verifyRange = CFRange(location: insertionPointLocation, length: newLength)
             if let verifyRangeValue = AXValueCreate(.cfRange, &verifyRange) {
-                let selectResult = AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, verifyRangeValue)
-                if selectResult == .success {
-                    var selectedText: CFTypeRef?
-                    let readResult = AXUIElementCopyAttributeValue(element, kAXSelectedTextAttribute as CFString, &selectedText)
-                    if readResult == .success, let readBack = selectedText as? String, readBack == text {
-                        inlinePreviewVerified = true
-                        debugLog("🔍 [InlinePreview] Verified: AX text insertion confirmed")
-                    } else {
-                        debugLog("🔍 [InlinePreview] AX verification failed, switching to keyboard mode")
-                        undoAXInsert(element: element, length: newLength)
-                        switchToKeyboardPreview(text)
-                        return true
-                    }
+                var readText: CFTypeRef?
+                let readResult = AXUIElementCopyParameterizedAttributeValue(
+                    element,
+                    kAXStringForRangeParameterizedAttribute as CFString,
+                    verifyRangeValue,
+                    &readText
+                )
+                if readResult == .success, let readBack = readText as? String, readBack == text {
+                    inlinePreviewVerified = true
+                    debugLog("🔍 [InlinePreview] Verified: AX text insertion confirmed")
                 } else {
-                    debugLog("🔍 [InlinePreview] AX verify re-select failed, switching to keyboard mode")
+                    debugLog("🔍 [InlinePreview] AX verification failed, switching to keyboard mode")
                     undoAXInsert(element: element, length: newLength)
                     switchToKeyboardPreview(text)
                     return true
@@ -936,7 +963,6 @@ final class AppState {
             }
         }
 
-        inlinePreviewLength = newLength
         return true
     }
 
@@ -1050,6 +1076,7 @@ final class AppState {
         inlinePreviewVerified = false
         useKeyboardPreview = false
         keyboardPreviewText = ""
+        currentAXPreviewText = ""
     }
 
     func cancelRecording() {
