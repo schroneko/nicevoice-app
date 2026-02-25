@@ -36,6 +36,12 @@ struct DeveloperView: View {
                                     transcriptionEngineRaw = engine.rawValue
                                     if engine == .voxtral {
                                         loadAPIKeyAndSetup()
+                                    } else if engine == .voxtralLocal {
+                                        appState.setupTranscriptionService()
+                                        appState.voxmlxServerManager?.start()
+                                        Task {
+                                            await appState.reinitializeAfterEngineChange()
+                                        }
                                     } else {
                                         appState.setupTranscriptionService()
                                         Task {
@@ -102,6 +108,91 @@ struct DeveloperView: View {
                             .buttonStyle(.plain)
                         }
                     }
+
+                    if selectedEngine == .voxtralLocal {
+                        SectionDivider()
+
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("voxmlx-serve")
+                                    .font(.callout)
+                                    .fontWeight(.medium)
+
+                                switch appState.voxmlxServerStatus {
+                                case .stopped:
+                                    Text("停止中")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                case .starting(let message):
+                                    Text(message)
+                                        .font(.caption)
+                                        .foregroundStyle(.orange)
+                                case .running:
+                                    Text("起動中")
+                                        .font(.caption)
+                                        .foregroundStyle(.green)
+                                case .error(let message):
+                                    Text(message)
+                                        .font(.caption)
+                                        .foregroundStyle(.red)
+                                        .lineLimit(2)
+                                }
+                            }
+
+                            Spacer()
+
+                            if case .running = appState.voxmlxServerStatus {
+                                Button {
+                                    appState.voxmlxServerManager?.stop()
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "stop.fill")
+                                        Text("停止")
+                                    }
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(
+                                        LinearGradient(
+                                            colors: [.red, .orange],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            } else if case .starting = appState.voxmlxServerStatus {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Button {
+                                    appState.voxmlxServerManager?.start()
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "play.fill")
+                                        Text("起動")
+                                    }
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(
+                                        LinearGradient(
+                                            colors: [.green, .teal],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
                 }
                 .opacity(sectionAnimations[0] ? 1 : 0)
                 .offset(y: sectionAnimations[0] ? 0 : 16)
@@ -113,7 +204,7 @@ struct DeveloperView: View {
                 ) {
                     VStack(alignment: .leading, spacing: 8) {
                         DebugInfoRow(label: "エンジン", value: selectedEngine.displayName)
-                        DebugInfoRow(label: "モデル", value: selectedEngine == .voxtral ? Constants.Voxtral.model : "SpeechAnalyzer (built-in)")
+                        DebugInfoRow(label: "モデル", value: selectedEngine == .voxtral ? Constants.Voxtral.model : selectedEngine == .voxtralLocal ? "voxmlx-serve (local)" : "SpeechAnalyzer (built-in)")
                         DebugInfoRow(label: "ステータス", value: appState.statusMessage)
                         DebugInfoRow(label: "準備状態", value: appState.isReady ? "Ready" : "Not Ready")
                     }

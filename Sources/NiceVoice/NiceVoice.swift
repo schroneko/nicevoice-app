@@ -304,6 +304,9 @@ final class AppState {
 
     private var speechAnalyzerService: Any?
     private var voxtralService: VoxtralRealtimeService?
+    private var voxtralLocalService: VoxtralLocalService?
+    private(set) var voxmlxServerManager: VoxmlxServerManager?
+    var voxmlxServerStatus: VoxmlxServerStatus = .stopped
     private(set) var keyMonitor: KeyMonitor?
     private var floatingPanel: FloatingPanel?
     private var waitingForFinalResult = false
@@ -378,8 +381,59 @@ final class AppState {
 
     func setupTranscriptionService() {
         voxtralService = nil
+        voxtralLocalService = nil
 
-        if transcriptionEngine == .voxtral && !mistralApiKey.isEmpty {
+        if transcriptionEngine != .voxtralLocal {
+            voxmlxServerManager?.stop()
+            voxmlxServerManager = nil
+            voxmlxServerStatus = .stopped
+        }
+
+        if transcriptionEngine == .voxtralLocal {
+            voxtralLocalService = VoxtralLocalService(
+                onTranscription: { [weak self] text, isFinal in
+                    debugLog("📥 [VoxtralLocal] onTranscription: isFinal=\(isFinal), len=\(text.count)")
+                    DispatchQueue.main.async {
+                        guard let self else { return }
+                        self.currentTranscription = self.addLocalPunctuation(text, isFinal: isFinal)
+                    }
+                },
+                onFinalCompletion: { [weak self] text in
+                    debugLog("📥 [VoxtralLocal] onFinalCompletion: len=\(text.count)")
+                    self?.handleFinalResult(text)
+                },
+                onError: { [weak self] error in
+                    debugLog("❌ VoxtralLocal error: \(error)")
+                    DispatchQueue.main.async {
+                        self?.statusMessage = error
+                    }
+                },
+                onStatusChange: { [weak self] status in
+                    DispatchQueue.main.async {
+                        self?.statusMessage = status
+                    }
+                },
+                onAudioLevel: { [weak self] level in
+                    guard let self else { return }
+                    self.audioLevels.removeFirst()
+                    self.audioLevels.append(level)
+                }
+            )
+            if voxmlxServerManager == nil {
+                voxmlxServerManager = VoxmlxServerManager(onStatusChange: { [weak self] status in
+                    guard let self else { return }
+                    self.voxmlxServerStatus = status
+                    if case .running = status {
+                        self.isReady = true
+                        self.statusMessage = "準備完了 (Voxtral Local) - \(self.shortcutKey.displayName) キーを押して録音"
+                    } else if case .error(let msg) = status {
+                        self.statusMessage = msg
+                    } else if case .starting(let msg) = status {
+                        self.statusMessage = msg
+                    }
+                })
+            }
+        } else if transcriptionEngine == .voxtral && !mistralApiKey.isEmpty {
             voxtralService = VoxtralRealtimeService(
                 apiKey: mistralApiKey,
                 onTranscription: { [weak self] text, isFinal in
@@ -438,6 +492,20 @@ final class AppState {
         guard micStatus else {
             await MainActor.run {
                 statusMessage = "マイクの権限が必要です"
+            }
+            return
+        }
+
+        if transcriptionEngine == .voxtralLocal {
+            await MainActor.run {
+                if case .running = self.voxmlxServerStatus {
+                    isReady = true
+                    statusMessage = "準備完了 (Voxtral Local) - \(shortcutKey.displayName) キーを押して録音"
+                } else {
+                    statusMessage = "voxmlx-serve を起動中..."
+                    voxmlxServerManager?.start()
+                }
+                debugLog("✅ Using Voxtral Local (voxmlx)")
             }
             return
         }
@@ -501,7 +569,10 @@ final class AppState {
 
         floatingPanel?.show()
 
-        if transcriptionEngine == .voxtral {
+        if transcriptionEngine == .voxtralLocal {
+            voxtralLocalService?.startRecording()
+            debugLog("🔍 [DEBUG] voxtralLocalService.startRecording() called")
+        } else if transcriptionEngine == .voxtral {
             voxtralService?.startRecording()
             debugLog("🔍 [DEBUG] voxtralService.startRecording() called")
         } else {
@@ -533,7 +604,9 @@ final class AppState {
         waitingForFinalResult = true
         debugLog("🎙️ Recording stopped - waiting for SpeechAnalyzer final result")
         floatingPanel?.hide()
-        if transcriptionEngine == .voxtral {
+        if transcriptionEngine == .voxtralLocal {
+            voxtralLocalService?.stopRecording()
+        } else if transcriptionEngine == .voxtral {
             voxtralService?.stopRecording()
         } else {
             (speechAnalyzerService as? SpeechAnalyzerService)?.stopRecording()
@@ -758,7 +831,9 @@ final class AppState {
     }
 
     func cancelRecording() {
-        if transcriptionEngine == .voxtral {
+        if transcriptionEngine == .voxtralLocal {
+            voxtralLocalService?.stop()
+        } else if transcriptionEngine == .voxtral {
             voxtralService?.stop()
         } else if #available(macOS 26.0, *) {
             (speechAnalyzerService as? SpeechAnalyzerService)?.stopRecording()
@@ -891,6 +966,9 @@ final class AppState {
     }
 
     private func getRecordedAudioDataFromActiveService() -> Data? {
+        if transcriptionEngine == .voxtralLocal {
+            return voxtralLocalService?.getRecordedAudioData()
+        }
         if transcriptionEngine == .voxtral {
             return voxtralService?.getRecordedAudioData()
         }
