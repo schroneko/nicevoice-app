@@ -57,9 +57,9 @@ final class StripeService {
     private init() {}
 
     func verifyLicense() async throws -> LicenseVerificationResponse {
-        let deviceId = KeychainService.shared.getOrCreateDeviceId()
+        let deviceId = LocalStorage.shared.getOrCreateDeviceId()
 
-        guard let licenseInfo: LicenseInfo = try? KeychainService.shared.loadCodable(for: .licenseInfo),
+        guard let licenseInfo: LicenseInfo = try? LocalStorage.shared.loadCodable(for: .licenseInfo),
               !licenseInfo.customerId.isEmpty else {
             return LicenseVerificationResponse(
                 valid: false,
@@ -91,7 +91,7 @@ final class StripeService {
     }
 
     func openCustomerPortal() async throws {
-        guard let licenseInfo: LicenseInfo = try? KeychainService.shared.loadCodable(for: .licenseInfo),
+        guard let licenseInfo: LicenseInfo = try? LocalStorage.shared.loadCodable(for: .licenseInfo),
               !licenseInfo.customerId.isEmpty else {
             debugLog("⚠️ No customer ID for portal")
             return

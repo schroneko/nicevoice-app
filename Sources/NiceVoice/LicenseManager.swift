@@ -13,7 +13,7 @@ final class LicenseManager {
     private let offlineGracePeriodDays = 7
 
     private var trialEndDate: Date {
-        let firstLaunch = KeychainService.shared.getFirstLaunchDate()
+        let firstLaunch = LocalStorage.shared.getFirstLaunchDate()
         return Calendar.current.date(byAdding: .day, value: trialDurationDays, to: firstLaunch) ?? firstLaunch
     }
 
@@ -59,7 +59,7 @@ final class LicenseManager {
     private init() {}
 
     func initialize() async {
-        loadFromKeychain()
+        loadFromStorage()
 
         if shouldVerifyOnline() {
             do {
@@ -73,8 +73,8 @@ final class LicenseManager {
         debugLog("✅ LicenseManager initialized: plan=\(effectivePlan), trial=\(isTrialActive)")
     }
 
-    private func loadFromKeychain() {
-        if let info: LicenseInfo = try? KeychainService.shared.loadCodable(for: .licenseInfo) {
+    private func loadFromStorage() {
+        if let info: LicenseInfo = try? LocalStorage.shared.loadCodable(for: .licenseInfo) {
             licenseInfo = info
             currentPlan = info.plan
             subscriptionStatus = info.status
@@ -122,7 +122,7 @@ final class LicenseManager {
             lastVerified: Date()
         )
 
-        try KeychainService.shared.saveCodable(newInfo, for: .licenseInfo)
+        try LocalStorage.shared.saveCodable(newInfo, for: .licenseInfo)
 
         await MainActor.run {
             self.licenseInfo = newInfo
