@@ -3,7 +3,6 @@ import SwiftUI
 struct DeveloperView: View {
     var appState: AppState
     @AppStorage("transcriptionEngine") private var transcriptionEngineRaw = TranscriptionEngine.speechAnalyzer.rawValue
-    @State private var apiKeyStatus: APIKeyStatus = .notLoaded
     @State private var sectionAnimations: [Bool] = [false, false]
 
     private var selectedEngine: TranscriptionEngine {
@@ -34,9 +33,7 @@ struct DeveloperView: View {
                                 isSelected: selectedEngine == engine,
                                 action: {
                                     transcriptionEngineRaw = engine.rawValue
-                                    if engine == .voxtral {
-                                        loadAPIKeyAndSetup()
-                                    } else if engine == .voxtralLocal {
+                                    if engine == .voxtralLocal {
                                         appState.setupTranscriptionService()
                                         appState.voxmlxServerManager?.start()
                                         Task {
@@ -50,62 +47,6 @@ struct DeveloperView: View {
                                     }
                                 }
                             )
-                        }
-                    }
-
-                    if selectedEngine == .voxtral {
-                        SectionDivider()
-
-                        HStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Mistral API Key")
-                                    .font(.callout)
-                                    .fontWeight(.medium)
-
-                                switch apiKeyStatus {
-                                case .notLoaded:
-                                    Text("未取得")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                case .loading:
-                                    Text("1Password から取得中...")
-                                        .font(.caption)
-                                        .foregroundStyle(.orange)
-                                case .loaded(let key):
-                                    Text("\(String(key.prefix(8)))...\(String(key.suffix(4)))")
-                                        .font(.caption)
-                                        .foregroundStyle(.green)
-                                case .error(let message):
-                                    Text(message)
-                                        .font(.caption)
-                                        .foregroundStyle(.red)
-                                }
-                            }
-
-                            Spacer()
-
-                            Button {
-                                loadAPIKeyAndSetup()
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "key.fill")
-                                    Text("1Password から取得")
-                                }
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(
-                                    LinearGradient(
-                                        colors: [.blue, .cyan],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                                .clipShape(Capsule())
-                            }
-                            .buttonStyle(.plain)
                         }
                     }
 
@@ -204,7 +145,7 @@ struct DeveloperView: View {
                 ) {
                     VStack(alignment: .leading, spacing: 8) {
                         DebugInfoRow(label: "エンジン", value: selectedEngine.displayName)
-                        DebugInfoRow(label: "モデル", value: selectedEngine == .voxtral ? Constants.Voxtral.model : selectedEngine == .voxtralLocal ? "voxmlx-serve (local)" : "SpeechAnalyzer (built-in)")
+                        DebugInfoRow(label: "モデル", value: selectedEngine == .voxtralLocal ? "voxmlx-serve (local)" : "SpeechAnalyzer (built-in)")
                         DebugInfoRow(label: "ステータス", value: appState.statusMessage)
                         DebugInfoRow(label: "準備状態", value: appState.isReady ? "Ready" : "Not Ready")
                     }
@@ -222,74 +163,7 @@ struct DeveloperView: View {
                     sectionAnimations[index] = true
                 }
             }
-            if selectedEngine == .voxtral && apiKeyStatus.isNotLoaded {
-                loadAPIKeyAndSetup()
-            }
         }
-    }
-
-    private func loadAPIKeyAndSetup() {
-        apiKeyStatus = .loading
-        Task {
-            let key = await fetchMistralAPIKey()
-            await MainActor.run {
-                if let key {
-                    apiKeyStatus = .loaded(key)
-                    appState.setMistralAPIKey(key)
-                    appState.setupTranscriptionService()
-                    Task {
-                        await appState.reinitializeAfterEngineChange()
-                    }
-                } else {
-                    apiKeyStatus = .error("1Password から取得できませんでした")
-                }
-            }
-        }
-    }
-
-    private func fetchMistralAPIKey() async -> String? {
-        await withCheckedContinuation { continuation in
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/opt/homebrew/bin/op")
-            process.arguments = ["item", "get", "MISTRAL_API_KEY", "--fields", "credential", "--reveal"]
-
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = Pipe()
-
-            do {
-                try process.run()
-                process.waitUntilExit()
-
-                if process.terminationStatus == 0 {
-                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                    if let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                       !output.isEmpty {
-                        continuation.resume(returning: output)
-                    } else {
-                        continuation.resume(returning: nil)
-                    }
-                } else {
-                    debugLog("❌ op CLI failed with status: \(process.terminationStatus)")
-                    continuation.resume(returning: nil)
-                }
-            } catch {
-                debugLog("❌ Failed to run op CLI: \(error)")
-                continuation.resume(returning: nil)
-            }
-        }
-    }
-}
-
-enum APIKeyStatus {
-    case notLoaded
-    case loading
-    case loaded(String)
-    case error(String)
-
-    var isNotLoaded: Bool {
-        if case .notLoaded = self { return true }
-        return false
     }
 }
 

@@ -48,15 +48,6 @@ enum Constants {
         static let v = UInt16(kVK_ANSI_V)
     }
 
-    enum Voxtral {
-        static let wsEndpoint = "wss://api.mistral.ai/v1/audio/transcriptions/realtime"
-        static let model = "voxtral-mini-transcribe-realtime-2602"
-        static let sampleRate: Double = 16000
-        static let audioChunkSize: Int = 4096
-        static let handshakeTimeoutSeconds: Double = 10.0
-        static let doneTimeoutSeconds: Double = 10.0
-    }
-
     enum VoxtralLocal {
         static let wsEndpoint = "ws://127.0.0.1:8000/v1/realtime"
         static let healthEndpoint = "http://127.0.0.1:8000/health"
@@ -64,8 +55,7 @@ enum Constants {
         static let healthCheckTimeoutSeconds: Double = 3.0
         static let serverStartupTimeoutSeconds: Double = 600.0
         static let healthPollIntervalSeconds: Double = 2.0
-        static let defaultModel = "T0mSIlver/Voxtral-Mini-4B-Realtime-2602-MLX-4bit"
-        static let uvxPipSource = "git+https://github.com/T0mSIlver/voxmlx.git[server]"
+        static let defaultModel = "schroneko/Voxtral-Mini-4B-Realtime-2602-MLX-4bit"
         static let uvxSearchPaths = [
             "/opt/homebrew/bin/uvx",
             "/usr/local/bin/uvx",

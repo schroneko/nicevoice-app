@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "voxmlx"
+version = "0.0.2"
+description = "Voxtral Mini Realtime speech-to-text in MLX"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+dependencies = [
+    "mlx>=0.20.0",
+    "numpy",
+    "soundfile",
+    "sounddevice",
+    "huggingface-hub",
+    "mistral-common>=1.8.7",
+    "sentencepiece",
+]
+
+[project.optional-dependencies]
+server = ["fastapi", "uvicorn[standard]"]
+
+[tool.setuptools.packages.find]
+include = ["voxmlx"]
+
+[project.scripts]
+voxmlx = "voxmlx:main"
+voxmlx-convert = "voxmlx.convert:main"
+voxmlx-serve = "voxmlx.server:main"

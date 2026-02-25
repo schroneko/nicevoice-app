@@ -295,15 +295,12 @@ final class AppState {
     @ObservationIgnored
     @AppStorage("transcriptionEngine") var transcriptionEngineRaw = TranscriptionEngine.speechAnalyzer.rawValue
 
-    private var mistralApiKey = ""
-
     var transcriptionEngine: TranscriptionEngine {
         get { TranscriptionEngine(rawValue: transcriptionEngineRaw) ?? .speechAnalyzer }
         set { transcriptionEngineRaw = newValue.rawValue }
     }
 
     private var speechAnalyzerService: Any?
-    private var voxtralService: VoxtralRealtimeService?
     private var voxtralLocalService: VoxtralLocalService?
     private(set) var voxmlxServerManager: VoxmlxServerManager?
     var voxmlxServerStatus: VoxmlxServerStatus = .stopped
@@ -385,7 +382,6 @@ final class AppState {
     }
 
     func setupTranscriptionService() {
-        voxtralService = nil
         voxtralLocalService = nil
 
         if transcriptionEngine != .voxtralLocal {
@@ -439,43 +435,7 @@ final class AppState {
                     }
                 })
             }
-        } else if transcriptionEngine == .voxtral && !mistralApiKey.isEmpty {
-            voxtralService = VoxtralRealtimeService(
-                apiKey: mistralApiKey,
-                onTranscription: { [weak self] text, isFinal in
-                    debugLog("📥 [Voxtral] onTranscription: isFinal=\(isFinal), len=\(text.count)")
-                    DispatchQueue.main.async {
-                        guard let self else { return }
-                        self.currentTranscription = self.addLocalPunctuation(text, isFinal: isFinal)
-                        self.updateInlinePreview(self.currentTranscription)
-                    }
-                },
-                onFinalCompletion: { [weak self] text in
-                    debugLog("📥 [Voxtral] onFinalCompletion: len=\(text.count)")
-                    self?.handleFinalResult(text)
-                },
-                onError: { [weak self] error in
-                    debugLog("❌ Voxtral error: \(error)")
-                    DispatchQueue.main.async {
-                        self?.statusMessage = error
-                    }
-                },
-                onStatusChange: { [weak self] status in
-                    DispatchQueue.main.async {
-                        self?.statusMessage = status
-                    }
-                },
-                onAudioLevel: { [weak self] level in
-                    guard let self else { return }
-                    self.audioLevels.removeFirst()
-                    self.audioLevels.append(level)
-                }
-            )
         }
-    }
-
-    func setMistralAPIKey(_ key: String) {
-        mistralApiKey = key
     }
 
     func reinitializeAfterEngineChange() async {
@@ -513,20 +473,6 @@ final class AppState {
                     voxmlxServerManager?.start()
                 }
                 debugLog("✅ Using Voxtral Local (voxmlx)")
-            }
-            return
-        }
-
-        if transcriptionEngine == .voxtral {
-            await MainActor.run {
-                if mistralApiKey.isEmpty {
-                    statusMessage = "Mistral API キーを設定してください"
-                    debugLog("⚠️ Voxtral: API key not set")
-                } else {
-                    isReady = true
-                    statusMessage = "準備完了 (Voxtral) - \(shortcutKey.displayName) キーを押して録音"
-                    debugLog("✅ Using Voxtral Realtime")
-                }
             }
             return
         }
@@ -580,9 +526,6 @@ final class AppState {
         if transcriptionEngine == .voxtralLocal {
             voxtralLocalService?.startRecording()
             debugLog("🔍 [DEBUG] voxtralLocalService.startRecording() called")
-        } else if transcriptionEngine == .voxtral {
-            voxtralService?.startRecording()
-            debugLog("🔍 [DEBUG] voxtralService.startRecording() called")
         } else {
             (speechAnalyzerService as? SpeechAnalyzerService)?.startRecording()
             debugLog("🔍 [DEBUG] speechAnalyzerService.startRecording() called")
@@ -614,8 +557,6 @@ final class AppState {
         floatingPanel?.hide()
         if transcriptionEngine == .voxtralLocal {
             voxtralLocalService?.stopRecording()
-        } else if transcriptionEngine == .voxtral {
-            voxtralService?.stopRecording()
         } else {
             (speechAnalyzerService as? SpeechAnalyzerService)?.stopRecording()
         }
@@ -1013,8 +954,13 @@ final class AppState {
         let utf16 = Array(text.utf16)
         let chunkSize = 20
 
-        for start in stride(from: 0, to: utf16.count, by: chunkSize) {
-            let end = min(start + chunkSize, utf16.count)
+        var start = 0
+        while start < utf16.count {
+            var end = min(start + chunkSize, utf16.count)
+            if end < utf16.count && UTF16.isLeadSurrogate(utf16[end - 1]) {
+                end -= 1
+            }
+            if end <= start { break }
             var chunk = Array(utf16[start..<end])
             if let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true) {
                 keyDown.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: &chunk)
@@ -1023,6 +969,7 @@ final class AppState {
             if let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) {
                 keyUp.post(tap: .cgAnnotatedSessionEventTap)
             }
+            start = end
         }
     }
 
@@ -1035,20 +982,37 @@ final class AppState {
         }
 
         if useKeyboardPreview {
-            updateKeyboardPreview(text)
-            debugLog("✅ [InlinePreview] Finalized via keyboard: \(text.count) chars")
+            let source = CGEventSource(stateID: .privateState)
+            for _ in 0..<keyboardPreviewText.count {
+                if let keyDown = CGEvent(keyboardEventSource: source, virtualKey: UInt16(kVK_Delete), keyDown: true),
+                   let keyUp = CGEvent(keyboardEventSource: source, virtualKey: UInt16(kVK_Delete), keyDown: false) {
+                    keyDown.post(tap: .cgAnnotatedSessionEventTap)
+                    keyUp.post(tap: .cgAnnotatedSessionEventTap)
+                }
+            }
             resetInlinePreviewState()
+            debugLog("✅ [InlinePreview] Finalized via clipboard paste after keyboard preview cleanup")
+            performPaste(text)
             return
         }
 
-        if inlinePreviewActive, capturedTextElement != nil {
-            if updateInlinePreview(text) {
-                debugLog("✅ [InlinePreview] Finalized via AX: \(text.count) chars")
-                resetInlinePreviewState()
-                return
+        if inlinePreviewActive, let element = capturedTextElement {
+            var range = CFRange(location: insertionPointLocation, length: inlinePreviewLength)
+            if let rangeValue = AXValueCreate(.cfRange, &range) {
+                let setRangeResult = AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, rangeValue)
+                if setRangeResult == .success {
+                    let setTextResult = AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, text as CFTypeRef)
+                    if setTextResult == .success {
+                        debugLog("✅ [InlinePreview] Finalized via AX (full replace): \(text.count) chars")
+                        resetInlinePreviewState()
+                        return
+                    }
+                }
             }
         }
+
         debugLog("🔍 [InlinePreview] Fallback to clipboard paste")
+        resetInlinePreviewState()
         performPaste(text)
     }
 
@@ -1083,8 +1047,6 @@ final class AppState {
         cancelInlinePreview()
         if transcriptionEngine == .voxtralLocal {
             voxtralLocalService?.stop()
-        } else if transcriptionEngine == .voxtral {
-            voxtralService?.stop()
         } else if #available(macOS 26.0, *) {
             (speechAnalyzerService as? SpeechAnalyzerService)?.stopRecording()
         }
@@ -1218,9 +1180,6 @@ final class AppState {
     private func getRecordedAudioDataFromActiveService() -> Data? {
         if transcriptionEngine == .voxtralLocal {
             return voxtralLocalService?.getRecordedAudioData()
-        }
-        if transcriptionEngine == .voxtral {
-            return voxtralService?.getRecordedAudioData()
         }
         guard #available(macOS 26.0, *) else { return nil }
         return (speechAnalyzerService as? SpeechAnalyzerService)?.getRecordedAudioData()

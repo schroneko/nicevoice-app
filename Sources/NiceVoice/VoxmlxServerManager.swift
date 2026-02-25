@@ -34,12 +34,19 @@ final class VoxmlxServerManager {
             return
         }
 
-        debugLog("✅ voxmlx-serve: found uvx at \(uvxPath)")
+        guard let serverPath = Bundle.main.resourceURL?.appendingPathComponent("Server").path else {
+            let status = VoxmlxServerStatus.error("Server リソースが見つかりません")
+            debugLog("❌ voxmlx-serve: Server resource not found in app bundle")
+            onStatusChange(status)
+            return
+        }
+
+        debugLog("✅ voxmlx-serve: found uvx at \(uvxPath), server at \(serverPath)")
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: uvxPath)
         proc.arguments = [
-            "--from", Constants.VoxtralLocal.uvxPipSource,
+            "--from", "\(serverPath)[server]",
             "voxmlx-serve",
             "--model", Constants.VoxtralLocal.defaultModel,
             "--port", "8000"

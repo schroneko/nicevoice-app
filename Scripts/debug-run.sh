@@ -19,6 +19,9 @@ if [ ! -d .build/bundler/NiceVoice.app ]; then
     exit 1
 fi
 
+echo "📦 Copying Server resources..."
+cp -R Server .build/bundler/NiceVoice.app/Contents/Resources/Server
+
 echo "📝 Patching Info.plist..."
 PLIST=".build/bundler/NiceVoice.app/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string app.nicevoice.NiceVoice" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier app.nicevoice.NiceVoice" "$PLIST"
