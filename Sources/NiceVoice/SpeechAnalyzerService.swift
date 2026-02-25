@@ -106,7 +106,7 @@ final class SpeechAnalyzerService {
         }
 
         isRunning = true
-        isDetectingLanguage = true
+        isDetectingLanguage = false
         audioBuffers = []
         languageDetectionBuffers = []
         detectedLanguage = .japanese
@@ -126,37 +126,14 @@ final class SpeechAnalyzerService {
             debugLog("✅ No audio conversion needed")
         }
 
-        var detectionStartTime: Date?
+        startMainTranscription(language: .japanese, initialBuffers: [])
 
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
             guard let self, self.isRunning else { return }
 
-            if detectionStartTime == nil {
-                detectionStartTime = Date()
-                debugLog("🎤 [TAP] First buffer received, starting detection timer")
-            }
-
             if let copy = self.copyBuffer(buffer) {
                 self.audioBuffers.append(copy)
-
-                if self.isDetectingLanguage {
-                    self.languageDetectionBuffers.append(copy)
-                    if self.languageDetectionBuffers.count % 10 == 1 {
-                        debugLog("🎤 [TAP] Detection buffers: \(self.languageDetectionBuffers.count)")
-                    }
-
-                    if let startTime = detectionStartTime,
-                       Date().timeIntervalSince(startTime) >= self.languageDetectionDuration
-                    {
-                        self.isDetectingLanguage = false
-                        let buffersForDetection = self.languageDetectionBuffers
-                        Task {
-                            await self.detectLanguageAndStartTranscription(buffers: buffersForDetection)
-                        }
-                    }
-                } else {
-                    self.feedBufferToAnalyzer(copy)
-                }
+                self.feedBufferToAnalyzer(copy)
             }
 
             if let channelData = buffer.floatChannelData {
@@ -178,7 +155,7 @@ final class SpeechAnalyzerService {
 
         do {
             try audioEngine.start()
-            debugLog("🎙️ SpeechAnalyzer recording started")
+            debugLog("🎙️ SpeechAnalyzer recording started (immediate transcription)")
         } catch {
             debugLog("❌ Audio engine failed to start: \(error)")
             onError("オーディオエンジンの起動に失敗しました")
@@ -197,16 +174,6 @@ final class SpeechAnalyzerService {
         audioEngine?.inputNode.removeTap(onBus: 0)
         audioEngine?.stop()
         audioEngine = nil
-
-        debugLog("🔍 [STOP] After engine stop - isDetectingLanguage=\(isDetectingLanguage), bufferCount=\(languageDetectionBuffers.count)")
-        if isDetectingLanguage && !languageDetectionBuffers.isEmpty {
-            isDetectingLanguage = false
-            let buffersForDetection = languageDetectionBuffers
-            debugLog("🔍 [DEBUG] Short recording - starting immediate transcription with \(buffersForDetection.count) buffers")
-            Task {
-                await detectLanguageAndStartTranscription(buffers: buffersForDetection)
-            }
-        }
 
         inputContinuation?.finish()
         inputContinuation = nil
@@ -382,8 +349,7 @@ final class SpeechAnalyzerService {
     }
 
     private func startMainTranscription(language: SupportedLanguage, initialBuffers: [AVAudioPCMBuffer]) {
-        let isShortRecording = !isRunning
-        debugLog("🔍 startMainTranscription - isShortRecording=\(isShortRecording), initialBuffers=\(initialBuffers.count)")
+        debugLog("🔍 startMainTranscription - initialBuffers=\(initialBuffers.count)")
 
         transcriber = SpeechTranscriber(
             locale: language.locale,
@@ -413,8 +379,7 @@ final class SpeechAnalyzerService {
                 }
             }
 
-            if isShortRecording {
-                debugLog("🔍 Short recording: finishing input stream immediately after initial buffers")
+            if !self.isRunning {
                 continuation.finish()
                 self.inputContinuation = nil
             }
@@ -474,11 +439,9 @@ final class SpeechAnalyzerService {
             try await analyzer.start(inputSequence: inputStream)
         }
 
-        if isShortRecording {
+        if !isRunning {
             Task {
-                debugLog("🔍 Short recording: calling finalizeAndFinishThroughEndOfInput")
                 try? await analyzer.finalizeAndFinishThroughEndOfInput()
-                debugLog("🔍 Short recording: finalizeAndFinishThroughEndOfInput completed")
             }
         }
     }
