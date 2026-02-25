@@ -311,6 +311,10 @@ final class AppState {
     private var floatingPanel: FloatingPanel?
     private var waitingForFinalResult = false
     private var finalResultTimer: DispatchWorkItem?
+    private var capturedTextElement: AXUIElement?
+    private var insertionPointLocation: Int = 0
+    private var inlinePreviewLength: Int = 0
+    private var inlinePreviewActive: Bool = false
 
     private enum UserDefaultsKey {
         static let usageStats = "usageStats"
@@ -337,6 +341,7 @@ final class AppState {
                     DispatchQueue.main.async {
                         guard let self else { return }
                         self.currentTranscription = self.addLocalPunctuation(text, isFinal: isFinal)
+                        self.updateInlinePreview(self.currentTranscription)
                     }
                 },
                 onFinalCompletion: { [weak self] text in
@@ -396,6 +401,7 @@ final class AppState {
                     DispatchQueue.main.async {
                         guard let self else { return }
                         self.currentTranscription = self.addLocalPunctuation(text, isFinal: isFinal)
+                        self.updateInlinePreview(self.currentTranscription)
                     }
                 },
                 onFinalCompletion: { [weak self] text in
@@ -441,6 +447,7 @@ final class AppState {
                     DispatchQueue.main.async {
                         guard let self else { return }
                         self.currentTranscription = self.addLocalPunctuation(text, isFinal: isFinal)
+                        self.updateInlinePreview(self.currentTranscription)
                     }
                 },
                 onFinalCompletion: { [weak self] text in
@@ -561,6 +568,7 @@ final class AppState {
         }
 
         errorMessage = nil
+        captureForInlinePreview()
         isRecording = true
         currentTranscription = ""
         recordingStartDate = Date()
@@ -617,6 +625,7 @@ final class AppState {
             guard let self, self.waitingForFinalResult else { return }
             debugLog("⚠️ SpeechAnalyzer timeout - no final result received")
             self.waitingForFinalResult = false
+            self.resetInlinePreviewState()
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: finalResultTimer!)
     }
@@ -637,7 +646,7 @@ final class AppState {
         let audioData = getRecordedAudioDataFromActiveService()
 
         addToHistory(processedText, audioData: audioData)
-        performPaste(processedText)
+        finalizeInlinePreview(processedText)
     }
 
     private func cleanupOrphanedParticles(_ text: String) -> String {
@@ -830,7 +839,221 @@ final class AppState {
         debugLog("✅ Paste sent to Spotlight PID \(pid) via postToPid")
     }
 
+    private func captureForInlinePreview() {
+        capturedTextElement = nil
+        inlinePreviewLength = 0
+        inlinePreviewActive = false
+
+        let systemWide = AXUIElementCreateSystemWide()
+        var focusedElement: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(systemWide, kAXFocusedUIElementAttribute as CFString, &focusedElement)
+        guard result == .success, let element = focusedElement else {
+            debugLog("🔍 [InlinePreview] No focused element found (AX result: \(result.rawValue))")
+            return
+        }
+
+        let axElement = element as! AXUIElement
+
+        var role: CFTypeRef?
+        AXUIElementCopyAttributeValue(axElement, kAXRoleAttribute as CFString, &role)
+        guard let roleStr = role as? String,
+              roleStr == "AXTextField" || roleStr == "AXTextArea" || roleStr == "AXSearchField" else {
+            debugLog("🔍 [InlinePreview] Focused element is not a text field (role: \(role as? String ?? "unknown"))")
+            return
+        }
+
+        var rangeValue: CFTypeRef?
+        let rangeResult = AXUIElementCopyAttributeValue(axElement, kAXSelectedTextRangeAttribute as CFString, &rangeValue)
+        guard rangeResult == .success, let rangeRef = rangeValue else {
+            debugLog("🔍 [InlinePreview] Could not get selected text range")
+            return
+        }
+
+        var range = CFRange(location: 0, length: 0)
+        AXValueGetValue(rangeRef as! AXValue, .cfRange, &range)
+
+        capturedTextElement = axElement
+        insertionPointLocation = range.location + range.length
+        inlinePreviewActive = true
+        debugLog("🔍 [InlinePreview] Captured text element (role: \(roleStr), cursor: \(insertionPointLocation))")
+    }
+
+    private var inlinePreviewVerified = false
+    private var useKeyboardPreview = false
+    private var keyboardPreviewText = ""
+
+    @discardableResult
+    private func updateInlinePreview(_ text: String) -> Bool {
+        if useKeyboardPreview {
+            updateKeyboardPreview(text)
+            return true
+        }
+
+        guard inlinePreviewActive, let element = capturedTextElement else { return false }
+
+        let nsText = text as NSString
+        let newLength = nsText.length
+
+        var range = CFRange(location: insertionPointLocation, length: inlinePreviewLength)
+        guard let rangeValue = AXValueCreate(.cfRange, &range) else { return false }
+
+        let setRangeResult = AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, rangeValue)
+        guard setRangeResult == .success else {
+            debugLog("🔍 [InlinePreview] AX set range failed, switching to keyboard mode")
+            switchToKeyboardPreview(text)
+            return true
+        }
+
+        let setTextResult = AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, text as CFTypeRef)
+        guard setTextResult == .success else {
+            debugLog("🔍 [InlinePreview] AX set text failed, switching to keyboard mode")
+            switchToKeyboardPreview(text)
+            return true
+        }
+
+        if !inlinePreviewVerified {
+            var verifyRange = CFRange(location: insertionPointLocation, length: newLength)
+            if let verifyRangeValue = AXValueCreate(.cfRange, &verifyRange) {
+                let selectResult = AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, verifyRangeValue)
+                if selectResult == .success {
+                    var selectedText: CFTypeRef?
+                    let readResult = AXUIElementCopyAttributeValue(element, kAXSelectedTextAttribute as CFString, &selectedText)
+                    if readResult == .success, let readBack = selectedText as? String, readBack == text {
+                        inlinePreviewVerified = true
+                        debugLog("🔍 [InlinePreview] Verified: AX text insertion confirmed")
+                    } else {
+                        debugLog("🔍 [InlinePreview] AX verification failed, switching to keyboard mode")
+                        undoAXInsert(element: element, length: newLength)
+                        switchToKeyboardPreview(text)
+                        return true
+                    }
+                } else {
+                    debugLog("🔍 [InlinePreview] AX verify re-select failed, switching to keyboard mode")
+                    undoAXInsert(element: element, length: newLength)
+                    switchToKeyboardPreview(text)
+                    return true
+                }
+            }
+        }
+
+        inlinePreviewLength = newLength
+        return true
+    }
+
+    private func undoAXInsert(element: AXUIElement, length: Int) {
+        var range = CFRange(location: insertionPointLocation, length: length)
+        if let rangeValue = AXValueCreate(.cfRange, &range) {
+            AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, rangeValue)
+            AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, "" as CFTypeRef)
+        }
+        inlinePreviewLength = 0
+        inlinePreviewActive = false
+        capturedTextElement = nil
+    }
+
+    private func switchToKeyboardPreview(_ text: String) {
+        inlinePreviewActive = false
+        capturedTextElement = nil
+        useKeyboardPreview = true
+        keyboardPreviewText = ""
+        updateKeyboardPreview(text)
+        debugLog("🔍 [InlinePreview] Keyboard preview mode activated")
+    }
+
+    private func updateKeyboardPreview(_ text: String) {
+        let oldText = keyboardPreviewText
+        let commonPrefix = oldText.commonPrefix(with: text)
+        let charsToDelete = oldText.count - commonPrefix.count
+        let newSuffix = String(text.dropFirst(commonPrefix.count))
+
+        let source = CGEventSource(stateID: .privateState)
+
+        for _ in 0..<charsToDelete {
+            if let keyDown = CGEvent(keyboardEventSource: source, virtualKey: UInt16(kVK_Delete), keyDown: true),
+               let keyUp = CGEvent(keyboardEventSource: source, virtualKey: UInt16(kVK_Delete), keyDown: false) {
+                keyDown.post(tap: .cgAnnotatedSessionEventTap)
+                keyUp.post(tap: .cgAnnotatedSessionEventTap)
+            }
+        }
+
+        if !newSuffix.isEmpty {
+            typeUnicodeString(newSuffix, source: source)
+        }
+
+        keyboardPreviewText = text
+    }
+
+    private func typeUnicodeString(_ text: String, source: CGEventSource?) {
+        let utf16 = Array(text.utf16)
+        let chunkSize = 20
+
+        for start in stride(from: 0, to: utf16.count, by: chunkSize) {
+            let end = min(start + chunkSize, utf16.count)
+            var chunk = Array(utf16[start..<end])
+            if let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true) {
+                keyDown.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: &chunk)
+                keyDown.post(tap: .cgAnnotatedSessionEventTap)
+            }
+            if let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) {
+                keyUp.post(tap: .cgAnnotatedSessionEventTap)
+            }
+        }
+    }
+
+    private func finalizeInlinePreview(_ text: String) {
+        floatingPanel?.hide()
+        guard !text.isEmpty else {
+            debugLog("⚠️ No text to paste - text is empty")
+            cancelInlinePreview()
+            return
+        }
+
+        if useKeyboardPreview {
+            updateKeyboardPreview(text)
+            debugLog("✅ [InlinePreview] Finalized via keyboard: \(text.count) chars")
+            resetInlinePreviewState()
+            return
+        }
+
+        if inlinePreviewActive, capturedTextElement != nil {
+            if updateInlinePreview(text) {
+                debugLog("✅ [InlinePreview] Finalized via AX: \(text.count) chars")
+                resetInlinePreviewState()
+                return
+            }
+        }
+        debugLog("🔍 [InlinePreview] Fallback to clipboard paste")
+        performPaste(text)
+    }
+
+    private func cancelInlinePreview() {
+        if useKeyboardPreview {
+            updateKeyboardPreview("")
+            debugLog("🚫 [InlinePreview] Keyboard preview cancelled")
+            resetInlinePreviewState()
+            return
+        }
+        guard inlinePreviewActive, capturedTextElement != nil else {
+            resetInlinePreviewState()
+            return
+        }
+        updateInlinePreview("")
+        debugLog("🚫 [InlinePreview] AX preview cancelled")
+        resetInlinePreviewState()
+    }
+
+    private func resetInlinePreviewState() {
+        capturedTextElement = nil
+        insertionPointLocation = 0
+        inlinePreviewLength = 0
+        inlinePreviewActive = false
+        inlinePreviewVerified = false
+        useKeyboardPreview = false
+        keyboardPreviewText = ""
+    }
+
     func cancelRecording() {
+        cancelInlinePreview()
         if transcriptionEngine == .voxtralLocal {
             voxtralLocalService?.stop()
         } else if transcriptionEngine == .voxtral {
