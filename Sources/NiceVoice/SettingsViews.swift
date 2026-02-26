@@ -612,7 +612,6 @@ struct AccountContentView: View {
 
 struct AccountStatusView: View {
     private var authManager: AuthManager { AuthManager.shared }
-    @State private var isLoggingIn = false
     @State private var isLoggingOut = false
     @State private var isSwitchingDevice = false
 
@@ -625,14 +624,9 @@ struct AccountStatusView: View {
                         .foregroundStyle(.secondary)
 
                     Button {
-                        isLoggingIn = true
                         authManager.login()
                     } label: {
                         HStack(spacing: 8) {
-                            if isLoggingIn {
-                                ProgressView()
-                                    .controlSize(.small)
-                            }
                             Text("X でログイン")
                                 .font(.callout)
                                 .fontWeight(.semibold)
@@ -650,7 +644,6 @@ struct AccountStatusView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
                     .buttonStyle(.plain)
-                    .disabled(isLoggingIn)
                 }
             } else {
                 HStack(alignment: .center, spacing: 12) {
@@ -763,7 +756,6 @@ struct AccountStatusView: View {
             }
         }
         .onChange(of: authManager.isLoggedIn) { _, _ in
-            isLoggingIn = false
             isLoggingOut = false
             isSwitchingDevice = false
         }
