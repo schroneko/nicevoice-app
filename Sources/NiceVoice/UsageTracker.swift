@@ -4,85 +4,56 @@ import Foundation
 final class UsageTracker {
     static let shared = UsageTracker()
 
-    private(set) var currentUsage: MonthlyUsage
+    private(set) var stats: UsageStats
 
-    private let usageKey = "monthlyUsage"
+    private let statsKey = "usageStats"
 
     var creditsRemaining: Int {
-        let limit = LicenseManager.shared.monthlyCredits
-        if limit == Int.max { return Int.max }
-        return max(0, limit - currentUsage.creditsUsed)
+        Int.max
     }
 
     var creditsUsed: Int {
-        currentUsage.creditsUsed
+        stats.totalCharacters
     }
 
     var hasCreditsRemaining: Bool {
-        let plan = LicenseManager.shared.effectivePlan
-        if plan != .free { return true }
-        return creditsRemaining > 0
+        true
     }
 
     var usagePercentage: Double {
-        let limit = LicenseManager.shared.monthlyCredits
-        if limit == Int.max { return 0 }
-        return min(1.0, Double(currentUsage.creditsUsed) / Double(limit))
-    }
-
-    var periodEndDate: Date {
-        currentUsage.periodEnd
-    }
-
-    var daysUntilReset: Int {
-        let components = Calendar.current.dateComponents([.day], from: Date(), to: currentUsage.periodEnd)
-        return max(0, components.day ?? 0)
+        0
     }
 
     private init() {
-        if let data = UserDefaults.standard.data(forKey: usageKey),
-           var usage = try? JSONDecoder().decode(MonthlyUsage.self, from: data) {
-            usage.resetIfNewPeriod()
-            self.currentUsage = usage
+        if let data = UserDefaults.standard.data(forKey: statsKey),
+           var stats = try? JSONDecoder().decode(UsageStats.self, from: data) {
+            stats.resetTodayIfNeeded()
+            self.stats = stats
         } else {
-            self.currentUsage = MonthlyUsage()
+            self.stats = UsageStats()
         }
     }
 
     func recordUsage(characters: Int) {
-        currentUsage.resetIfNewPeriod()
-        currentUsage.creditsUsed += characters
-        saveUsage()
+        stats.recordConversion(characters: characters, tokens: 0)
+        saveStats()
 
-        debugLog("📊 Usage: \(currentUsage.creditsUsed) credits used")
+        debugLog("Usage: \(stats.totalCharacters) total characters")
     }
 
     func checkAndRecordUsage(characters: Int) -> Bool {
-        let plan = LicenseManager.shared.effectivePlan
-        if plan != .free {
-            recordUsage(characters: characters)
-            return true
-        }
-
-        let limit = LicenseManager.shared.monthlyCredits
-        let projectedUsage = currentUsage.creditsUsed + characters
-
-        if projectedUsage > limit {
-            return false
-        }
-
         recordUsage(characters: characters)
         return true
     }
 
     func resetUsage() {
-        currentUsage = MonthlyUsage()
-        saveUsage()
+        stats = UsageStats()
+        saveStats()
     }
 
-    private func saveUsage() {
-        if let data = try? JSONEncoder().encode(currentUsage) {
-            UserDefaults.standard.set(data, forKey: usageKey)
+    private func saveStats() {
+        if let data = try? JSONEncoder().encode(stats) {
+            UserDefaults.standard.set(data, forKey: statsKey)
         }
     }
 }

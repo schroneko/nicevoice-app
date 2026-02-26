@@ -572,28 +572,28 @@ struct PermissionRow: View {
     }
 }
 
-struct PlanContentView: View {
+struct AccountContentView: View {
     @State private var sectionAnimations: [Bool] = [false]
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("プラン")
+                    Text("アカウント")
                         .font(.system(size: 32, weight: .bold, design: .rounded))
                         .foregroundStyle(LinearGradient(colors: [.purple, .indigo], startPoint: .leading, endPoint: .trailing))
-                    Text("ライセンスの管理")
+                    Text("認証の管理")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
                 .padding(.bottom, 8)
 
                 SettingsSection(
-                    title: "ライセンス",
-                    icon: "creditcard.fill",
+                    title: "認証",
+                    icon: "person.crop.circle.fill",
                     gradientColors: [.blue, .cyan]
                 ) {
-                    PlanStatusView()
+                    AccountStatusView()
                 }
                 .opacity(sectionAnimations[0] ? 1 : 0)
                 .offset(y: sectionAnimations[0] ? 0 : 16)
@@ -610,192 +610,156 @@ struct PlanContentView: View {
     }
 }
 
-struct PlanStatusView: View {
-    private var licenseManager: LicenseManager { LicenseManager.shared }
-    private var usageTracker: UsageTracker { UsageTracker.shared }
-    @State private var licenseKeyInput = ""
-    @State private var isActivating = false
-    @State private var activationError: String?
-    @State private var activationSuccess = false
+struct AccountStatusView: View {
+    private var authManager: AuthManager { AuthManager.shared }
+    @State private var isLoggingIn = false
+    @State private var isLoggingOut = false
+    @State private var isSwitchingDevice = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
-                        Text(licenseManager.effectivePlan.displayName)
-                            .font(.title3)
-                            .fontWeight(.bold)
-
-                        if licenseManager.isTrialActive {
-                            Text("トライアル")
-                                .font(.caption2)
-                                .fontWeight(.semibold)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(.orange.opacity(0.2))
-                                .foregroundStyle(.orange)
-                                .clipShape(Capsule())
-                        }
-                    }
-
-                    if licenseManager.isTrialActive {
-                        Text("残り \(licenseManager.trialDaysRemaining) 日")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else if let days = licenseManager.licenseInfo?.daysUntilExpiration {
-                        Text("次回更新まで \(days) 日")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Spacer()
-
-                if licenseManager.subscriptionStatus == .active {
-                    Button {
-                        Task {
-                            try? await licenseManager.manageSubscription()
-                        }
-                    } label: {
-                        Text("プラン管理")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-
-            if licenseManager.subscriptionStatus != .active {
-                SectionDivider()
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("ライセンスキー")
+            if !authManager.isLoggedIn {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("X (Twitter) アカウントでログインして利用を開始できます")
                         .font(.callout)
-                        .fontWeight(.medium)
+                        .foregroundStyle(.secondary)
 
-                    HStack(spacing: 8) {
-                        TextField("xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx", text: $licenseKeyInput)
-                            .textFieldStyle(.plain)
-                            .font(.system(.caption, design: .monospaced))
-                            .padding(10)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .fill(Color.secondary.opacity(0.08))
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
-                            )
-                            .disabled(isActivating)
-
-                        Button {
-                            activateLicense()
-                        } label: {
-                            if isActivating {
+                    Button {
+                        isLoggingIn = true
+                        authManager.login()
+                    } label: {
+                        HStack(spacing: 8) {
+                            if isLoggingIn {
                                 ProgressView()
                                     .controlSize(.small)
-                                    .frame(width: 80, height: 32)
-                            } else {
-                                Text("有効化")
-                                    .font(.callout)
+                            }
+                            Text("X でログイン")
+                                .font(.callout)
+                                .fontWeight(.semibold)
+                        }
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 40)
+                        .background(
+                            LinearGradient(
+                                colors: [.purple, .indigo],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isLoggingIn)
+                }
+            } else {
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 8) {
+                            Text("@\(authManager.username ?? "")")
+                                .font(.title3)
+                                .fontWeight(.bold)
+
+                            if authManager.isSubscriber {
+                                Text("認証済み")
+                                    .font(.caption2)
                                     .fontWeight(.semibold)
-                                    .foregroundStyle(.white)
-                                    .frame(width: 80, height: 32)
-                                    .background(
-                                        LinearGradient(
-                                            colors: [.purple, .indigo],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        )
-                                    )
-                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(.green.opacity(0.2))
+                                    .foregroundStyle(.green)
+                                    .clipShape(Capsule())
                             }
                         }
-                        .buttonStyle(.plain)
-                        .disabled(licenseKeyInput.trimmingCharacters(in: .whitespaces).isEmpty || isActivating)
-                    }
 
-                    if let error = activationError {
-                        Text(error)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
-
-                    if activationSuccess {
-                        HStack(spacing: 6) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                            Text("ライセンスが有効化されました")
+                        if authManager.isSubscriber {
+                            Text("サブスクライバー")
                                 .font(.caption)
-                                .foregroundStyle(.green)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("サブスクリプションが必要です")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
                         }
                     }
+
+                    Spacer()
                 }
-            }
 
-            if licenseManager.effectivePlan == .free && !licenseManager.isTrialActive {
-                SectionDivider()
+                if authManager.deviceMismatch {
+                    SectionDivider()
 
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("今月の使用量")
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                            Text("別のデバイスで認証済みです")
+                                .font(.callout)
+                                .fontWeight(.medium)
+                        }
+
+                        Text("このデバイスで使用するには、既存のデバイス登録を解除してください")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Spacer()
-                        Text("\(usageTracker.creditsUsed) / 300 クレジット")
-                            .font(.caption)
-                            .fontWeight(.medium)
-                    }
 
-                    GeometryReader { geometry in
-                        ZStack(alignment: .leading) {
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Color.secondary.opacity(0.2))
-                                .frame(height: 6)
-
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(
-                                    LinearGradient(
-                                        colors: usageTracker.usagePercentage > 0.8 ? [.orange, .red] : [.blue, .cyan],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
+                        Button {
+                            isSwitchingDevice = true
+                            Task {
+                                await authManager.switchDevice()
+                                await MainActor.run {
+                                    isSwitchingDevice = false
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                if isSwitchingDevice {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                }
+                                Text("デバイスを切り替える")
+                                    .font(.callout)
+                                    .fontWeight(.semibold)
+                            }
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 36)
+                            .background(
+                                LinearGradient(
+                                    colors: [.orange, .red],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
                                 )
-                                .frame(width: geometry.size.width * usageTracker.usagePercentage, height: 6)
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isSwitchingDevice)
+                    }
+                }
+
+                SectionDivider()
+
+                Button {
+                    isLoggingOut = true
+                    Task {
+                        await authManager.logout()
+                        await MainActor.run {
+                            isLoggingOut = false
                         }
                     }
-                    .frame(height: 6)
-
-                    Text("\(usageTracker.daysUntilReset) 日後にリセット")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                } label: {
+                    HStack(spacing: 6) {
+                        if isLoggingOut {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                        Text("ログアウト")
+                            .font(.callout)
+                            .foregroundStyle(.red)
+                    }
                 }
-            }
-        }
-    }
-
-    private func activateLicense() {
-        let key = licenseKeyInput.trimmingCharacters(in: .whitespaces)
-        guard !key.isEmpty else { return }
-
-        isActivating = true
-        activationError = nil
-        activationSuccess = false
-
-        Task {
-            do {
-                try await licenseManager.activateWithKey(key)
-                await MainActor.run {
-                    isActivating = false
-                    activationSuccess = true
-                    licenseKeyInput = ""
-                }
-            } catch {
-                await MainActor.run {
-                    isActivating = false
-                    activationError = error.localizedDescription
-                }
+                .buttonStyle(.plain)
+                .disabled(isLoggingOut)
             }
         }
     }

@@ -5,7 +5,7 @@ enum NavigationPage: String, CaseIterable {
     case transcription
     case history
     case dictionary
-    case plan
+    case account
     case settings
     case developer
 
@@ -15,7 +15,7 @@ enum NavigationPage: String, CaseIterable {
         case .transcription: return String(localized: "文字起こし")
         case .history: return String(localized: "履歴")
         case .dictionary: return String(localized: "辞書")
-        case .plan: return String(localized: "プラン")
+        case .account: return String(localized: "アカウント")
         case .settings: return String(localized: "設定")
         case .developer: return String(localized: "開発者")
         }
@@ -27,7 +27,7 @@ enum NavigationPage: String, CaseIterable {
         case .transcription: return "waveform.badge.mic"
         case .history: return "clock.fill"
         case .dictionary: return "character.book.closed.fill"
-        case .plan: return "creditcard.fill"
+        case .account: return "person.crop.circle.fill"
         case .settings: return "gearshape.fill"
         case .developer: return "hammer.fill"
         }
@@ -43,7 +43,7 @@ enum NavigationPage: String, CaseIterable {
             return LinearGradient(colors: [.orange, .pink], startPoint: .topLeading, endPoint: .bottomTrailing)
         case .dictionary:
             return LinearGradient(colors: [.green, .teal], startPoint: .topLeading, endPoint: .bottomTrailing)
-        case .plan:
+        case .account:
             return LinearGradient(colors: [.blue, .cyan], startPoint: .topLeading, endPoint: .bottomTrailing)
         case .settings:
             return LinearGradient(colors: [.gray, .secondary], startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -108,8 +108,8 @@ struct MainWindowView: View {
                         HistoryContentView(appState: appState)
                     case .dictionary:
                         DictionaryView(appState: appState)
-                    case .plan:
-                        PlanContentView()
+                    case .account:
+                        AccountContentView()
                     case .settings:
                         SettingsContentView(appState: appState)
                     case .developer:

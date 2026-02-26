@@ -1,9 +1,9 @@
 import Foundation
 
 enum StorageKey: String {
-    case licenseInfo = "com.nicevoice.license-info"
     case deviceId = "com.nicevoice.device-id"
-    case firstLaunchDate = "com.nicevoice.first-launch-date"
+    case authInfo = "com.nicevoice.auth-info"
+    case sessionId = "com.nicevoice.session-id"
 }
 
 enum StorageError: LocalizedError {
@@ -64,12 +64,17 @@ final class LocalStorage {
         return newDeviceId
     }
 
-    func getFirstLaunchDate() -> Date {
-        if let date: Date = try? loadCodable(for: .firstLaunchDate) {
-            return date
-        }
-        let now = Date()
-        try? saveCodable(now, for: .firstLaunchDate)
-        return now
+    func saveSessionId(_ sessionId: String) {
+        defaults.set(sessionId, forKey: StorageKey.sessionId.rawValue)
     }
+
+    func getSessionId() -> String? {
+        defaults.string(forKey: StorageKey.sessionId.rawValue)
+    }
+
+    func clearAuth() {
+        delete(for: .authInfo)
+        delete(for: .sessionId)
+    }
+
 }

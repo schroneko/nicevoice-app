@@ -33,33 +33,30 @@ OpenAI Whisper（API・ローカル問わず）は絶対に使わない。ハル
 - AssemblyAI
 - Deepgram
 
-## 価格戦略
+## 認証方式
 
-### 2層プラン構造（サブスクのみ）
+nukosuku.com の X サブスクライバー認証を使用。サブスクライバーなら全機能利用可能の二値認証。
 
-| プラン | 月額 | 年額           | 機能                                        |
-| ------ | ---- | -------------- | ------------------------------------------- |
-| Pro    | $10  | $96（$8/月）   | 全機能 + AI スマートフィラー検出            |
-| VIP    | $30  | $300（$25/月） | + ファイル/YouTube 文字起こし（バッチ処理） |
+### 認証フロー
 
-買い切りは提供しない（フィードバック獲得、クーポン発行のため）
+1. ASWebAuthenticationSession で `https://nukosuku.com/api/auth/login?platform=nicevoice` を開く
+2. X OAuth 2.0 (PKCE) でログイン
+3. nukosuku.com のコールバックが `nicevoice://auth/callback?session_id=xxx` にリダイレクト
+4. Bearer トークンで `/api/nicevoice/verify` を呼び出し、サブスクライバー判定 + デバイス登録
 
-### トライアル・クーポン
+### デバイス制限
 
-- 7 日間無料トライアル
-- 初期ユーザー向けクーポンで割引可能
+1 アカウント 1 デバイス。`nicevoice_devices` テーブル (PRIMARY KEY: x_username) で管理。デバイス切替は既存デバイスを解除してから再登録。
 
-### コスト構造
+### オフライン猶予
 
-- Pro: Claude Haiku 4.5（ヘビーユーザーで月 $6-7 程度）→ 利益 $3-4（30-40%）
-- VIP: Pro のコスト + バッチ処理（SpeechAnalyzer、追加コストなし）→ 利益 $23-24（77-80%）
+最終検証から 7 日間はオフラインでも利用可能。オンライン時は 1 日に 1 回再検証。
 
-### VIP 音声ファイル文字起こし
+### 関連ファイル
 
-- Apple SpeechAnalyzer を使用（ローカル処理）
-- リアルタイムではなくバッチ処理
-- 完了したら通知
-- 対応予定: ファイル入力、YouTube 入力
+- `NukosukuAuthService.swift`: ASWebAuthenticationSession / Bearer トークン API
+- `AuthManager.swift`: @Observable シングルトン、認証状態管理
+- nukosuku-com: `worker/routes/nicevoice.ts` (verify/device エンドポイント)
 
 ## ビルド方法
 

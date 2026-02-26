@@ -89,7 +89,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         debugLog("✅ NiceVoice started")
         checkAccessibilityPermission()
         setupStatusItem()
-        initializeLicenseManager()
+        initializeAuthManager()
 
         NotificationCenter.default.addObserver(
             self,
@@ -107,21 +107,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(licenseDidChange),
-            name: .licenseDidChange,
+            selector: #selector(authDidChange),
+            name: .authDidChange,
             object: nil
         )
     }
 
-    private func initializeLicenseManager() {
+    private func initializeAuthManager() {
         Task {
-            await LicenseManager.shared.initialize()
-            debugLog("✅ LicenseManager initialized: plan=\(LicenseManager.shared.effectivePlan)")
+            await AuthManager.shared.initialize()
+            debugLog("AuthManager initialized: subscriber=\(AuthManager.shared.isSubscriber)")
         }
     }
 
-    @objc private func licenseDidChange() {
-        debugLog("🔄 License changed: plan=\(LicenseManager.shared.effectivePlan)")
+    @objc private func authDidChange() {
+        debugLog("Auth changed: subscriber=\(AuthManager.shared.isSubscriber)")
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -131,36 +131,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func handleURLScheme(_ url: URL) {
-        debugLog("📥 URL scheme received: \(url)")
+        debugLog("URL scheme received: \(url)")
 
-        guard let result = StripeService.shared.handleURLScheme(url) else {
-            debugLog("⚠️ Unhandled URL scheme: \(url)")
+        guard url.scheme == "nicevoice",
+              url.host == "auth",
+              url.path == "/callback" else {
+            debugLog("Unhandled URL scheme: \(url)")
             return
         }
 
-        switch result {
-        case .checkoutSuccess(let sessionId):
-            debugLog("✅ Checkout success: \(sessionId)")
-            Task {
-                do {
-                    try await LicenseManager.shared.handleCheckoutSuccess(sessionId: sessionId)
-                } catch {
-                    debugLog("❌ Checkout success handling failed: \(error)")
-                }
-            }
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let sessionId = components.queryItems?.first(where: { $0.name == "session_id" })?.value else {
+            debugLog("Missing session_id in callback URL")
+            return
+        }
 
-        case .checkoutCanceled:
-            debugLog("⚠️ Checkout canceled")
-
-        case .portalReturn:
-            debugLog("🔄 Portal return")
-            Task {
-                do {
-                    try await LicenseManager.shared.handlePortalReturn()
-                } catch {
-                    debugLog("❌ Portal return handling failed: \(error)")
-                }
-            }
+        debugLog("Auth callback received with session_id")
+        Task {
+            await AuthManager.shared.handleLoginCallback(sessionId: sessionId)
         }
     }
 
