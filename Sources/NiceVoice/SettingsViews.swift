@@ -762,6 +762,11 @@ struct AccountStatusView: View {
                 .disabled(isLoggingOut)
             }
         }
+        .onChange(of: authManager.isLoggedIn) { _, _ in
+            isLoggingIn = false
+            isLoggingOut = false
+            isSwitchingDevice = false
+        }
     }
 }
 

@@ -28,6 +28,11 @@ PLIST=".build/bundler/NiceVoice.app/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string 音声入力のためにマイクを使用します" "$PLIST" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c "Add :NSSpeechRecognitionUsageDescription string 音声をテキストに変換するために使用します" "$PLIST" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c "Add :NSAppleEventsUsageDescription string テキストを入力欄に貼り付けるために使用します" "$PLIST" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "$PLIST" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" "$PLIST" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLName string app.nicevoice.NiceVoice" "$PLIST" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "$PLIST" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string nicevoice" "$PLIST" 2>/dev/null || true
 
 echo "Signing..." >&2
 codesign -fs "NiceVoice" --deep .build/bundler/NiceVoice.app

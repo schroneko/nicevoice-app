@@ -37,12 +37,7 @@ final class AuthManager {
     }
 
     func login() {
-        NukosukuAuthService.shared.startLogin { [weak self] sessionId in
-            guard let sessionId = sessionId else { return }
-            Task {
-                await self?.handleLoginCallback(sessionId: sessionId)
-            }
-        }
+        NukosukuAuthService.shared.startLogin()
     }
 
     func handleLoginCallback(sessionId: String) async {

@@ -1,5 +1,4 @@
 import Foundation
-import AuthenticationServices
 import AppKit
 
 enum AuthError: LocalizedError {
@@ -47,51 +46,19 @@ struct DeregisterResponse: Codable {
     let deregistered: Bool
 }
 
-final class AuthPresentationContext: NSObject, ASWebAuthenticationPresentationContextProviding {
-    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        NSApplication.shared.keyWindow ?? NSWindow()
-    }
-}
-
 final class NukosukuAuthService {
     static let shared = NukosukuAuthService()
 
     private let baseURL = "https://nukosuku.com/api"
-    private let presentationContext = AuthPresentationContext()
 
     private init() {}
 
-    func startLogin(completion: @escaping (String?) -> Void) {
+    func startLogin() {
         guard let loginURL = URL(string: "\(baseURL)/auth/login?platform=nicevoice") else {
-            completion(nil)
             return
         }
 
-        let session = ASWebAuthenticationSession(
-            url: loginURL,
-            callbackURLScheme: "nicevoice"
-        ) { callbackURL, error in
-            if let error = error {
-                debugLog("Auth error: \(error.localizedDescription)")
-                completion(nil)
-                return
-            }
-
-            guard let callbackURL = callbackURL,
-                  let components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false),
-                  let sessionId = components.queryItems?.first(where: { $0.name == "session_id" })?.value
-            else {
-                debugLog("No session_id in callback")
-                completion(nil)
-                return
-            }
-
-            completion(sessionId)
-        }
-
-        session.presentationContextProvider = presentationContext
-        session.prefersEphemeralWebBrowserSession = false
-        session.start()
+        NSWorkspace.shared.open(loginURL)
     }
 
     func verify(sessionId: String, deviceId: String) async throws -> VerifyResponse {
