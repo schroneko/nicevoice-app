@@ -56,6 +56,22 @@ final class StripeService {
 
     private init() {}
 
+    func activateLicenseKey(_ key: String) async throws -> LicenseVerificationResponse {
+        let deviceId = LocalStorage.shared.getOrCreateDeviceId()
+
+        let params: [String: Any] = [
+            "license_key": key,
+            "device_id": deviceId
+        ]
+
+        let response: LicenseVerificationResponse = try await post(
+            endpoint: "/activate",
+            body: params
+        )
+
+        return response
+    }
+
     func verifyLicense() async throws -> LicenseVerificationResponse {
         let deviceId = LocalStorage.shared.getOrCreateDeviceId()
 

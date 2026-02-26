@@ -133,6 +133,38 @@ final class LicenseManager {
         debugLog("✅ License verified: plan=\(plan), status=\(status)")
     }
 
+    func activateWithKey(_ key: String) async throws {
+        let response = try await StripeService.shared.activateLicenseKey(key)
+
+        guard response.valid else {
+            throw StripeError.serverError(400, "Invalid license key")
+        }
+
+        let plan = Plan(rawValue: response.plan) ?? .free
+        let status = SubscriptionStatus(rawValue: response.status) ?? .none
+
+        let newInfo = LicenseInfo(
+            customerId: response.customerId ?? key,
+            subscriptionId: response.subscriptionId,
+            plan: plan,
+            status: status,
+            currentPeriodEnd: response.currentPeriodEnd,
+            trialEnd: response.trialEnd,
+            lastVerified: Date()
+        )
+
+        try LocalStorage.shared.saveCodable(newInfo, for: .licenseInfo)
+
+        await MainActor.run {
+            self.licenseInfo = newInfo
+            self.currentPlan = plan
+            self.subscriptionStatus = status
+            NotificationCenter.default.post(name: .licenseDidChange, object: nil)
+        }
+
+        debugLog("✅ License activated with key: plan=\(plan), status=\(status)")
+    }
+
     func handleCheckoutSuccess(sessionId: String) async throws {
         try await refreshLicenseAndNotify()
     }

@@ -69,7 +69,7 @@ struct SettingsContentView: View {
     @AppStorage("showInMenuBar") private var showInMenuBar = true
     @AppStorage("shortcutKey") private var shortcutKeyRaw = ShortcutKey.fn.rawValue
     @State private var fillerSettings: FillerSettings
-    @State private var sectionAnimations: [Bool] = [false, false, false, false, false]
+    @State private var sectionAnimations: [Bool] = [false, false, false, false]
 
     private var selectedShortcutKey: ShortcutKey {
         ShortcutKey(rawValue: shortcutKeyRaw) ?? .fn
@@ -190,16 +190,6 @@ struct SettingsContentView: View {
                 }
                 .opacity(sectionAnimations[3] ? 1 : 0)
                 .offset(y: sectionAnimations[3] ? 0 : 16)
-
-                SettingsSection(
-                    title: "プラン",
-                    icon: "creditcard.fill",
-                    gradientColors: [.blue, .cyan]
-                ) {
-                    PlanStatusView()
-                }
-                .opacity(sectionAnimations[4] ? 1 : 0)
-                .offset(y: sectionAnimations[4] ? 0 : 16)
 
                 Spacer(minLength: 20)
             }
@@ -581,9 +571,50 @@ struct PermissionRow: View {
     }
 }
 
+struct PlanContentView: View {
+    @State private var sectionAnimations: [Bool] = [false]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("プラン")
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                    Text("ライセンスの管理")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.bottom, 8)
+
+                SettingsSection(
+                    title: "ライセンス",
+                    icon: "creditcard.fill",
+                    gradientColors: [.blue, .cyan]
+                ) {
+                    PlanStatusView()
+                }
+                .opacity(sectionAnimations[0] ? 1 : 0)
+                .offset(y: sectionAnimations[0] ? 0 : 16)
+
+                Spacer(minLength: 20)
+            }
+            .padding(32)
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.1)) {
+                sectionAnimations[0] = true
+            }
+        }
+    }
+}
+
 struct PlanStatusView: View {
     private var licenseManager: LicenseManager { LicenseManager.shared }
     private var usageTracker: UsageTracker { UsageTracker.shared }
+    @State private var licenseKeyInput = ""
+    @State private var isActivating = false
+    @State private var activationError: String?
+    @State private var activationSuccess = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -619,27 +650,7 @@ struct PlanStatusView: View {
 
                 Spacer()
 
-                if licenseManager.effectivePlan == .free || licenseManager.isTrialActive {
-                    Button {
-                        licenseManager.openPricingPage()
-                    } label: {
-                        Text("アップグレード")
-                            .font(.callout)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(
-                                LinearGradient(
-                                    colors: [.blue, .cyan],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                } else {
+                if licenseManager.subscriptionStatus == .active {
                     Button {
                         Task {
                             try? await licenseManager.manageSubscription()
@@ -653,7 +664,75 @@ struct PlanStatusView: View {
                 }
             }
 
-            if licenseManager.effectivePlan == .free {
+            if licenseManager.subscriptionStatus != .active {
+                SectionDivider()
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("ライセンスキー")
+                        .font(.callout)
+                        .fontWeight(.medium)
+
+                    HStack(spacing: 8) {
+                        TextField("xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx", text: $licenseKeyInput)
+                            .textFieldStyle(.plain)
+                            .font(.system(.caption, design: .monospaced))
+                            .padding(10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(Color.secondary.opacity(0.08))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
+                            )
+                            .disabled(isActivating)
+
+                        Button {
+                            activateLicense()
+                        } label: {
+                            if isActivating {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .frame(width: 80, height: 32)
+                            } else {
+                                Text("有効化")
+                                    .font(.callout)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.white)
+                                    .frame(width: 80, height: 32)
+                                    .background(
+                                        LinearGradient(
+                                            colors: [.purple, .indigo],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(licenseKeyInput.trimmingCharacters(in: .whitespaces).isEmpty || isActivating)
+                    }
+
+                    if let error = activationError {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+
+                    if activationSuccess {
+                        HStack(spacing: 6) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                            Text("ライセンスが有効化されました")
+                                .font(.caption)
+                                .foregroundStyle(.green)
+                        }
+                    }
+                }
+            }
+
+            if licenseManager.effectivePlan == .free && !licenseManager.isTrialActive {
                 SectionDivider()
 
                 VStack(alignment: .leading, spacing: 8) {
@@ -689,6 +768,31 @@ struct PlanStatusView: View {
                     Text("\(usageTracker.daysUntilReset) 日後にリセット")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
+                }
+            }
+        }
+    }
+
+    private func activateLicense() {
+        let key = licenseKeyInput.trimmingCharacters(in: .whitespaces)
+        guard !key.isEmpty else { return }
+
+        isActivating = true
+        activationError = nil
+        activationSuccess = false
+
+        Task {
+            do {
+                try await licenseManager.activateWithKey(key)
+                await MainActor.run {
+                    isActivating = false
+                    activationSuccess = true
+                    licenseKeyInput = ""
+                }
+            } catch {
+                await MainActor.run {
+                    isActivating = false
+                    activationError = error.localizedDescription
                 }
             }
         }
