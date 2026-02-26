@@ -86,11 +86,13 @@ struct FillerSettings: Codable {
 enum TranscriptionEngine: String, CaseIterable, Codable {
     case speechAnalyzer
     case voxtralLocal
+    case qwen3ASR
 
     var displayName: String {
         switch self {
         case .speechAnalyzer: return "Apple SpeechAnalyzer"
         case .voxtralLocal: return "Voxtral Local (voxmlx)"
+        case .qwen3ASR: return "Qwen3 ASR"
         }
     }
 
@@ -98,6 +100,7 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
         switch self {
         case .speechAnalyzer: return "macOS 内蔵の音声認識。オフラインで動作し、遅延が少ない"
         case .voxtralLocal: return "voxmlx-serve によるローカル推論。サーバーの起動が必要"
+        case .qwen3ASR: return "Qwen3-ASR-1.7B (MLX, ローカル推論)"
         }
     }
 }

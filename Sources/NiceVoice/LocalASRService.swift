@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 
-final class VoxtralLocalService {
+final class LocalASRService {
     private var webSocketTask: URLSessionWebSocketTask?
     private var audioEngine: AVAudioEngine?
     private var audioConverter: AVAudioConverter?
@@ -16,7 +16,8 @@ final class VoxtralLocalService {
 
     private var accumulatedText = ""
 
-    private let serverURL: String
+    private let wsEndpoint: String
+    private let sampleRate: Double
     private let onTranscription: (String, Bool) -> Void
     private let onFinalCompletion: ((String) -> Void)?
     private let onError: (String) -> Void
@@ -24,18 +25,20 @@ final class VoxtralLocalService {
     private let onAudioLevel: ((Float) -> Void)?
 
     private lazy var voxtralFormat: AVAudioFormat = {
-        AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: Constants.VoxtralLocal.sampleRate, channels: 1, interleaved: true)!
+        AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: self.sampleRate, channels: 1, interleaved: true)!
     }()
 
     init(
-        serverURL: String = Constants.VoxtralLocal.wsEndpoint,
+        wsEndpoint: String,
+        sampleRate: Double,
         onTranscription: @escaping (String, Bool) -> Void,
         onFinalCompletion: ((String) -> Void)? = nil,
         onError: @escaping (String) -> Void,
         onStatusChange: ((String) -> Void)? = nil,
         onAudioLevel: ((Float) -> Void)? = nil
     ) {
-        self.serverURL = serverURL
+        self.wsEndpoint = wsEndpoint
+        self.sampleRate = sampleRate
         self.onTranscription = onTranscription
         self.onFinalCompletion = onFinalCompletion
         self.onError = onError
@@ -157,7 +160,7 @@ final class VoxtralLocalService {
     }
 
     private func connectWebSocket() {
-        guard let url = URL(string: serverURL) else {
+        guard let url = URL(string: wsEndpoint) else {
             onError("Invalid voxmlx-serve WebSocket URL")
             return
         }

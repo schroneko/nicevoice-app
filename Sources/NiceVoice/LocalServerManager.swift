@@ -1,22 +1,49 @@
 import Foundation
 
-enum VoxmlxServerStatus: Equatable {
+enum LocalServerStatus: Equatable {
     case stopped
     case starting(String)
     case running
     case error(String)
 }
 
-final class VoxmlxServerManager {
+final class LocalServerManager {
     private var process: Process?
     private var healthCheckTask: Task<Void, Never>?
-    private let onStatusChange: (VoxmlxServerStatus) -> Void
+    private let onStatusChange: (LocalServerStatus) -> Void
+
+    private let serverCommand: String
+    private let serverPackagePath: String
+    private let modelName: String
+    private let port: Int
+    private let healthEndpoint: String
+    private let healthCheckTimeout: Double
+    private let healthPollInterval: Double
+    private let uvxSearchPaths: [String]
 
     var isRunning: Bool {
         process?.isRunning ?? false
     }
 
-    init(onStatusChange: @escaping (VoxmlxServerStatus) -> Void) {
+    init(
+        serverCommand: String,
+        serverPackagePath: String,
+        modelName: String,
+        port: Int,
+        healthEndpoint: String,
+        healthCheckTimeout: Double,
+        healthPollInterval: Double,
+        uvxSearchPaths: [String],
+        onStatusChange: @escaping (LocalServerStatus) -> Void
+    ) {
+        self.serverCommand = serverCommand
+        self.serverPackagePath = serverPackagePath
+        self.modelName = modelName
+        self.port = port
+        self.healthEndpoint = healthEndpoint
+        self.healthCheckTimeout = healthCheckTimeout
+        self.healthPollInterval = healthPollInterval
+        self.uvxSearchPaths = uvxSearchPaths
         self.onStatusChange = onStatusChange
     }
 
@@ -28,28 +55,30 @@ final class VoxmlxServerManager {
         guard !isRunning else { return }
 
         guard let uvxPath = findUvx() else {
-            let status = VoxmlxServerStatus.error("uvx が見つかりません。uv をインストールしてください")
-            debugLog("❌ voxmlx-serve: uvx not found in search paths")
+            let status = LocalServerStatus.error("uvx が見つかりません。uv をインストールしてください")
+            debugLog("[\(serverCommand)] uvx not found in search paths")
             onStatusChange(status)
             return
         }
 
-        guard let serverPath = Bundle.main.resourceURL?.appendingPathComponent("Server").path else {
-            let status = VoxmlxServerStatus.error("Server リソースが見つかりません")
-            debugLog("❌ voxmlx-serve: Server resource not found in app bundle")
+        guard let serverPath = Bundle.main.resourceURL?
+            .appendingPathComponent("Server")
+            .appendingPathComponent(serverPackagePath).path else {
+            let status = LocalServerStatus.error("Server リソースが見つかりません")
+            debugLog("[\(serverCommand)] Server resource not found in app bundle")
             onStatusChange(status)
             return
         }
 
-        debugLog("✅ voxmlx-serve: found uvx at \(uvxPath), server at \(serverPath)")
+        debugLog("[\(serverCommand)] found uvx at \(uvxPath), server at \(serverPath)")
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: uvxPath)
         proc.arguments = [
             "--from", "\(serverPath)[server]",
-            "voxmlx-serve",
-            "--model", Constants.VoxtralLocal.defaultModel,
-            "--port", "8000"
+            serverCommand,
+            "--model", modelName,
+            "--port", String(port)
         ]
 
         let stdoutPipe = Pipe()
@@ -58,17 +87,17 @@ final class VoxmlxServerManager {
         proc.standardError = stderrPipe
 
         stdoutPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            guard self?.process != nil else { return }
+            guard let self, self.process != nil else { return }
             let data = handle.availableData
             guard !data.isEmpty, let line = String(data: data, encoding: .utf8) else { return }
-            debugLog("voxmlx-serve: \(line.trimmingCharacters(in: .newlines))")
+            debugLog("[\(self.serverCommand)] \(line.trimmingCharacters(in: .newlines))")
         }
 
         stderrPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            guard self?.process != nil else { return }
+            guard let self, self.process != nil else { return }
             let data = handle.availableData
             guard !data.isEmpty, let line = String(data: data, encoding: .utf8) else { return }
-            debugLog("voxmlx-serve: \(line.trimmingCharacters(in: .newlines))")
+            debugLog("[\(self.serverCommand)] \(line.trimmingCharacters(in: .newlines))")
         }
 
         proc.terminationHandler = { [weak self] terminatedProcess in
@@ -77,9 +106,9 @@ final class VoxmlxServerManager {
             stderrPipe.fileHandleForReading.readabilityHandler = nil
             let code = terminatedProcess.terminationStatus
             if code != 0 && code != 15 {
-                debugLog("❌ voxmlx-serve: process exited with code \(code)")
+                debugLog("[\(self.serverCommand)] process exited with code \(code)")
                 DispatchQueue.main.async {
-                    self.onStatusChange(.error("voxmlx-serve が異常終了しました (code: \(code))"))
+                    self.onStatusChange(.error("\(self.serverCommand) が異常終了しました (code: \(code))"))
                 }
             }
         }
@@ -87,14 +116,14 @@ final class VoxmlxServerManager {
         do {
             try proc.run()
         } catch {
-            debugLog("❌ voxmlx-serve: failed to start process: \(error)")
-            onStatusChange(.error("voxmlx-serve の起動に失敗しました: \(error.localizedDescription)"))
+            debugLog("[\(serverCommand)] failed to start process: \(error)")
+            onStatusChange(.error("\(serverCommand) の起動に失敗しました: \(error.localizedDescription)"))
             return
         }
 
         process = proc
-        debugLog("🚀 voxmlx-serve: process started (PID: \(proc.processIdentifier))")
-        onStatusChange(.starting("voxmlx-serve を起動中..."))
+        debugLog("[\(serverCommand)] process started (PID: \(proc.processIdentifier))")
+        onStatusChange(.starting("\(serverCommand) を起動中..."))
         startHealthPolling()
     }
 
@@ -108,12 +137,12 @@ final class VoxmlxServerManager {
             return
         }
 
-        debugLog("🛑 voxmlx-serve: sending SIGTERM (PID: \(proc.processIdentifier))")
+        debugLog("[\(serverCommand)] sending SIGTERM (PID: \(proc.processIdentifier))")
         proc.terminate()
 
         let killWorkItem = DispatchWorkItem {
             guard proc.isRunning else { return }
-            debugLog("🛑 voxmlx-serve: sending SIGKILL (PID: \(proc.processIdentifier))")
+            debugLog("[\(self.serverCommand)] sending SIGKILL (PID: \(proc.processIdentifier))")
             kill(proc.processIdentifier, SIGKILL)
         }
         DispatchQueue.global().asyncAfter(deadline: .now() + 5.0, execute: killWorkItem)
@@ -122,12 +151,12 @@ final class VoxmlxServerManager {
         killWorkItem.cancel()
 
         process = nil
-        debugLog("🛑 voxmlx-serve: process stopped")
+        debugLog("[\(serverCommand)] process stopped")
         onStatusChange(.stopped)
     }
 
     private func findUvx() -> String? {
-        for path in Constants.VoxtralLocal.uvxSearchPaths {
+        for path in uvxSearchPaths {
             if FileManager.default.isExecutableFile(atPath: path) {
                 return path
             }
@@ -141,8 +170,6 @@ final class VoxmlxServerManager {
             guard let self else { return }
 
             let startTime = Date()
-            let timeout = Constants.VoxtralLocal.serverStartupTimeoutSeconds
-            let interval = Constants.VoxtralLocal.healthPollIntervalSeconds
             var firstPoll = true
 
             while !Task.isCancelled {
@@ -154,31 +181,31 @@ final class VoxmlxServerManager {
                 }
 
                 if await checkHealth() {
-                    debugLog("✅ voxmlx-serve: health check passed")
+                    debugLog("[\(self.serverCommand)] health check passed")
                     await MainActor.run {
                         self.onStatusChange(.running)
                     }
                     return
                 }
 
-                if Date().timeIntervalSince(startTime) > timeout {
-                    debugLog("❌ voxmlx-serve: startup timeout (\(Int(timeout))s)")
+                if Date().timeIntervalSince(startTime) > self.healthCheckTimeout {
+                    debugLog("[\(self.serverCommand)] startup timeout (\(Int(self.healthCheckTimeout))s)")
                     self.stop()
                     await MainActor.run {
-                        self.onStatusChange(.error("voxmlx-serve の起動がタイムアウトしました"))
+                        self.onStatusChange(.error("\(self.serverCommand) の起動がタイムアウトしました"))
                     }
                     return
                 }
 
-                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                try? await Task.sleep(nanoseconds: UInt64(self.healthPollInterval * 1_000_000_000))
             }
         }
     }
 
     private func checkHealth() async -> Bool {
-        guard let url = URL(string: Constants.VoxtralLocal.healthEndpoint) else { return false }
+        guard let url = URL(string: healthEndpoint) else { return false }
         var request = URLRequest(url: url)
-        request.timeoutInterval = Constants.VoxtralLocal.healthCheckTimeoutSeconds
+        request.timeoutInterval = healthCheckTimeout
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
             return (response as? HTTPURLResponse)?.statusCode == 200

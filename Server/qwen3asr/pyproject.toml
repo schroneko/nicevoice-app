@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qwen3asr-server"
+version = "0.0.1"
+requires-python = ">=3.10"
+dependencies = [
+    "mlx-qwen3-asr>=0.2.0",
+    "numpy",
+]
+
+[project.optional-dependencies]
+server = ["fastapi", "uvicorn[standard]"]
+
+[project.scripts]
+qwen3asr-serve = "qwen3asr.server:main"

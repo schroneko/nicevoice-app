@@ -63,4 +63,19 @@ enum Constants {
             "\(NSHomeDirectory())/.cargo/bin/uvx"
         ]
     }
+
+    enum Qwen3ASR {
+        static let wsEndpoint = "ws://127.0.0.1:8001/v1/realtime"
+        static let healthEndpoint = "http://127.0.0.1:8001/health"
+        static let sampleRate: Double = 16000
+        static let healthCheckTimeoutSeconds: Double = 600.0
+        static let healthPollIntervalSeconds: Double = 2.0
+        static let defaultModel = "schroneko/Qwen3-ASR-1.7B-4bit"
+        static let uvxSearchPaths = [
+            "/opt/homebrew/bin/uvx",
+            "/usr/local/bin/uvx",
+            "\(NSHomeDirectory())/.local/bin/uvx",
+            "\(NSHomeDirectory())/.cargo/bin/uvx"
+        ]
+    }
 }

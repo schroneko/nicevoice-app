@@ -34,9 +34,9 @@ struct DeveloperView: View {
                                 isSelected: selectedEngine == engine,
                                 action: {
                                     transcriptionEngineRaw = engine.rawValue
-                                    if engine == .voxtralLocal {
+                                    if engine == .voxtralLocal || engine == .qwen3ASR {
                                         appState.setupTranscriptionService()
-                                        appState.voxmlxServerManager?.start()
+                                        appState.localServerManager?.start()
                                         Task {
                                             await appState.reinitializeAfterEngineChange()
                                         }
@@ -51,7 +51,7 @@ struct DeveloperView: View {
                         }
                     }
 
-                    if selectedEngine == .voxtralLocal {
+                    if selectedEngine == .voxtralLocal || selectedEngine == .qwen3ASR {
                         SectionDivider()
 
                         HStack(spacing: 12) {
@@ -60,7 +60,7 @@ struct DeveloperView: View {
                                     .font(.callout)
                                     .fontWeight(.medium)
 
-                                switch appState.voxmlxServerStatus {
+                                switch appState.localServerStatus {
                                 case .stopped:
                                     Text("停止中")
                                         .font(.caption)
@@ -83,9 +83,9 @@ struct DeveloperView: View {
 
                             Spacer()
 
-                            if case .running = appState.voxmlxServerStatus {
+                            if case .running = appState.localServerStatus {
                                 Button {
-                                    appState.voxmlxServerManager?.stop()
+                                    appState.localServerManager?.stop()
                                 } label: {
                                     HStack(spacing: 6) {
                                         Image(systemName: "stop.fill")
@@ -106,12 +106,12 @@ struct DeveloperView: View {
                                     .clipShape(Capsule())
                                 }
                                 .buttonStyle(.plain)
-                            } else if case .starting = appState.voxmlxServerStatus {
+                            } else if case .starting = appState.localServerStatus {
                                 ProgressView()
                                     .controlSize(.small)
                             } else {
                                 Button {
-                                    appState.voxmlxServerManager?.start()
+                                    appState.localServerManager?.start()
                                 } label: {
                                     HStack(spacing: 6) {
                                         Image(systemName: "play.fill")
@@ -146,7 +146,7 @@ struct DeveloperView: View {
                 ) {
                     VStack(alignment: .leading, spacing: 8) {
                         DebugInfoRow(label: "エンジン", value: selectedEngine.displayName)
-                        DebugInfoRow(label: "モデル", value: selectedEngine == .voxtralLocal ? "voxmlx-serve (local)" : "SpeechAnalyzer (built-in)")
+                        DebugInfoRow(label: "モデル", value: selectedEngine == .voxtralLocal ? "voxmlx-serve (local)" : selectedEngine == .qwen3ASR ? "qwen3-asr (local)" : "SpeechAnalyzer (built-in)")
                         DebugInfoRow(label: "ステータス", value: appState.statusMessage)
                         DebugInfoRow(label: "準備状態", value: appState.isReady ? "Ready" : "Not Ready")
                     }
