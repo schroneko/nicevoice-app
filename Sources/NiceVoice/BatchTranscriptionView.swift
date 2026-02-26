@@ -11,6 +11,8 @@ struct BatchTranscriptionView: View {
     @State private var selectedItemId: UUID?
     @State private var pulseAnimation = false
     @State private var processingTasks: [UUID: Task<Void, Never>] = [:]
+    @State private var isDownloadingYouTube = false
+    @State private var youtubeError: String?
 
     private let supportedTypes: [UTType] = [.audio, .mpeg4Audio, .mp3, .wav, .aiff]
 
@@ -150,27 +152,9 @@ struct BatchTranscriptionView: View {
 
     private var youtubeInput: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("YouTube URL", systemImage: "play.rectangle.fill")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.secondary)
-
-                Spacer()
-
-                Text("将来対応")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        LinearGradient(
-                            colors: [.orange, .pink],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        ),
-                        in: Capsule()
-                    )
-            }
+            Label("YouTube URL", systemImage: "play.rectangle.fill")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
 
             HStack(spacing: 10) {
                 TextField("https://youtube.com/...", text: $youtubeURL)
@@ -185,21 +169,29 @@ struct BatchTranscriptionView: View {
                                     .stroke(glassBorder, lineWidth: 1)
                             }
                     }
-                    .disabled(true)
 
                 Button {
+                    downloadYouTubeAudio()
                 } label: {
-                    Image(systemName: "arrow.down.circle.fill")
-                        .font(.title2)
-                        .foregroundStyle(.tertiary)
+                    if isDownloadingYouTube {
+                        ProgressView()
+                            .controlSize(.small)
+                            .frame(width: 28, height: 28)
+                    } else {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(youtubeURL.isEmpty ? AnyShapeStyle(.tertiary) : AnyShapeStyle(primaryGradient))
+                    }
                 }
                 .buttonStyle(.plain)
-                .disabled(true)
+                .disabled(youtubeURL.isEmpty || isDownloadingYouTube)
             }
 
-            Text("YouTube からの音声抽出は今後対応予定")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+            if let youtubeError {
+                Text(youtubeError)
+                    .font(.caption2)
+                    .foregroundStyle(.red)
+            }
         }
         .padding(16)
         .background {
@@ -214,7 +206,6 @@ struct BatchTranscriptionView: View {
                         .stroke(glassBorder, lineWidth: 1)
                 }
         }
-        .opacity(0.7)
     }
 
     private var queueHeader: some View {
@@ -527,6 +518,38 @@ struct BatchTranscriptionView: View {
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
         debugLog("Copied result to clipboard: \(text.count) chars")
+    }
+
+    private func downloadYouTubeAudio() {
+        guard !youtubeURL.isEmpty else { return }
+        youtubeError = nil
+
+        guard YouTubeDownloader.shared.isAvailable() else {
+            youtubeError = "yt-dlp が見つかりません。brew install yt-dlp でインストールしてください"
+            return
+        }
+
+        isDownloadingYouTube = true
+        let urlString = youtubeURL
+
+        Task {
+            do {
+                let fileURL = try await YouTubeDownloader.shared.download(
+                    url: urlString,
+                    outputDir: FileManager.default.temporaryDirectory
+                )
+                await MainActor.run {
+                    addFile(fileURL)
+                    youtubeURL = ""
+                    isDownloadingYouTube = false
+                }
+            } catch {
+                await MainActor.run {
+                    youtubeError = error.localizedDescription
+                    isDownloadingYouTube = false
+                }
+            }
+        }
     }
 }
 
