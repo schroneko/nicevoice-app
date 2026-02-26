@@ -64,14 +64,16 @@ OpenAI Whisper（API・ローカル問わず）は絶対に使わない。ハル
 ## ビルド方法
 
 ```bash
-./Scripts/debug-run.sh
+./Scripts/verify-build.sh
 ```
 
-ビルドは必ずこのスクリプトを使う。手動で分割しない（swift build、codesign、killall、cp を個別に実行しない）。
+ビルドは必ずこのスクリプトを使う。手動で分割しない（swift build、codesign、killall を個別に実行しない）。
+
+このスクリプトは Claude Code の PreToolUse フック（pre-commit）として自動実行されるため、コミット前に毎回ビルドが検証される。
 
 ### ビルドスクリプトの既知の問題
 
-`debug-run.sh` は `swift build` の出力を `grep -v` でパイプしているため、コンパイルエラーがあっても終了コードが隠れてスクリプトが続行する。古い `.build/debug/NiceVoice` バイナリが存在すると、コンパイルエラーに気づかず古いバイナリが /Applications にコピーされる。
+`verify-build.sh` は `swift build` の出力を `grep -v` でパイプしているため、コンパイルエラーがあっても終了コードが隠れてスクリプトが続行する。古い `.build/debug/NiceVoice` バイナリが存在すると、コンパイルエラーに気づかず古いバイナリが署名される。
 
 ビルド後に変更が反映されない場合は、`swift build --product NiceVoice` を直接実行してコンパイルエラーを確認する。
 
@@ -80,8 +82,9 @@ OpenAI Whisper（API・ローカル問わず）は絶対に使わない。ハル
 1. `swift build` でコンパイル
 2. `swift-bundler` でバンドル作成
 3. `codesign -fs "NiceVoice"` で自己署名証明書による署名
-4. 既存プロセスを終了して起動
-5. ログを tail -f で表示
+4. 既存プロセスを終了して `.build/bundler/NiceVoice.app` から起動
+
+ログは別途 `tail -f ~/Library/Logs/NiceVoice/debug.log` で確認できる。
 
 自己署名証明書「NiceVoice」で署名することで、ビルドしてもアクセシビリティ権限が維持される。
 
@@ -226,7 +229,7 @@ CGEvent キーボードモード: AX 検証が失敗したアプリ (Ghostty 等
 
 起動の仕組み:
 
-1. `debug-run.sh` が `Server/` をアプリバンドルの `Contents/Resources/Server` にコピー
+1. `verify-build.sh` が `Server/` をアプリバンドルの `Contents/Resources/Server` にコピー
 2. `VoxmlxServerManager` が `Bundle.main.resourceURL` から Server パスを取得
 3. `uvx --from <serverPath>[server] voxmlx-serve` でサーバーを起動
 
