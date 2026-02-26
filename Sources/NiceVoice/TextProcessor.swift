@@ -64,7 +64,7 @@ struct TextProcessor {
 
     private static let starterPhrases = ["はい", "いいえ", "うん", "ええ", "そうですね", "なるほど", "おはよう"]
 
-    private static let punctuationCharacters: Set<Character> = ["。", "、", "？", "！"]
+    private static let punctuationCharacters: Set<Character> = ["。", "、", "？", "！", "?", "!", ".", ","]
     private static let particleCharacters: Set<Character> = ["か", "が", "け", "ね", "よ"]
 
     func process(_ text: String, isFinal: Bool = true) -> String {
