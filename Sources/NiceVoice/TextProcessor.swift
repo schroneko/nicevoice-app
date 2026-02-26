@@ -79,14 +79,16 @@ struct TextProcessor {
         result = removeSpacesBeforePunctuation(from: result)
         result = applyDictionaryReplacements(to: result)
         result = removeTrailingRepetitions(from: result)
-        result = insertSentenceEndPunctuation(in: result)
-        result = insertTransitionPunctuation(in: result)
-        result = insertGreetingPunctuation(in: result)
-        result = insertPoliteEndingPunctuation(in: result)
-        result = insertQuestionMarks(in: result)
-        result = insertConjunctionCommas(in: result)
-        result = insertStarterPunctuation(in: result)
-        result = removePunctuationBeforeFinalParticles(from: result)
+        if fillerSettings.addPunctuation {
+            result = insertSentenceEndPunctuation(in: result)
+            result = insertTransitionPunctuation(in: result)
+            result = insertGreetingPunctuation(in: result)
+            result = insertPoliteEndingPunctuation(in: result)
+            result = insertQuestionMarks(in: result)
+            result = insertConjunctionCommas(in: result)
+            result = insertStarterPunctuation(in: result)
+            result = removePunctuationBeforeFinalParticles(from: result)
+        }
         result = removeLeadingFillers(from: result)
 
         if !isFinal {
