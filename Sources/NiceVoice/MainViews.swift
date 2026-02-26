@@ -128,31 +128,34 @@ struct SidebarItem: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: page.icon)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(isSelected ? .white : .primary)
-                    .frame(width: 24, height: 24)
+        HStack(spacing: 12) {
+            Image(systemName: page.icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(isSelected ? .white : .primary)
+                .frame(width: 24, height: 24)
 
-                Text(page.localizedName)
-                    .font(.system(size: 14, weight: isSelected ? .semibold : .medium))
-                    .foregroundStyle(isSelected ? .white : .primary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .background {
-                if isSelected {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(page.gradient)
-                        .shadow(color: .purple.opacity(0.3), radius: 8, y: 4)
-                } else if isHovered {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(.quaternary)
-                }
+            Text(page.localizedName)
+                .font(.system(size: 14, weight: isSelected ? .semibold : .medium))
+                .foregroundStyle(isSelected ? .white : .primary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(page.gradient)
+                    .shadow(color: .purple.opacity(0.3), radius: 8, y: 4)
+            } else if isHovered {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(.quaternary)
             }
         }
-        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .onTapGesture { action() }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(page.localizedName)
+        .accessibilityAddTraits(.isButton)
         .scaleEffect(isHovered && !isSelected ? 1.02 : 1.0)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isHovered)
     }
