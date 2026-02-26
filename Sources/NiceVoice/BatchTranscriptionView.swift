@@ -25,7 +25,7 @@ struct BatchTranscriptionView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: 24) {
                 header
 
                 HStack(alignment: .top, spacing: 24) {
@@ -51,7 +51,6 @@ struct BatchTranscriptionView: View {
             }
             .padding(32)
         }
-        .background(Color(.windowBackgroundColor))
         .fileImporter(
             isPresented: $showFileImporter,
             allowedContentTypes: supportedTypes,
@@ -70,7 +69,7 @@ struct BatchTranscriptionView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("バッチ文字起こし")
                 .font(.system(size: 32, weight: .bold, design: .rounded))
-                .foregroundStyle(primaryGradient)
+                .foregroundStyle(LinearGradient(colors: [.purple, .indigo], startPoint: .leading, endPoint: .trailing))
 
             Text("音声ファイルをドラッグ＆ドロップ、または選択して文字起こし")
                 .font(.subheadline)

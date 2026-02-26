@@ -803,8 +803,7 @@ struct HistoryContentView: View {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("履歴")
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
                         .foregroundStyle(
                             LinearGradient(
                                 colors: [.purple, .indigo],
@@ -820,8 +819,7 @@ struct HistoryContentView: View {
                 GlassmorphicSearchField(text: $searchText)
                     .frame(width: 200)
             }
-            .padding(.horizontal, 28)
-            .padding(.vertical, 24)
+            .padding(32)
 
             if filteredHistory.isEmpty {
                 Spacer()
@@ -852,7 +850,7 @@ struct HistoryContentView: View {
                                 appState: appState,
                                 audioPlayer: audioPlayer
                             )
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, 32)
                             .opacity(animateItems ? 1 : 0)
                             .offset(y: animateItems ? 0 : 15)
                             .animation(

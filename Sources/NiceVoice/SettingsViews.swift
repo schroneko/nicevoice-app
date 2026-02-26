@@ -86,6 +86,7 @@ struct SettingsContentView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("設定")
                         .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .foregroundStyle(LinearGradient(colors: [.purple, .indigo], startPoint: .leading, endPoint: .trailing))
                     Text("アプリの動作をカスタマイズ")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -580,6 +581,7 @@ struct PlanContentView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("プラン")
                         .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .foregroundStyle(LinearGradient(colors: [.purple, .indigo], startPoint: .leading, endPoint: .trailing))
                     Text("ライセンスの管理")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)

@@ -15,6 +15,7 @@ struct DeveloperView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("開発者")
                         .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .foregroundStyle(LinearGradient(colors: [.purple, .indigo], startPoint: .leading, endPoint: .trailing))
                     Text("内部設定 (リリースビルドでは非表示)")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)

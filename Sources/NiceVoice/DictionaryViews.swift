@@ -13,10 +13,9 @@ struct DictionaryView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text("辞書")
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
                         .foregroundStyle(
                             LinearGradient(
                                 colors: gradientColors,
@@ -79,8 +78,7 @@ struct DictionaryView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 28)
-            .padding(.vertical, 20)
+            .padding(32)
 
             if appState.dictionaryEntries.isEmpty {
                 Spacer()
@@ -105,7 +103,7 @@ struct DictionaryView: View {
                             )
                         }
                     }
-                    .padding(.horizontal, 28)
+                    .padding(.horizontal, 32)
                     .padding(.vertical, 16)
                 }
             }
@@ -128,9 +126,9 @@ struct DictionaryView: View {
                     }
                     Spacer()
                 }
-                .padding(.horizontal, 28)
-                .padding(.vertical, 16)
-                .background(.bar)
+                .padding(.horizontal, 32)
+                .padding(.vertical, 18)
+                .background(.ultraThinMaterial)
             }
         }
         .sheet(isPresented: $showingAddSheet) {
