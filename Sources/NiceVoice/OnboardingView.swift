@@ -1,11 +1,13 @@
 import SwiftUI
 import AVFoundation
 import ApplicationServices
+import Speech
 
 enum OnboardingStep: Int, CaseIterable {
     case welcome
     case microphone
     case accessibility
+    case modelDownload
     case howToUse
     case complete
 }
@@ -238,6 +240,8 @@ struct OnboardingView: View {
     @State private var microphoneGranted = false
     @State private var accessibilityGranted = false
     @State private var showConfetti = false
+    @State private var modelReady = false
+    @State private var modelDownloadError = false
     private let defaultShortcutKey: ShortcutKey = .fn
 
     var body: some View {
@@ -267,6 +271,8 @@ struct OnboardingView: View {
                         microphoneStep
                     case .accessibility:
                         accessibilityStep
+                    case .modelDownload:
+                        modelDownloadStep
                     case .howToUse:
                         howToUseStep
                     case .complete:
@@ -516,6 +522,120 @@ struct OnboardingView: View {
         }
     }
 
+    @ViewBuilder
+    private var modelDownloadStep: some View {
+        if #available(macOS 26.0, *) {
+            modelDownloadStepContent
+        } else {
+            Text("macOS 26.0 以降が必要です")
+        }
+    }
+
+    @available(macOS 26.0, *)
+    private var modelDownloadStepContent: some View {
+        VStack(spacing: 28) {
+            Spacer()
+
+            ZStack {
+                GradientCircleBackground(
+                    colors: modelReady ? [.green, .mint] : [.blue, .cyan],
+                    size: 140
+                )
+
+                GradientIcon(
+                    systemName: modelReady ? "checkmark.circle.fill" : "arrow.down.circle",
+                    size: 52,
+                    colors: modelReady ? [.green, .mint] : [.blue, .cyan]
+                )
+                .symbolEffect(.bounce, value: modelReady)
+            }
+
+            VStack(spacing: 14) {
+                GradientText("音声認識モデルの準備", font: .title, colors: [.blue, .cyan])
+
+                Text("高精度な文字起こしのためにモデルをダウンロードします")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+
+            if modelReady {
+                SuccessBadge(text: "モデルの準備が完了しました")
+                    .transition(.scale.combined(with: .opacity))
+            } else if modelDownloadError {
+                GradientButton("スキップ", icon: "forward.fill", colors: [.orange, .yellow]) {
+                    withAnimation {
+                        if let nextStep = OnboardingStep(rawValue: currentStep.rawValue + 1) {
+                            currentStep = nextStep
+                        }
+                    }
+                }
+            } else {
+                VStack(spacing: 12) {
+                    ProgressView()
+                        .controlSize(.large)
+                    Text("ダウンロード中...")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer()
+        }
+        .padding(32)
+        .animation(.spring(response: 0.5, dampingFraction: 0.7), value: modelReady)
+        .animation(.spring(response: 0.5, dampingFraction: 0.7), value: modelDownloadError)
+        .onAppear {
+            downloadSpeechModels()
+        }
+    }
+
+    private func downloadSpeechModels() {
+        guard #available(macOS 26.0, *) else { return }
+        Task {
+            await downloadSpeechModelsAsync()
+        }
+    }
+
+    @available(macOS 26.0, *)
+    private func downloadSpeechModelsAsync() async {
+        var transcribers: [SpeechTranscriber] = []
+        for language in SupportedLanguage.allCases {
+            let transcriber = SpeechTranscriber(
+                locale: language.locale,
+                transcriptionOptions: [],
+                reportingOptions: [.volatileResults],
+                attributeOptions: []
+            )
+            transcribers.append(transcriber)
+        }
+
+        do {
+            if let downloader = try await AssetInventory.assetInstallationRequest(supporting: transcribers) {
+                try await downloader.downloadAndInstall()
+            }
+            await MainActor.run {
+                modelReady = true
+                Task {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    await MainActor.run {
+                        withAnimation {
+                            if currentStep == .modelDownload {
+                                if let nextStep = OnboardingStep(rawValue: currentStep.rawValue + 1) {
+                                    currentStep = nextStep
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch {
+            await MainActor.run {
+                modelDownloadError = true
+            }
+        }
+    }
+
     private var howToUseStep: some View {
         VStack(spacing: 28) {
             Spacer()
@@ -754,6 +874,7 @@ struct OnboardingView: View {
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.rightArrow, modifiers: [])
+                .disabled(currentStep == .modelDownload && !modelReady && !modelDownloadError)
             }
         }
     }
