@@ -5,3 +5,6 @@ DerivedData/
 xcuserdata/
 *.xcodeproj
 Packages/
+
+# Release artifacts
+*.zip

@@ -115,6 +115,28 @@ rm .build/build.db .build/build.db-journal
    security add-trusted-cert -r trustRoot -p codeSign -k ~/Library/Keychains/login.keychain-db /tmp/nicevoice-cert.pem
    ```
 
+## Homebrew Cask テスト
+
+配布用の Homebrew cask (`schroneko/tap/nicevoice`) をローカルでテストする手順。
+
+cask 定義: `/Users/username/Sync/homebrew-tap/Casks/nicevoice.rb`
+
+開発中は `url` を `file://` に、`sha256` を `:no_check` に設定してローカル ZIP を参照する。配布時は GitHub Releases の URL と実際の SHA256 に戻す。
+
+```bash
+./Scripts/release.sh 0.1.0
+brew reinstall --cask schroneko/tap/nicevoice
+```
+
+release.sh は ad-hoc 署名のため、インストール後に権限リセットが必要な場合がある:
+
+```bash
+xattr -cr /Applications/NiceVoice.app
+tccutil reset Microphone app.nicevoice.NiceVoice
+tccutil reset Accessibility app.nicevoice.NiceVoice
+tccutil reset SpeechRecognition app.nicevoice.NiceVoice
+```
+
 ## 解決済みの問題
 
 ### CGEvent でのキーボードイベント送信
