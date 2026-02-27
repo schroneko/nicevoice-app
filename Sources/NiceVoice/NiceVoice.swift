@@ -290,6 +290,7 @@ final class AppState {
 
     private var speechAnalyzerService: Any?
     private var localASRService: LocalASRService?
+    private var deepgramService: DeepgramService?
     private(set) var localServerManager: LocalServerManager?
     var localServerStatus: LocalServerStatus = .stopped
     private(set) var keyMonitor: KeyMonitor?
@@ -371,11 +372,57 @@ final class AppState {
 
     func setupTranscriptionService() {
         localASRService = nil
+        deepgramService = nil
 
-        if transcriptionEngine == .speechAnalyzer {
+        if !transcriptionEngine.requiresLocalServer {
             localServerManager?.stop()
             localServerManager = nil
             localServerStatus = .stopped
+        }
+
+        if transcriptionEngine == .deepgram {
+            let apiKey = Constants.Deepgram.apiKey
+            guard apiKey != "DEEPGRAM_API_KEY_PLACEHOLDER", !apiKey.isEmpty else {
+                statusMessage = "Deepgram API キーが未設定です"
+                debugLog("Deepgram: no API key configured")
+                return
+            }
+
+            deepgramService = DeepgramService(
+                apiKey: apiKey,
+                onTranscription: { [weak self] text, isFinal in
+                    debugLog("[Deepgram] onTranscription: isFinal=\(isFinal), len=\(text.count)")
+                    DispatchQueue.main.async {
+                        guard let self else { return }
+                        self.currentTranscription = self.addLocalPunctuation(text, isFinal: isFinal)
+                        self.updateInlinePreview(self.currentTranscription)
+                    }
+                },
+                onFinalCompletion: { [weak self] text in
+                    debugLog("[Deepgram] onFinalCompletion: len=\(text.count)")
+                    self?.handleFinalResult(text)
+                },
+                onError: { [weak self] error in
+                    debugLog("Deepgram error: \(error)")
+                    DispatchQueue.main.async {
+                        self?.statusMessage = error
+                    }
+                },
+                onStatusChange: { [weak self] status in
+                    DispatchQueue.main.async {
+                        self?.statusMessage = status
+                    }
+                },
+                onAudioLevel: { [weak self] level in
+                    guard let self else { return }
+                    self.audioLevels.removeFirst()
+                    self.audioLevels.append(level)
+                }
+            )
+            isReady = true
+            statusMessage = "準備完了 (Deepgram) - \(shortcutKey.displayName) キーを押して録音"
+            debugLog("Using Deepgram Nova-3")
+            return
         }
 
         if transcriptionEngine == .voxtralLocal || transcriptionEngine == .qwen3ASR {
@@ -565,12 +612,16 @@ final class AppState {
 
         floatingPanel?.show()
 
-        if transcriptionEngine != .speechAnalyzer {
+        switch transcriptionEngine {
+        case .deepgram:
+            deepgramService?.startRecording()
+            debugLog("[DEBUG] deepgramService.startRecording() called")
+        case .voxtralLocal, .qwen3ASR:
             localASRService?.startRecording()
-            debugLog("🔍 [DEBUG] localASRService.startRecording() called")
-        } else {
+            debugLog("[DEBUG] localASRService.startRecording() called")
+        case .speechAnalyzer:
             (speechAnalyzerService as? SpeechAnalyzerService)?.startRecording()
-            debugLog("🔍 [DEBUG] speechAnalyzerService.startRecording() called")
+            debugLog("[DEBUG] speechAnalyzerService.startRecording() called")
         }
     }
 
@@ -597,9 +648,12 @@ final class AppState {
         waitingForFinalResult = true
         debugLog("🎙️ Recording stopped - waiting for SpeechAnalyzer final result")
         floatingPanel?.hide()
-        if transcriptionEngine != .speechAnalyzer {
+        switch transcriptionEngine {
+        case .deepgram:
+            deepgramService?.stopRecording()
+        case .voxtralLocal, .qwen3ASR:
             localASRService?.stopRecording()
-        } else {
+        case .speechAnalyzer:
             (speechAnalyzerService as? SpeechAnalyzerService)?.stopRecording()
         }
         NotificationCenter.default.post(name: .recordingStateChanged, object: nil)
@@ -1087,10 +1141,15 @@ final class AppState {
 
     func cancelRecording() {
         cancelInlinePreview()
-        if transcriptionEngine != .speechAnalyzer {
+        switch transcriptionEngine {
+        case .deepgram:
+            deepgramService?.stop()
+        case .voxtralLocal, .qwen3ASR:
             localASRService?.stop()
-        } else if #available(macOS 26.0, *) {
-            (speechAnalyzerService as? SpeechAnalyzerService)?.stopRecording()
+        case .speechAnalyzer:
+            if #available(macOS 26.0, *) {
+                (speechAnalyzerService as? SpeechAnalyzerService)?.stopRecording()
+            }
         }
         isRecording = false
         recordingStartDate = nil
@@ -1220,11 +1279,15 @@ final class AppState {
     }
 
     private func getRecordedAudioDataFromActiveService() -> Data? {
-        if transcriptionEngine != .speechAnalyzer {
+        switch transcriptionEngine {
+        case .deepgram:
+            return deepgramService?.getRecordedAudioData()
+        case .voxtralLocal, .qwen3ASR:
             return localASRService?.getRecordedAudioData()
+        case .speechAnalyzer:
+            guard #available(macOS 26.0, *) else { return nil }
+            return (speechAnalyzerService as? SpeechAnalyzerService)?.getRecordedAudioData()
         }
-        guard #available(macOS 26.0, *) else { return nil }
-        return (speechAnalyzerService as? SpeechAnalyzerService)?.getRecordedAudioData()
     }
 
     private func save<T: Encodable>(_ value: T, forKey key: String) {

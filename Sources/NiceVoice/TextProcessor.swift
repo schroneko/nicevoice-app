@@ -76,6 +76,7 @@ struct TextProcessor {
         result = removeFillers(from: result)
         guard !result.isEmpty else { return result }
 
+        result = removeJapaneseWordSpaces(from: result)
         result = removeSpacesBeforePunctuation(from: result)
         result = applyDictionaryReplacements(to: result)
         result = removeTrailingRepetitions(from: result)
@@ -138,6 +139,36 @@ struct TextProcessor {
         }
 
         return result
+    }
+
+    private func removeJapaneseWordSpaces(from text: String) -> String {
+        var result = ""
+        let chars = Array(text)
+        for i in 0..<chars.count {
+            if chars[i] == " " {
+                let prevIsJapanese = i > 0 && isJapaneseCharacter(chars[i - 1])
+                let nextIsJapanese = i + 1 < chars.count && isJapaneseCharacter(chars[i + 1])
+                if prevIsJapanese || nextIsJapanese {
+                    continue
+                }
+            }
+            result.append(chars[i])
+        }
+        return result
+    }
+
+    private func isJapaneseCharacter(_ char: Character) -> Bool {
+        for scalar in char.unicodeScalars {
+            let v = scalar.value
+            if (0x3040...0x309F).contains(v) ||
+               (0x30A0...0x30FF).contains(v) ||
+               (0x4E00...0x9FFF).contains(v) ||
+               (0x3400...0x4DBF).contains(v) ||
+               (0xFF00...0xFFEF).contains(v) {
+                return true
+            }
+        }
+        return false
     }
 
     private func removeSpacesBeforePunctuation(from text: String) -> String {
