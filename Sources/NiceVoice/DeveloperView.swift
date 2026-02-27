@@ -3,7 +3,9 @@ import SwiftUI
 struct DeveloperView: View {
     var appState: AppState
     @AppStorage("transcriptionEngine") private var transcriptionEngineRaw = TranscriptionEngine.speechAnalyzer.rawValue
-    @State private var sectionAnimations: [Bool] = [false, false, false]
+    @State private var sectionAnimations: [Bool] = [false, false, false, false]
+    @State private var deepgramApiKeyInput = ""
+    @State private var hasDeepgramApiKey = false
 
     private var selectedEngine: TranscriptionEngine {
         TranscriptionEngine(rawValue: transcriptionEngineRaw) ?? .speechAnalyzer
@@ -90,6 +92,97 @@ struct DeveloperView: View {
                 .opacity(sectionAnimations[1] ? 1 : 0)
                 .offset(y: sectionAnimations[1] ? 0 : 16)
 
+                if selectedEngine.requiresApiKey {
+                    SettingsSection(
+                        title: "API Key",
+                        icon: "key.fill",
+                        gradientColors: [.orange, .yellow]
+                    ) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            if hasDeepgramApiKey {
+                                HStack(spacing: 12) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundStyle(.green)
+                                        Text("Deepgram API Key 設定済み")
+                                            .font(.callout)
+                                    }
+                                    Spacer()
+                                    Button {
+                                        KeychainStorage.shared.delete(account: StorageKey.deepgramApiKey.rawValue)
+                                        hasDeepgramApiKey = false
+                                        deepgramApiKeyInput = ""
+                                        appState.setupTranscriptionService()
+                                    } label: {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "trash.fill")
+                                            Text("削除")
+                                        }
+                                        .font(.caption)
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 5)
+                                        .background(
+                                            LinearGradient(
+                                                colors: [.red, .orange],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
+                                        )
+                                        .clipShape(Capsule())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            } else {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    SecureField("Deepgram API Key", text: $deepgramApiKeyInput)
+                                        .textFieldStyle(.roundedBorder)
+                                        .font(.system(.body, design: .monospaced))
+
+                                    HStack {
+                                        Button {
+                                            let key = deepgramApiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
+                                            guard !key.isEmpty else { return }
+                                            _ = KeychainStorage.shared.saveString(key, account: StorageKey.deepgramApiKey.rawValue)
+                                            hasDeepgramApiKey = true
+                                            deepgramApiKeyInput = ""
+                                            appState.setupTranscriptionService()
+                                            Task {
+                                                await appState.reinitializeAfterEngineChange()
+                                            }
+                                        } label: {
+                                            HStack(spacing: 4) {
+                                                Image(systemName: "checkmark.circle.fill")
+                                                Text("保存")
+                                            }
+                                            .font(.caption)
+                                            .fontWeight(.semibold)
+                                            .foregroundStyle(.white)
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 5)
+                                            .background(
+                                                LinearGradient(
+                                                    colors: [.blue, .purple],
+                                                    startPoint: .topLeading,
+                                                    endPoint: .bottomTrailing
+                                                )
+                                            )
+                                            .clipShape(Capsule())
+                                        }
+                                        .buttonStyle(.plain)
+                                        .disabled(deepgramApiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                                        Spacer()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .opacity(sectionAnimations[2] ? 1 : 0)
+                    .offset(y: sectionAnimations[2] ? 0 : 16)
+                }
+
                 SettingsSection(
                     title: "デバッグ情報",
                     icon: "ladybug.fill",
@@ -121,14 +214,15 @@ struct DeveloperView: View {
                         .buttonStyle(.plain)
                     }
                 }
-                .opacity(sectionAnimations[2] ? 1 : 0)
-                .offset(y: sectionAnimations[2] ? 0 : 16)
+                .opacity(sectionAnimations[3] ? 1 : 0)
+                .offset(y: sectionAnimations[3] ? 0 : 16)
 
                 Spacer(minLength: 20)
             }
             .padding(32)
         }
         .onAppear {
+            hasDeepgramApiKey = KeychainStorage.shared.loadString(account: StorageKey.deepgramApiKey.rawValue) != nil
             for index in 0..<sectionAnimations.count {
                 withAnimation(.spring(response: 0.5, dampingFraction: 0.8).delay(Double(index) * 0.1 + 0.1)) {
                     sectionAnimations[index] = true

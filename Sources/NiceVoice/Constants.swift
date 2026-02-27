@@ -89,7 +89,6 @@ enum Constants {
     }
 
     enum Deepgram {
-        static let apiKey = "DEEPGRAM_API_KEY_PLACEHOLDER"
         static let wsEndpoint = "wss://api.deepgram.com/v1/listen"
         static let restEndpoint = "https://api.deepgram.com/v1/listen"
         static let sampleRate: Double = 16000

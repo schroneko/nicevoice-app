@@ -69,8 +69,8 @@ final class BatchTranscriptionService: @unchecked Sendable {
                 onStatusChange: onStatusChange
             )
         case .deepgram:
-            let apiKey = Constants.Deepgram.apiKey
-            guard apiKey != "DEEPGRAM_API_KEY_PLACEHOLDER", !apiKey.isEmpty else {
+            guard let apiKey = KeychainStorage.shared.loadString(account: StorageKey.deepgramApiKey.rawValue),
+                  !apiKey.isEmpty else {
                 throw DeepgramError.noApiKey
             }
             return try await DeepgramService.transcribeBatch(

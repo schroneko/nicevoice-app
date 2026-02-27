@@ -418,8 +418,8 @@ final class AppState {
         }
 
         if transcriptionEngine == .deepgram {
-            let apiKey = Constants.Deepgram.apiKey
-            guard apiKey != "DEEPGRAM_API_KEY_PLACEHOLDER", !apiKey.isEmpty else {
+            guard let apiKey = KeychainStorage.shared.loadString(account: StorageKey.deepgramApiKey.rawValue),
+                  !apiKey.isEmpty else {
                 statusMessage = "Deepgram API キーが未設定です"
                 debugLog("Deepgram: no API key configured")
                 return

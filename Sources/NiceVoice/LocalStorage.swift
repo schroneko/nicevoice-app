@@ -4,6 +4,7 @@ enum StorageKey: String {
     case deviceId = "com.nicevoice.device-id"
     case authInfo = "com.nicevoice.auth-info"
     case sessionId = "com.nicevoice.session-id"
+    case deepgramApiKey = "com.nicevoice.deepgram-api-key"
 }
 
 enum StorageError: LocalizedError {
