@@ -397,7 +397,7 @@ final class AppState {
         localServerManager?.stop()
         localServerManager = nil
         localServerStatus = .stopped
-        modelDownloadStatus = .downloaded
+        modelDownloadStatus = transcriptionEngine.requiresLocalServer ? .notDownloaded : .downloaded
 
         if transcriptionEngine == .deepgram {
             let apiKey = Constants.Deepgram.apiKey
@@ -575,6 +575,33 @@ final class AppState {
     func deleteModel() {
         localServerManager?.stop()
         modelDownloadManager?.deleteModel()
+    }
+
+    func isModelCached(for engine: TranscriptionEngine) -> Bool {
+        guard let modelName = engine.hfModelName else { return false }
+        let sanitized = modelName.replacingOccurrences(of: "/", with: "--")
+        let snapshotsDir = NSHomeDirectory() + "/.cache/huggingface/hub/models--" + sanitized + "/snapshots"
+        guard FileManager.default.fileExists(atPath: snapshotsDir) else { return false }
+        guard let contents = try? FileManager.default.contentsOfDirectory(atPath: snapshotsDir) else { return false }
+        return !contents.filter({ !$0.hasPrefix(".") }).isEmpty
+    }
+
+    func deleteModelCache(for engine: TranscriptionEngine) {
+        if engine == transcriptionEngine {
+            localServerManager?.stop()
+            modelDownloadManager?.deleteModel()
+            return
+        }
+        guard let modelName = engine.hfModelName else { return }
+        let sanitized = modelName.replacingOccurrences(of: "/", with: "--")
+        let cacheDir = NSHomeDirectory() + "/.cache/huggingface/hub/models--" + sanitized
+        guard FileManager.default.fileExists(atPath: cacheDir) else { return }
+        do {
+            try FileManager.default.removeItem(atPath: cacheDir)
+            debugLog("[ModelCache] deleted: \(cacheDir)")
+        } catch {
+            debugLog("[ModelCache] failed to delete: \(error)")
+        }
     }
 
     func reinitializeAfterEngineChange() async {

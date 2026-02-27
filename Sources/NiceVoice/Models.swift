@@ -136,6 +136,14 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
         case .speechAnalyzer, .deepgram: return nil
         }
     }
+
+    var hfModelName: String? {
+        switch self {
+        case .voxtralLocal: return Constants.VoxtralLocal.defaultModel
+        case .qwen3ASR: return Constants.Qwen3ASR.defaultModel
+        case .speechAnalyzer, .deepgram: return nil
+        }
+    }
 }
 
 struct BenchmarkSample: Identifiable, Codable {
