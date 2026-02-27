@@ -293,8 +293,11 @@ final class AppState {
     private var deepgramService: DeepgramService?
     private(set) var localServerManager: LocalServerManager?
     var localServerStatus: LocalServerStatus = .stopped
-    private(set) var modelDownloadManager: ModelDownloadManager?
-    var modelDownloadStatus: ModelDownloadStatus = .downloaded
+    private(set) var modelDownloadManagers: [TranscriptionEngine: ModelDownloadManager] = [:]
+    var modelDownloadStatuses: [TranscriptionEngine: ModelDownloadStatus] = [:]
+    var modelDownloadStatus: ModelDownloadStatus {
+        modelDownloadStatuses[transcriptionEngine] ?? .downloaded
+    }
     private(set) var keyMonitor: KeyMonitor?
     private var floatingPanel: FloatingPanel?
     private var waitingForFinalResult = false
@@ -392,12 +395,14 @@ final class AppState {
     func setupTranscriptionService() {
         localASRService = nil
         deepgramService = nil
-        modelDownloadManager?.cancelDownload()
-        modelDownloadManager = nil
         localServerManager?.stop()
         localServerManager = nil
         localServerStatus = .stopped
-        modelDownloadStatus = transcriptionEngine.requiresLocalServer ? .notDownloaded : .downloaded
+        for engine in TranscriptionEngine.allCases where engine.requiresLocalServer {
+            if modelDownloadStatuses[engine] == nil {
+                modelDownloadStatuses[engine] = .notDownloaded
+            }
+        }
 
         if transcriptionEngine == .deepgram {
             let apiKey = Constants.Deepgram.apiKey
@@ -549,32 +554,59 @@ final class AppState {
                 }
             )
 
-            modelDownloadManager = ModelDownloadManager(
+            let currentEngine = transcriptionEngine
+            let manager = ModelDownloadManager(
                 modelName: modelName,
                 hfSearchPaths: Constants.HuggingFace.hfSearchPaths,
                 onStatusChange: { [weak self] status in
                     guard let self else { return }
-                    self.modelDownloadStatus = status
-                    if case .downloaded = status {
+                    self.modelDownloadStatuses[currentEngine] = status
+                    if case .downloaded = status, currentEngine == self.transcriptionEngine {
                         self.localServerManager?.start()
                     }
                 }
             )
-            modelDownloadManager?.checkAndReport()
+            modelDownloadManagers[currentEngine] = manager
+            manager.checkAndReport()
         }
     }
 
     func downloadModel() {
-        modelDownloadManager?.startDownload()
+        downloadModel(for: transcriptionEngine)
+    }
+
+    func downloadModel(for engine: TranscriptionEngine) {
+        if let manager = modelDownloadManagers[engine] {
+            manager.startDownload()
+            return
+        }
+        guard let modelName = engine.hfModelName else { return }
+        let manager = ModelDownloadManager(
+            modelName: modelName,
+            hfSearchPaths: Constants.HuggingFace.hfSearchPaths,
+            onStatusChange: { [weak self] status in
+                guard let self else { return }
+                self.modelDownloadStatuses[engine] = status
+                if case .downloaded = status, engine == self.transcriptionEngine {
+                    self.localServerManager?.start()
+                }
+            }
+        )
+        modelDownloadManagers[engine] = manager
+        manager.startDownload()
     }
 
     func cancelModelDownload() {
-        modelDownloadManager?.cancelDownload()
+        cancelModelDownload(for: transcriptionEngine)
+    }
+
+    func cancelModelDownload(for engine: TranscriptionEngine) {
+        modelDownloadManagers[engine]?.cancelDownload()
     }
 
     func deleteModel() {
         localServerManager?.stop()
-        modelDownloadManager?.deleteModel()
+        modelDownloadManagers[transcriptionEngine]?.deleteModel()
     }
 
     func isModelCached(for engine: TranscriptionEngine) -> Bool {
@@ -589,16 +621,24 @@ final class AppState {
     func deleteModelCache(for engine: TranscriptionEngine) {
         if engine == transcriptionEngine {
             localServerManager?.stop()
-            modelDownloadManager?.deleteModel()
+            modelDownloadManagers[transcriptionEngine]?.deleteModel()
+            return
+        }
+        if let manager = modelDownloadManagers[engine] {
+            manager.deleteModel()
             return
         }
         guard let modelName = engine.hfModelName else { return }
         let sanitized = modelName.replacingOccurrences(of: "/", with: "--")
         let cacheDir = NSHomeDirectory() + "/.cache/huggingface/hub/models--" + sanitized
-        guard FileManager.default.fileExists(atPath: cacheDir) else { return }
+        guard FileManager.default.fileExists(atPath: cacheDir) else {
+            modelDownloadStatuses[engine] = .notDownloaded
+            return
+        }
         do {
             try FileManager.default.removeItem(atPath: cacheDir)
             debugLog("[ModelCache] deleted: \(cacheDir)")
+            modelDownloadStatuses[engine] = .notDownloaded
         } catch {
             debugLog("[ModelCache] failed to delete: \(error)")
         }

@@ -55,36 +55,29 @@ struct DeveloperView: View {
                         ForEach(TranscriptionEngine.allCases.filter { $0.requiresLocalServer }, id: \.self) { engine in
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack(spacing: 12) {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        HStack(spacing: 6) {
-                                            Text(engine.displayName)
-                                                .font(.callout)
-                                                .fontWeight(.medium)
-                                            if engine == selectedEngine {
-                                                Text("使用中")
-                                                    .font(.system(size: 9, weight: .semibold))
-                                                    .foregroundStyle(.white)
-                                                    .padding(.horizontal, 6)
-                                                    .padding(.vertical, 2)
-                                                    .background(Capsule().fill(.orange))
-                                            }
+                                    HStack(spacing: 6) {
+                                        Text(engine.modelDisplayName ?? engine.displayName)
+                                            .font(.callout)
+                                            .fontWeight(.medium)
+                                        if engine == selectedEngine {
+                                            Text("使用中")
+                                                .font(.system(size: 9, weight: .semibold))
+                                                .foregroundStyle(.white)
+                                                .padding(.horizontal, 6)
+                                                .padding(.vertical, 2)
+                                                .background(Capsule().fill(.orange))
                                         }
-                                        Text("\(engine.hfModelName ?? "") (\(engine.modelSize ?? ""))")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
                                     }
 
                                     Spacer()
 
-                                    if engine == selectedEngine {
-                                        selectedEngineControls
-                                    } else {
-                                        nonSelectedEngineControls(for: engine)
-                                    }
+                                    modelControls(for: engine)
                                 }
 
-                                if engine == selectedEngine {
-                                    selectedEngineStatus
+                                if case .downloading(_, let message) = (engine == selectedEngine ? appState.modelDownloadStatus : (appState.modelDownloadStatuses[engine] ?? .notDownloaded)) {
+                                    Text(message)
+                                        .font(.caption)
+                                        .foregroundStyle(.orange)
                                 }
                             }
 
@@ -104,16 +97,28 @@ struct DeveloperView: View {
                 ) {
                     VStack(alignment: .leading, spacing: 8) {
                         DebugInfoRow(label: "エンジン", value: selectedEngine.displayName)
-                        DebugInfoRow(label: "モデル", value: {
-                            switch selectedEngine {
-                            case .voxtralLocal: return "voxmlx-serve (local)"
-                            case .qwen3ASR: return "qwen3-asr (local)"
-                            case .deepgram: return "Deepgram Nova-3 (cloud)"
-                            case .speechAnalyzer: return "SpeechAnalyzer (built-in)"
-                            }
-                        }())
+                        DebugInfoRow(label: "モデル", value: selectedEngine.hfModelName ?? selectedEngine.displayName)
                         DebugInfoRow(label: "ステータス", value: appState.statusMessage)
                         DebugInfoRow(label: "準備状態", value: appState.isReady ? "Ready" : "Not Ready")
+
+                        Button {
+                            let info = """
+                            エンジン: \(selectedEngine.displayName)
+                            モデル: \(selectedEngine.hfModelName ?? selectedEngine.displayName)
+                            ステータス: \(appState.statusMessage)
+                            準備状態: \(appState.isReady ? "Ready" : "Not Ready")
+                            """
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(info, forType: .string)
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "doc.on.doc")
+                                Text("コピー")
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
                 .opacity(sectionAnimations[2] ? 1 : 0)
@@ -133,188 +138,27 @@ struct DeveloperView: View {
     }
 
     @ViewBuilder
-    private var selectedEngineControls: some View {
-        switch appState.modelDownloadStatus {
-        case .notDownloaded:
-            Button {
-                appState.downloadModel()
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.down.circle.fill")
-                    Text("ダウンロード")
-                }
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(.white)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(
-                    LinearGradient(
-                        colors: [.blue, .purple],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .clipShape(Capsule())
-            }
-            .buttonStyle(.plain)
-        case .downloading:
-            Button {
-                appState.cancelModelDownload()
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "xmark.circle.fill")
-                    Text("キャンセル")
-                }
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(.white)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(
-                    LinearGradient(
-                        colors: [.red, .orange],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .clipShape(Capsule())
-            }
-            .buttonStyle(.plain)
-        case .downloaded:
+    private func modelControls(for engine: TranscriptionEngine) -> some View {
+        let status = engine == selectedEngine
+            ? appState.modelDownloadStatus
+            : (appState.modelDownloadStatuses[engine] ?? .notDownloaded)
+        switch status {
+        case .downloading(let progress, _):
             HStack(spacing: 8) {
-                if case .running = appState.localServerStatus {
-                    Button {
-                        appState.localServerManager?.stop()
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "stop.fill")
-                            Text("停止")
-                        }
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(
-                            LinearGradient(
-                                colors: [.red, .orange],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                } else if case .starting = appState.localServerStatus {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Button {
-                        appState.localServerManager?.start()
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "play.fill")
-                            Text("起動")
-                        }
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(
-                            LinearGradient(
-                                colors: [.green, .teal],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        appState.deleteModel()
-                    } label: {
-                        Image(systemName: "trash.fill")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .padding(6)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        case .error:
-            Button {
-                appState.downloadModel()
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.clockwise.circle.fill")
-                    Text("再試行")
-                }
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(.white)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(
-                    LinearGradient(
-                        colors: [.blue, .purple],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .clipShape(Capsule())
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    @ViewBuilder
-    private var selectedEngineStatus: some View {
-        switch appState.modelDownloadStatus {
-        case .downloading(_, let message):
-            VStack(alignment: .leading, spacing: 4) {
-                ProgressView(value: appState.modelDownloadStatus == .downloading(progress: 0, message: "") ? 0 : {
-                    if case .downloading(let p, _) = appState.modelDownloadStatus { return p }
-                    return 0
-                }())
+                ProgressView(value: progress)
                     .progressViewStyle(.linear)
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.orange)
+                    .frame(width: 60)
+                Button {
+                    appState.cancelModelDownload(for: engine)
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .padding(6)
+                }
+                .buttonStyle(.plain)
             }
         case .downloaded:
-            switch appState.localServerStatus {
-            case .stopped:
-                EmptyView()
-            case .starting(let message):
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            case .running:
-                Text("サーバー起動中")
-                    .font(.caption)
-                    .foregroundStyle(.green)
-            case .error(let message):
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .lineLimit(2)
-            }
-        case .error(let message):
-            Text(message)
-                .font(.caption)
-                .foregroundStyle(.red)
-                .lineLimit(2)
-        default:
-            EmptyView()
-        }
-    }
-
-    @ViewBuilder
-    private func nonSelectedEngineControls(for engine: TranscriptionEngine) -> some View {
-        if appState.isModelCached(for: engine) {
             HStack(spacing: 8) {
                 Text("ダウンロード済み")
                     .font(.caption)
@@ -329,12 +173,61 @@ struct DeveloperView: View {
                 }
                 .buttonStyle(.plain)
             }
-        } else {
-            Text("未ダウンロード")
+        case .error(let message):
+            HStack(spacing: 8) {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .lineLimit(1)
+                Button {
+                    appState.downloadModel(for: engine)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.clockwise.circle.fill")
+                        Text("再試行")
+                    }
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(
+                        LinearGradient(
+                            colors: [.blue, .purple],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        case .notDownloaded:
+            Button {
+                appState.downloadModel(for: engine)
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.down.circle.fill")
+                    Text("ダウンロード")
+                }
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .fontWeight(.semibold)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(
+                    LinearGradient(
+                        colors: [.blue, .purple],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
         }
     }
+
 }
 
 struct DeveloperEngineRow: View {
