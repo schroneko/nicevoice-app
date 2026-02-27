@@ -5,11 +5,15 @@ import PackageDescription
 let package = Package(
     name: "NiceVoice",
     platforms: [.macOS(.v26)],
-    dependencies: [],
+    dependencies: [
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.7.9"),
+    ],
     targets: [
         .executableTarget(
             name: "NiceVoice",
-            dependencies: [],
+            dependencies: [
+                .product(name: "FluidAudio", package: "FluidAudio"),
+            ],
             resources: [
                 .process("Resources")
             ]

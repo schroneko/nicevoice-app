@@ -69,7 +69,7 @@ struct SettingsContentView: View {
     @AppStorage("showInMenuBar") private var showInMenuBar = true
     @AppStorage("shortcutKey") private var shortcutKeyRaw = ShortcutKey.fn.rawValue
     @State private var fillerSettings: FillerSettings
-    @State private var sectionAnimations: [Bool] = [false, false, false, false]
+    @State private var sectionAnimations: [Bool] = [false, false, false, false, false]
 
     private var selectedShortcutKey: ShortcutKey {
         ShortcutKey(rawValue: shortcutKeyRaw) ?? .fn
@@ -192,6 +192,16 @@ struct SettingsContentView: View {
                 .opacity(sectionAnimations[3] ? 1 : 0)
                 .offset(y: sectionAnimations[3] ? 0 : 16)
 
+                SettingsSection(
+                    title: "声紋認証",
+                    icon: "person.badge.shield.checkmark.fill",
+                    gradientColors: [.mint, .teal]
+                ) {
+                    VoiceEnrollmentSection()
+                }
+                .opacity(sectionAnimations[4] ? 1 : 0)
+                .offset(y: sectionAnimations[4] ? 0 : 16)
+
                 Spacer(minLength: 20)
             }
             .padding(32)
@@ -203,6 +213,413 @@ struct SettingsContentView: View {
                 }
             }
         }
+    }
+}
+
+enum EnrollmentStatus: Equatable {
+    case idle
+    case recording
+    case processing
+    case success
+    case failed(String)
+}
+
+private final class VoiceCaptureBuffer {
+    private let lock = NSLock()
+    private var pcmData = Data()
+
+    func reset() {
+        lock.lock()
+        pcmData.removeAll(keepingCapacity: true)
+        lock.unlock()
+    }
+
+    func append(_ data: Data) {
+        lock.lock()
+        pcmData.append(data)
+        lock.unlock()
+    }
+
+    func snapshot() -> Data {
+        lock.lock()
+        let data = pcmData
+        lock.unlock()
+        return data
+    }
+}
+
+struct VoiceEnrollmentSection: View {
+    @State private var isRecording: Bool = false
+    @State private var recordingDuration: Double = 0
+    @State private var enrollmentStatus: EnrollmentStatus = .idle
+    @State private var audioEngine: AVAudioEngine?
+    @State private var recordingTimer: Timer?
+    @State private var recordedData: Data?
+    @State private var isEnrolled: Bool = SpeakerVerificationService.shared.isEnrolled
+    @State private var isReady: Bool = SpeakerVerificationService.shared.isReady
+    @State private var isPulseAnimating = false
+    @State private var captureBuffer = VoiceCaptureBuffer()
+
+    private var recordingFormat: AVAudioFormat {
+        AVAudioFormat(
+            commonFormat: .pcmFormatInt16,
+            sampleRate: 16000,
+            channels: 1,
+            interleaved: false
+        )!
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if isEnrolled {
+                HStack(spacing: 10) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.green)
+                    Text("登録済み")
+                        .font(.callout)
+                        .fontWeight(.semibold)
+                }
+
+                SectionDivider()
+
+                Button("リセット") {
+                    SpeakerVerificationService.shared.resetEnrollment()
+                    isEnrolled = false
+                    enrollmentStatus = .idle
+                    recordedData = nil
+                    debugLog("SpeakerVerification UI: enrollment reset")
+                }
+                .buttonStyle(.plain)
+                .font(.callout)
+                .foregroundStyle(.red)
+            } else {
+                Text("3〜5秒ほど普段どおりに話して声紋を登録します。録音後に自動で登録を行います。")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineSpacing(2)
+
+                SectionDivider()
+
+                if !isReady {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("声紋認証を準備中...")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if isRecording {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 10) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.red.opacity(0.2))
+                                    .frame(width: 20, height: 20)
+                                    .scaleEffect(isPulseAnimating ? 1.8 : 1.0)
+                                    .opacity(isPulseAnimating ? 0.2 : 0.7)
+                                Circle()
+                                    .fill(.red)
+                                    .frame(width: 10, height: 10)
+                            }
+                            .animation(.easeOut(duration: 1.0).repeatForever(autoreverses: false), value: isPulseAnimating)
+
+                            Text(formattedRecordingDuration)
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                                .monospacedDigit()
+
+                            Text("録音中")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Button {
+                            stopRecording(shouldEnroll: true)
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "stop.fill")
+                                    .font(.caption)
+                                Text("録音を停止")
+                                    .fontWeight(.semibold)
+                            }
+                            .foregroundStyle(.white)
+                            .frame(height: 38)
+                            .padding(.horizontal, 16)
+                            .background(
+                                LinearGradient(
+                                    colors: [.red, .pink],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                } else {
+                    Button {
+                        startRecording()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "mic.fill")
+                                .font(.callout)
+                            Text("録音を開始")
+                                .fontWeight(.semibold)
+                        }
+                        .foregroundStyle(.white)
+                        .frame(height: 38)
+                        .padding(.horizontal, 16)
+                        .background(
+                            LinearGradient(
+                                colors: [.red, .orange],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!isReady || enrollmentStatus == .processing)
+                    .opacity(!isReady || enrollmentStatus == .processing ? 0.6 : 1.0)
+                }
+
+                if case .processing = enrollmentStatus {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("声紋を登録中...")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if case .success = enrollmentStatus {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                        Text("声紋の登録が完了しました")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                    }
+                }
+
+                if case let .failed(message) = enrollmentStatus {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .foregroundStyle(.red)
+                        Text(message)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+        }
+        .onAppear {
+            isEnrolled = SpeakerVerificationService.shared.isEnrolled
+            isReady = SpeakerVerificationService.shared.isReady
+            if !isReady {
+                Task {
+                    do {
+                        try await SpeakerVerificationService.shared.initialize()
+                        await MainActor.run {
+                            isReady = true
+                            debugLog("SpeakerVerification UI: initialized")
+                        }
+                    } catch {
+                        await MainActor.run {
+                            enrollmentStatus = .failed(error.localizedDescription)
+                            debugLog("SpeakerVerification UI: initialization failed \(error)")
+                        }
+                    }
+                }
+            }
+        }
+        .onDisappear {
+            stopRecording(shouldEnroll: false)
+        }
+    }
+
+    private var formattedRecordingDuration: String {
+        let total = Int(recordingDuration)
+        let minutes = total / 60
+        let seconds = total % 60
+        return String(format: "%01d:%02d", minutes, seconds)
+    }
+
+    private func startRecording() {
+        guard !isRecording else { return }
+        guard isReady else {
+            enrollmentStatus = .failed("声紋認証の準備が完了していません")
+            return
+        }
+
+        let engine = AVAudioEngine()
+        let inputNode = engine.inputNode
+        let inputFormat = inputNode.outputFormat(forBus: 0)
+        let targetFormat = recordingFormat
+        guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
+            enrollmentStatus = .failed("音声フォーマットの変換に失敗しました")
+            debugLog("SpeakerVerification UI: converter creation failed")
+            return
+        }
+        let bufferStore = captureBuffer
+
+        captureBuffer.reset()
+        recordedData = nil
+        recordingDuration = 0
+        enrollmentStatus = .recording
+        isRecording = true
+        isPulseAnimating = true
+        startTimer()
+
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { buffer, _ in
+            let ratio = targetFormat.sampleRate / inputFormat.sampleRate
+            let outputFrameCapacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1
+
+            guard let convertedBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outputFrameCapacity) else {
+                return
+            }
+
+            var error: NSError?
+            let status = converter.convert(to: convertedBuffer, error: &error) { _, outStatus in
+                outStatus.pointee = .haveData
+                return buffer
+            }
+
+            guard status != .error else {
+                if let error {
+                    debugLog("SpeakerVerification UI: conversion failed \(error)")
+                }
+                return
+            }
+
+            guard let channelData = convertedBuffer.int16ChannelData else { return }
+            let frameLength = Int(convertedBuffer.frameLength)
+            let chunkData = Data(bytes: channelData[0], count: frameLength * MemoryLayout<Int16>.size)
+            bufferStore.append(chunkData)
+        }
+
+        do {
+            try engine.start()
+            audioEngine = engine
+            debugLog("SpeakerVerification UI: recording started")
+        } catch {
+            inputNode.removeTap(onBus: 0)
+            stopTimer()
+            isRecording = false
+            isPulseAnimating = false
+            enrollmentStatus = .failed("録音の開始に失敗しました")
+            debugLog("SpeakerVerification UI: recording start failed \(error)")
+        }
+    }
+
+    private func stopRecording(shouldEnroll: Bool) {
+        guard isRecording else { return }
+
+        audioEngine?.inputNode.removeTap(onBus: 0)
+        audioEngine?.stop()
+        audioEngine = nil
+
+        stopTimer()
+        isRecording = false
+        isPulseAnimating = false
+
+        let capturedPCMData = captureBuffer.snapshot()
+        captureBuffer.reset()
+        debugLog("SpeakerVerification UI: recording stopped duration=\(recordingDuration)")
+
+        guard shouldEnroll else {
+            enrollmentStatus = .idle
+            return
+        }
+
+        guard recordingDuration >= 3 else {
+            enrollmentStatus = .failed("3秒以上録音してください")
+            return
+        }
+
+        guard !capturedPCMData.isEmpty else {
+            enrollmentStatus = .failed("音声データを取得できませんでした")
+            return
+        }
+
+        let wavData = createWAVData(from: capturedPCMData, sampleRate: 16000, channels: 1, bitsPerSample: 16)
+        recordedData = wavData
+        enrollmentStatus = .processing
+
+        Task {
+            await enrollRecordedData()
+        }
+    }
+
+    @MainActor
+    private func enrollRecordedData() async {
+        guard let recordedData else {
+            enrollmentStatus = .failed("音声データがありません")
+            return
+        }
+
+        do {
+            if !SpeakerVerificationService.shared.isReady {
+                try await SpeakerVerificationService.shared.initialize()
+                isReady = true
+            }
+
+            let success = try SpeakerVerificationService.shared.enrollFromRecordedData(recordedData, format: recordingFormat)
+            if success {
+                enrollmentStatus = .success
+                isEnrolled = SpeakerVerificationService.shared.isEnrolled
+                debugLog("SpeakerVerification UI: enrollment success")
+            } else {
+                enrollmentStatus = .failed("声紋の登録に失敗しました")
+                debugLog("SpeakerVerification UI: enrollment returned false")
+            }
+        } catch {
+            enrollmentStatus = .failed(error.localizedDescription)
+            debugLog("SpeakerVerification UI: enrollment failed \(error)")
+        }
+    }
+
+    private func startTimer() {
+        stopTimer()
+        recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
+            recordingDuration += 0.1
+        }
+    }
+
+    private func stopTimer() {
+        recordingTimer?.invalidate()
+        recordingTimer = nil
+    }
+
+    private func createWAVData(from pcmData: Data, sampleRate: UInt32, channels: UInt16, bitsPerSample: UInt16) -> Data {
+        let byteRate = sampleRate * UInt32(channels) * UInt32(bitsPerSample / 8)
+        let blockAlign = channels * (bitsPerSample / 8)
+        let dataSize = UInt32(pcmData.count)
+        let fileSize: UInt32 = 36 + dataSize
+
+        var header = Data()
+        header.append(contentsOf: "RIFF".utf8)
+        header.append(withUnsafeBytes(of: fileSize.littleEndian) { Data($0) })
+        header.append(contentsOf: "WAVE".utf8)
+        header.append(contentsOf: "fmt ".utf8)
+        header.append(withUnsafeBytes(of: UInt32(16).littleEndian) { Data($0) })
+        header.append(withUnsafeBytes(of: UInt16(1).littleEndian) { Data($0) })
+        header.append(withUnsafeBytes(of: channels.littleEndian) { Data($0) })
+        header.append(withUnsafeBytes(of: sampleRate.littleEndian) { Data($0) })
+        header.append(withUnsafeBytes(of: byteRate.littleEndian) { Data($0) })
+        header.append(withUnsafeBytes(of: blockAlign.littleEndian) { Data($0) })
+        header.append(withUnsafeBytes(of: bitsPerSample.littleEndian) { Data($0) })
+        header.append(contentsOf: "data".utf8)
+        header.append(withUnsafeBytes(of: dataSize.littleEndian) { Data($0) })
+
+        var data = Data()
+        data.append(header)
+        data.append(pcmData)
+        return data
     }
 }
 
@@ -649,5 +1066,3 @@ struct AccountStatusView: View {
         }
     }
 }
-
-
