@@ -294,10 +294,19 @@ struct VoiceEnrollmentSection: View {
                 .font(.callout)
                 .foregroundStyle(.red)
             } else {
-                Text("3〜5秒ほど普段どおりに話して声紋を登録します。録音後に自動で登録を行います。")
+                Text("以下のテキストを普段どおりの声で読み上げてください。録音後に自動で声紋を登録します。")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .lineSpacing(2)
+
+                Text("「今日はとてもいい天気ですね。こんな日は散歩にでも出かけたくなります。最近は忙しくてなかなか外に出られないけれど、たまにはゆっくり過ごしたいものです。」")
+                    .font(.callout)
+                    .fontWeight(.medium)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.quaternary.opacity(0.5))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
 
                 SectionDivider()
 
@@ -568,7 +577,7 @@ struct VoiceEnrollmentSection: View {
                 isReady = true
             }
 
-            let success = try SpeakerVerificationService.shared.enrollFromRecordedData(recordedData, format: recordingFormat)
+            let success = try await SpeakerVerificationService.shared.enrollFromRecordedData(recordedData, format: recordingFormat)
             if success {
                 enrollmentStatus = .success
                 isEnrolled = SpeakerVerificationService.shared.isEnrolled
