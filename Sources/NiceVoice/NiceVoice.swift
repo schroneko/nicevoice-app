@@ -297,6 +297,8 @@ final class AppState {
     private var floatingPanel: FloatingPanel?
     private var waitingForFinalResult = false
     private var finalResultTimer: DispatchWorkItem?
+    private var speakerCheckTimer: Timer?
+    private var isEnrolledSpeakerActive = true
     private var capturedTextElement: AXUIElement?
     private var insertionPointLocation: Int = 0
     private var inlinePreviewLength: Int = 0
@@ -315,6 +317,19 @@ final class AppState {
         loadFillerSettings()
         loadHistory()
         setupServices()
+        initializeSpeakerVerificationIfNeeded()
+    }
+
+    private func initializeSpeakerVerificationIfNeeded() {
+        guard SpeakerVerificationService.shared.isEnrolled else { return }
+        Task {
+            do {
+                try await SpeakerVerificationService.shared.initialize()
+                debugLog("SpeakerVerification: auto-initialized at startup")
+            } catch {
+                debugLog("SpeakerVerification: auto-init failed: \(error)")
+            }
+        }
     }
 
     private func setupServices() {
@@ -327,7 +342,9 @@ final class AppState {
                     DispatchQueue.main.async {
                         guard let self else { return }
                         self.currentTranscription = self.addLocalPunctuation(text, isFinal: isFinal)
-                        self.updateInlinePreview(self.currentTranscription)
+                        if self.isEnrolledSpeakerActive {
+                            self.updateInlinePreview(self.currentTranscription)
+                        }
                     }
                 },
                 onFinalCompletion: { [weak self] text in
@@ -395,7 +412,9 @@ final class AppState {
                     DispatchQueue.main.async {
                         guard let self else { return }
                         self.currentTranscription = self.addLocalPunctuation(text, isFinal: isFinal)
-                        self.updateInlinePreview(self.currentTranscription)
+                        if self.isEnrolledSpeakerActive {
+                            self.updateInlinePreview(self.currentTranscription)
+                        }
                     }
                 },
                 onFinalCompletion: { [weak self] text in
@@ -475,7 +494,9 @@ final class AppState {
                     DispatchQueue.main.async {
                         guard let self else { return }
                         self.currentTranscription = self.addLocalPunctuation(text, isFinal: isFinal)
-                        self.updateInlinePreview(self.currentTranscription)
+                        if self.isEnrolledSpeakerActive {
+                            self.updateInlinePreview(self.currentTranscription)
+                        }
                     }
                 },
                 onFinalCompletion: { [weak self] text in
@@ -623,6 +644,36 @@ final class AppState {
             (speechAnalyzerService as? SpeechAnalyzerService)?.startRecording()
             debugLog("[DEBUG] speechAnalyzerService.startRecording() called")
         }
+
+        startSpeakerVerificationCheck()
+    }
+
+    private func startSpeakerVerificationCheck() {
+        guard SpeakerVerificationService.shared.isEnrolled,
+              SpeakerVerificationService.shared.isReady else { return }
+        isEnrolledSpeakerActive = true
+        speakerCheckTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            self?.performSpeakerCheck()
+        }
+    }
+
+    private func performSpeakerCheck() {
+        guard let audioData = getRecordedAudioDataFromActiveService() else { return }
+        Task.detached(priority: .utility) {
+            do {
+                let isMatch = try await SpeakerVerificationService.shared.quickVerify(wavData: audioData)
+                await MainActor.run {
+                    let wasActive = self.isEnrolledSpeakerActive
+                    self.isEnrolledSpeakerActive = isMatch
+                    if !isMatch && wasActive {
+                        debugLog("SpeakerCheck: enrolled speaker lost, suppressing preview")
+                        self.cancelInlinePreview()
+                    }
+                }
+            } catch {
+                debugLog("SpeakerCheck: error \(error)")
+            }
+        }
     }
 
     func stopRecording() {
@@ -643,6 +694,9 @@ final class AppState {
         }
         isRecording = false
         recordingStartDate = nil
+
+        speakerCheckTimer?.invalidate()
+        speakerCheckTimer = nil
 
         finalResultTimer?.cancel()
         waitingForFinalResult = true
@@ -682,8 +736,106 @@ final class AppState {
 
         let audioData = getRecordedAudioDataFromActiveService()
 
-        addToHistory(processedText, audioData: audioData)
-        finalizeInlinePreview(processedText)
+        if SpeakerVerificationService.shared.isEnrolled && SpeakerVerificationService.shared.isReady,
+           let audioData {
+            applySpeakerFilter(processedText: processedText, audioData: audioData)
+        } else {
+            completeFinalResult(processedText, audioData: audioData)
+        }
+    }
+
+    private func completeFinalResult(_ text: String, audioData: Data?) {
+        addToHistory(text, audioData: audioData)
+        finalizeInlinePreview(text)
+    }
+
+    private func applySpeakerFilter(processedText: String, audioData: Data) {
+        Task.detached(priority: .userInitiated) {
+            do {
+                let filterResult = try await SpeakerVerificationService.shared.filterByEnrolledSpeaker(wavData: audioData)
+
+                await MainActor.run {
+                    if filterResult.totalSpeechDuration == 0 {
+                        debugLog("SpeakerFilter: no segments detected, keeping original (audio too short for diarization)")
+                        self.completeFinalResult(processedText, audioData: audioData)
+                        return
+                    }
+
+                    if filterResult.enrolledRatio == 0 {
+                        debugLog("SpeakerFilter: discarded (enrolled speaker not detected)")
+                        self.cancelInlinePreview()
+                        self.floatingPanel?.hide()
+                        return
+                    }
+
+                    if filterResult.isSingleSpeaker || filterResult.enrolledRatio > 0.8 {
+                        debugLog("SpeakerFilter: keeping original (ratio=\(filterResult.enrolledRatio), single=\(filterResult.isSingleSpeaker))")
+                        self.completeFinalResult(processedText, audioData: audioData)
+                        return
+                    }
+
+                    if let filteredSamples = filterResult.filteredAudioSamples {
+                        debugLog("SpeakerFilter: re-transcribing filtered audio (\(filteredSamples.count) samples)")
+                        self.retranscribeFilteredAudio(filteredSamples, originalAudioData: audioData)
+                    } else {
+                        self.completeFinalResult(processedText, audioData: audioData)
+                    }
+                }
+            } catch {
+                debugLog("SpeakerFilter: error \(error), keeping original")
+                await MainActor.run {
+                    self.completeFinalResult(processedText, audioData: audioData)
+                }
+            }
+        }
+    }
+
+    private func retranscribeFilteredAudio(_ samples: [Float], originalAudioData: Data) {
+        let wavData = SpeakerVerificationService.shared.createWAV(from: samples)
+        let tempDir = FileManager.default.temporaryDirectory
+        let tempURL = tempDir.appendingPathComponent("\(UUID().uuidString).wav")
+
+        do {
+            try wavData.write(to: tempURL)
+        } catch {
+            debugLog("SpeakerFilter: failed to write temp file: \(error)")
+            cancelInlinePreview()
+            floatingPanel?.hide()
+            return
+        }
+
+        let engine = transcriptionEngine
+        Task {
+            defer { try? FileManager.default.removeItem(at: tempURL) }
+
+            do {
+                var result: String
+                if #available(macOS 26.0, *) {
+                    result = try await BatchTranscriptionService.shared.transcribeFile(
+                        at: tempURL,
+                        engine: engine,
+                        onProgress: { _ in },
+                        onStatusChange: { _ in }
+                    )
+                } else {
+                    result = ""
+                }
+
+                let processedResult = addLocalPunctuation(result)
+                if !processedResult.isEmpty {
+                    debugLog("SpeakerFilter: re-transcription result: \(processedResult.count) chars")
+                    completeFinalResult(processedResult, audioData: originalAudioData)
+                } else {
+                    debugLog("SpeakerFilter: re-transcription empty, discarding")
+                    cancelInlinePreview()
+                    floatingPanel?.hide()
+                }
+            } catch {
+                debugLog("SpeakerFilter: re-transcription failed: \(error)")
+                cancelInlinePreview()
+                floatingPanel?.hide()
+            }
+        }
     }
 
     private func cleanupOrphanedParticles(_ text: String) -> String {

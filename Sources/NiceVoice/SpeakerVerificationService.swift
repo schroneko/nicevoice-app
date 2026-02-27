@@ -57,15 +57,19 @@ final class SpeakerVerificationService {
         return try enroll(audioSamples: samples)
     }
 
-    func enrollFromRecordedData(_ data: Data, format: AVAudioFormat) throws -> Bool {
-        let samples = extractFloatSamples(from: data, format: format)
+    func enrollFromRecordedData(_ data: Data, format: AVAudioFormat) async throws -> Bool {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).wav")
+        try data.write(to: tempURL)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        let samples = try await loadAudioSamples(from: tempURL)
         guard !samples.isEmpty else {
             throw SpeakerVerificationError.noAudioData
         }
         return try enroll(audioSamples: samples)
     }
 
-    func verify(audioSamples: [Float], threshold: Float = 0.5) throws -> SpeakerVerificationResult {
+    func verify(audioSamples: [Float], threshold: Float = 1.5) throws -> SpeakerVerificationResult {
         guard let diarizer else {
             throw SpeakerVerificationError.notInitialized
         }
@@ -89,6 +93,126 @@ final class SpeakerVerificationService {
             isMatch: isMatch,
             distance: distance,
             confidence: confidenceFromDistance(distance)
+        )
+    }
+
+    func quickVerify(wavData: Data) async throws -> Bool {
+        guard let diarizer, let enrolled = enrolledEmbedding else {
+            return true
+        }
+
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).wav")
+        try wavData.write(to: tempURL)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        let samples = try await loadAudioSamples(from: tempURL)
+        guard samples.count > 8000 else { return true }
+
+        let result = try diarizer.performCompleteDiarization(samples)
+        guard let segment = result.segments.first else { return true }
+
+        let distance = SpeakerUtilities.cosineDistance(enrolled, segment.embedding)
+        debugLog("SpeakerCheck: quickVerify distance=\(distance)")
+        return distance < 1.5
+    }
+
+    func filterByEnrolledSpeaker(wavData: Data, threshold: Float = 1.5) async throws -> SpeakerFilterResult {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).wav")
+        try wavData.write(to: tempURL)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        let samples = try await loadAudioSamples(from: tempURL)
+        guard !samples.isEmpty else {
+            throw SpeakerVerificationError.noAudioData
+        }
+        return try filterSamples(samples, threshold: threshold)
+    }
+
+    func createWAV(from samples: [Float], sampleRate: Int = 16000) -> Data {
+        let numChannels: UInt16 = 1
+        let bitsPerSample: UInt16 = 16
+        let byteRate = UInt32(sampleRate) * UInt32(numChannels) * UInt32(bitsPerSample / 8)
+        let blockAlign = numChannels * (bitsPerSample / 8)
+        let dataSize = UInt32(samples.count * 2)
+        let chunkSize: UInt32 = 36 + dataSize
+
+        var data = Data()
+        data.append(contentsOf: "RIFF".utf8)
+        withUnsafeBytes(of: chunkSize.littleEndian) { data.append(contentsOf: $0) }
+        data.append(contentsOf: "WAVE".utf8)
+        data.append(contentsOf: "fmt ".utf8)
+        withUnsafeBytes(of: UInt32(16).littleEndian) { data.append(contentsOf: $0) }
+        withUnsafeBytes(of: UInt16(1).littleEndian) { data.append(contentsOf: $0) }
+        withUnsafeBytes(of: numChannels.littleEndian) { data.append(contentsOf: $0) }
+        withUnsafeBytes(of: UInt32(sampleRate).littleEndian) { data.append(contentsOf: $0) }
+        withUnsafeBytes(of: byteRate.littleEndian) { data.append(contentsOf: $0) }
+        withUnsafeBytes(of: blockAlign.littleEndian) { data.append(contentsOf: $0) }
+        withUnsafeBytes(of: bitsPerSample.littleEndian) { data.append(contentsOf: $0) }
+        data.append(contentsOf: "data".utf8)
+        withUnsafeBytes(of: dataSize.littleEndian) { data.append(contentsOf: $0) }
+
+        for sample in samples {
+            let clamped = max(-1.0, min(1.0, sample))
+            let int16 = Int16(clamped * Float(Int16.max))
+            withUnsafeBytes(of: int16.littleEndian) { data.append(contentsOf: $0) }
+        }
+
+        return data
+    }
+
+    private func filterSamples(_ samples: [Float], threshold: Float) throws -> SpeakerFilterResult {
+        guard let diarizer else {
+            throw SpeakerVerificationError.notInitialized
+        }
+
+        guard let enrolled = enrolledEmbedding else {
+            throw SpeakerVerificationError.notEnrolled
+        }
+
+        let result = try diarizer.performCompleteDiarization(samples, sampleRate: 16000)
+
+        var enrolledSegments: [(start: Float, end: Float)] = []
+        var totalDuration: Float = 0
+        var enrolledDuration: Float = 0
+        var speakerIds = Set<String>()
+
+        for segment in result.segments {
+            totalDuration += segment.durationSeconds
+            speakerIds.insert(segment.speakerId)
+
+            let distance = SpeakerUtilities.cosineDistance(enrolled, segment.embedding)
+            debugLog("SpeakerFilter: segment \(segment.speakerId) [\(segment.startTimeSeconds)-\(segment.endTimeSeconds)s] distance=\(distance)")
+            if distance < threshold {
+                enrolledSegments.append((start: segment.startTimeSeconds, end: segment.endTimeSeconds))
+                enrolledDuration += segment.durationSeconds
+            }
+        }
+
+        let ratio = totalDuration > 0 ? enrolledDuration / totalDuration : 0
+        let isSingleSpeaker = speakerIds.count <= 1
+
+        var filteredSamples: [Float]? = nil
+        if !enrolledSegments.isEmpty && !isSingleSpeaker {
+            var extracted: [Float] = []
+            for seg in enrolledSegments {
+                let startIdx = Int(seg.start * 16000)
+                let endIdx = min(Int(seg.end * 16000), samples.count)
+                if startIdx < endIdx {
+                    extracted.append(contentsOf: samples[startIdx..<endIdx])
+                }
+            }
+            filteredSamples = extracted
+        }
+
+        debugLog("SpeakerFilter: \(speakerIds.count) speakers, enrolledRatio=\(ratio), enrolledSegments=\(enrolledSegments.count)")
+
+        return SpeakerFilterResult(
+            enrolledRatio: ratio,
+            enrolledSegments: enrolledSegments,
+            filteredAudioSamples: filteredSamples,
+            totalSpeechDuration: totalDuration,
+            enrolledSpeechDuration: enrolledDuration,
+            isSingleSpeaker: isSingleSpeaker
         )
     }
 
@@ -219,6 +343,15 @@ struct SpeakerVerificationResult {
     let isMatch: Bool
     let distance: Float
     let confidence: SpeakerConfidence
+}
+
+struct SpeakerFilterResult {
+    let enrolledRatio: Float
+    let enrolledSegments: [(start: Float, end: Float)]
+    let filteredAudioSamples: [Float]?
+    let totalSpeechDuration: Float
+    let enrolledSpeechDuration: Float
+    let isSingleSpeaker: Bool
 }
 
 enum SpeakerConfidence: String {
