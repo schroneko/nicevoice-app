@@ -78,4 +78,14 @@ enum Constants {
             "\(NSHomeDirectory())/.cargo/bin/uvx"
         ]
     }
+
+    enum Deepgram {
+        static let apiKey = "DEEPGRAM_API_KEY_PLACEHOLDER"
+        static let wsEndpoint = "wss://api.deepgram.com/v1/listen"
+        static let restEndpoint = "https://api.deepgram.com/v1/listen"
+        static let sampleRate: Double = 16000
+        static let defaultModel = "nova-3"
+        static let defaultLanguage = "multi"
+        static let keepAliveIntervalSeconds: Double = 5.0
+    }
 }

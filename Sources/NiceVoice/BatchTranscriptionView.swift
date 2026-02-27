@@ -13,6 +13,7 @@ struct BatchTranscriptionView: View {
     @State private var processingTasks: [UUID: Task<Void, Never>] = [:]
     @State private var isDownloadingYouTube = false
     @State private var youtubeError: String?
+    @State private var showCopiedFeedback = false
 
     private let supportedTypes: [UTType] = [.audio, .mpeg4Audio, .mp3, .wav, .aiff]
 
@@ -169,6 +170,9 @@ struct BatchTranscriptionView: View {
                                     .stroke(glassBorder, lineWidth: 1)
                             }
                     }
+                    .onSubmit {
+                        downloadYouTubeAudio()
+                    }
 
                 Button {
                     downloadYouTubeAudio()
@@ -187,7 +191,15 @@ struct BatchTranscriptionView: View {
                 .disabled(youtubeURL.isEmpty || isDownloadingYouTube)
             }
 
-            if let youtubeError {
+            if isDownloadingYouTube {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.mini)
+                    Text("音声をダウンロード中...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else if let youtubeError {
                 Text(youtubeError)
                     .font(.caption2)
                     .foregroundStyle(.red)
@@ -328,16 +340,29 @@ struct BatchTranscriptionView: View {
 
                 Button {
                     copyToClipboard(item.result)
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        showCopiedFeedback = true
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                        withAnimation(.easeOut(duration: 0.3)) {
+                            showCopiedFeedback = false
+                        }
+                    }
                 } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: "doc.on.doc")
-                        Text("コピー")
+                        Image(systemName: showCopiedFeedback ? "checkmark" : "doc.on.doc")
+                        Text(showCopiedFeedback ? "コピー済み" : "コピー")
                     }
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background(primaryGradient, in: Capsule())
+                    .background(
+                        showCopiedFeedback
+                            ? LinearGradient(colors: [.green, .mint], startPoint: .topLeading, endPoint: .bottomTrailing)
+                            : primaryGradient,
+                        in: Capsule()
+                    )
                 }
                 .buttonStyle(.plain)
             }
@@ -430,9 +455,13 @@ struct BatchTranscriptionView: View {
     }
 
     private func processItem(_ item: BatchTranscriptionItem) {
-        guard #available(macOS 26.0, *) else {
-            updateItem(item.id) { $0.status = .failed; $0.error = "macOS 26.0 以上が必要です" }
-            return
+        let engine = appState.transcriptionEngine
+
+        if engine == .speechAnalyzer {
+            guard #available(macOS 26.0, *) else {
+                updateItem(item.id) { $0.status = .failed; $0.error = "macOS 26.0 以上が必要です" }
+                return
+            }
         }
 
         guard item.status == .pending || item.status == .failed else { return }
@@ -454,6 +483,7 @@ struct BatchTranscriptionView: View {
             do {
                 let result = try await service.transcribeFile(
                     at: url,
+                    engine: engine,
                     onProgress: { progress in
                         guard !Task.isCancelled else { return }
                         DispatchQueue.main.async {

@@ -34,24 +34,19 @@ struct DeveloperView: View {
                                 isSelected: selectedEngine == engine,
                                 action: {
                                     transcriptionEngineRaw = engine.rawValue
-                                    if engine == .voxtralLocal || engine == .qwen3ASR {
-                                        appState.setupTranscriptionService()
+                                    appState.setupTranscriptionService()
+                                    if engine.requiresLocalServer {
                                         appState.localServerManager?.start()
-                                        Task {
-                                            await appState.reinitializeAfterEngineChange()
-                                        }
-                                    } else {
-                                        appState.setupTranscriptionService()
-                                        Task {
-                                            await appState.reinitializeAfterEngineChange()
-                                        }
+                                    }
+                                    Task {
+                                        await appState.reinitializeAfterEngineChange()
                                     }
                                 }
                             )
                         }
                     }
 
-                    if selectedEngine == .voxtralLocal || selectedEngine == .qwen3ASR {
+                    if selectedEngine.requiresLocalServer {
                         SectionDivider()
 
                         HStack(spacing: 12) {
@@ -146,7 +141,14 @@ struct DeveloperView: View {
                 ) {
                     VStack(alignment: .leading, spacing: 8) {
                         DebugInfoRow(label: "エンジン", value: selectedEngine.displayName)
-                        DebugInfoRow(label: "モデル", value: selectedEngine == .voxtralLocal ? "voxmlx-serve (local)" : selectedEngine == .qwen3ASR ? "qwen3-asr (local)" : "SpeechAnalyzer (built-in)")
+                        DebugInfoRow(label: "モデル", value: {
+                            switch selectedEngine {
+                            case .voxtralLocal: return "voxmlx-serve (local)"
+                            case .qwen3ASR: return "qwen3-asr (local)"
+                            case .deepgram: return "Deepgram Nova-3 (cloud)"
+                            case .speechAnalyzer: return "SpeechAnalyzer (built-in)"
+                            }
+                        }())
                         DebugInfoRow(label: "ステータス", value: appState.statusMessage)
                         DebugInfoRow(label: "準備状態", value: appState.isReady ? "Ready" : "Not Ready")
                     }

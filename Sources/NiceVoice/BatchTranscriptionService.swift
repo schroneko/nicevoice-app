@@ -41,6 +41,49 @@ final class BatchTranscriptionService: @unchecked Sendable {
 
     func transcribeFile(
         at url: URL,
+        engine: TranscriptionEngine = .speechAnalyzer,
+        onProgress: @escaping (Double) -> Void,
+        onStatusChange: @escaping (String) -> Void
+    ) async throws -> String {
+        switch engine {
+        case .speechAnalyzer:
+            return try await transcribeWithSpeechAnalyzer(
+                at: url,
+                onProgress: onProgress,
+                onStatusChange: onStatusChange
+            )
+        case .voxtralLocal:
+            return try await transcribeWithLocalASR(
+                at: url,
+                wsEndpoint: Constants.VoxtralLocal.wsEndpoint,
+                sampleRate: Constants.VoxtralLocal.sampleRate,
+                onProgress: onProgress,
+                onStatusChange: onStatusChange
+            )
+        case .qwen3ASR:
+            return try await transcribeWithLocalASR(
+                at: url,
+                wsEndpoint: Constants.Qwen3ASR.wsEndpoint,
+                sampleRate: Constants.Qwen3ASR.sampleRate,
+                onProgress: onProgress,
+                onStatusChange: onStatusChange
+            )
+        case .deepgram:
+            let apiKey = Constants.Deepgram.apiKey
+            guard apiKey != "DEEPGRAM_API_KEY_PLACEHOLDER", !apiKey.isEmpty else {
+                throw DeepgramError.noApiKey
+            }
+            return try await DeepgramService.transcribeBatch(
+                fileURL: url,
+                apiKey: apiKey,
+                onProgress: onProgress,
+                onStatusChange: onStatusChange
+            )
+        }
+    }
+
+    func transcribeWithSpeechAnalyzer(
+        at url: URL,
         onProgress: @escaping (Double) -> Void,
         onStatusChange: @escaping (String) -> Void
     ) async throws -> String {
@@ -63,27 +106,30 @@ final class BatchTranscriptionService: @unchecked Sendable {
         onStatusChange("音声認識モデルを準備中...")
         onProgress(0.1)
 
-        let locale = Locale(identifier: "ja-JP")
-        let transcriber = SpeechTranscriber(
-            locale: locale,
-            transcriptionOptions: [],
-            reportingOptions: [],
-            attributeOptions: []
-        )
+        var transcribers: [SpeechTranscriber] = []
+        for language in SupportedLanguage.allCases {
+            let transcriber = SpeechTranscriber(
+                locale: language.locale,
+                transcriptionOptions: [],
+                reportingOptions: [],
+                attributeOptions: []
+            )
+            transcribers.append(transcriber)
+        }
 
-        if let downloader = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
+        if let downloader = try await AssetInventory.assetInstallationRequest(supporting: transcribers) {
             onStatusChange("音声認識モデルをダウンロード中...")
             try await downloader.downloadAndInstall()
         }
 
-        let analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber])
+        let analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: transcribers)
         guard let targetFormat = analyzerFormat else {
             throw BatchTranscriptionError.formatNotAvailable
         }
 
         debugLog("Analyzer format: \(targetFormat.sampleRate)Hz, \(targetFormat.channelCount)ch")
 
-        let analyzer = SpeechAnalyzer(modules: [transcriber])
+        let analyzer = SpeechAnalyzer(modules: transcribers)
         debugLog("SpeechAnalyzer created")
 
         onStatusChange("音声を処理中...")
@@ -174,16 +220,31 @@ final class BatchTranscriptionService: @unchecked Sendable {
         var transcriptionResult = ""
 
         let resultsTask = Task {
-            debugLog("Waiting for transcriber.results...")
-            for try await result in transcriber.results {
-                let text = String(result.text.characters)
-                debugLog("Received result: \(text.count) chars, final: \(result.isFinal)")
-                if result.isFinal {
-                    transcriptionResult += text
-                    debugLog("Batch transcription segment: \(text.count) chars")
+            debugLog("Waiting for transcriber results...")
+            await withTaskGroup(of: String.self) { group in
+                for transcriber in transcribers {
+                    group.addTask {
+                        var segmentResult = ""
+                        do {
+                            for try await result in transcriber.results {
+                                let text = String(result.text.characters)
+                                debugLog("Received result: \(text.count) chars, final: \(result.isFinal), text: \(text)")
+                                if result.isFinal {
+                                    segmentResult += text
+                                    debugLog("Batch transcription segment: \(text.count) chars")
+                                }
+                            }
+                        } catch {
+                            debugLog("Transcriber results error: \(error)")
+                        }
+                        return segmentResult
+                    }
+                }
+                for await result in group {
+                    transcriptionResult += result
                 }
             }
-            debugLog("transcriber.results loop ended")
+            debugLog("All transcriber results loops ended")
         }
 
         let analyzerTask = Task {
@@ -209,7 +270,7 @@ final class BatchTranscriptionService: @unchecked Sendable {
         onProgress(1.0)
         onStatusChange("完了")
 
-        debugLog("Batch transcription completed: \(transcriptionResult.count) chars")
+        debugLog("Batch transcription completed: \(transcriptionResult.count) chars, text: \(transcriptionResult)")
 
         return transcriptionResult
     }
@@ -236,6 +297,172 @@ final class BatchTranscriptionService: @unchecked Sendable {
         } catch {
             debugLog("Failed to send notification: \(error)")
         }
+    }
+
+    private func transcribeWithLocalASR(
+        at url: URL,
+        wsEndpoint: String,
+        sampleRate: Double,
+        onProgress: @escaping (Double) -> Void,
+        onStatusChange: @escaping (String) -> Void
+    ) async throws -> String {
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer {
+            if accessing {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        onStatusChange("ファイルを読み込み中...")
+        onProgress(0.05)
+
+        let audioFile = try AVAudioFile(forReading: url)
+        let processingFormat = audioFile.processingFormat
+        let totalFrames = AVAudioFrameCount(audioFile.length)
+
+        debugLog("Audio file: \(url.lastPathComponent), format: \(processingFormat.sampleRate)Hz, \(processingFormat.channelCount)ch, frames: \(totalFrames)")
+
+        guard let targetFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: sampleRate,
+            channels: 1,
+            interleaved: false
+        ) else {
+            throw BatchTranscriptionError.formatNotAvailable
+        }
+
+        var converter: AVAudioConverter?
+        if processingFormat.sampleRate != sampleRate || processingFormat.channelCount != 1 {
+            converter = AVAudioConverter(from: processingFormat, to: targetFormat)
+            debugLog("Audio converter created: \(processingFormat.sampleRate)Hz \(processingFormat.channelCount)ch -> \(sampleRate)Hz 1ch")
+        }
+
+        onStatusChange("サーバーに接続中...")
+        onProgress(0.1)
+
+        guard let wsURL = URL(string: wsEndpoint) else {
+            throw BatchTranscriptionError.analyzerInitFailed
+        }
+
+        let wsTask = URLSession.shared.webSocketTask(with: wsURL)
+        wsTask.resume()
+
+        let createdMsg = try await wsTask.receive()
+        debugLog("WebSocket connected: \(createdMsg)")
+
+        onStatusChange("音声を送信中...")
+        onProgress(0.15)
+
+        let bufferSize: AVAudioFrameCount = 4096
+        var framesRead: AVAudioFrameCount = 0
+
+        while framesRead < totalFrames {
+            let framesToRead = min(bufferSize, totalFrames - framesRead)
+
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: processingFormat, frameCapacity: framesToRead) else {
+                debugLog("Failed to create read buffer")
+                break
+            }
+
+            do {
+                try audioFile.read(into: buffer)
+            } catch {
+                debugLog("Failed to read audio file: \(error)")
+                break
+            }
+
+            if buffer.frameLength == 0 {
+                break
+            }
+
+            var outputBuffer: AVAudioPCMBuffer
+
+            if let conv = converter {
+                let ratio = sampleRate / processingFormat.sampleRate
+                let outputCapacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1
+
+                guard let converted = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outputCapacity) else {
+                    debugLog("Failed to create conversion buffer")
+                    break
+                }
+
+                var error: NSError?
+                let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
+                    outStatus.pointee = .haveData
+                    return buffer
+                }
+
+                let status = conv.convert(to: converted, error: &error, withInputFrom: inputBlock)
+
+                if status == .error {
+                    debugLog("Conversion error: \(error?.localizedDescription ?? "unknown")")
+                    break
+                }
+
+                outputBuffer = converted
+            } else {
+                outputBuffer = buffer
+            }
+
+            let floatData = outputBuffer.floatChannelData![0]
+            let frameCount = Int(outputBuffer.frameLength)
+            var pcm16Data = Data(count: frameCount * 2)
+            pcm16Data.withUnsafeMutableBytes { rawBuffer in
+                let int16Buffer = rawBuffer.bindMemory(to: Int16.self)
+                for i in 0..<frameCount {
+                    let sample = max(-1.0, min(1.0, floatData[i]))
+                    int16Buffer[i] = Int16(sample * 32767)
+                }
+            }
+
+            let base64Audio = pcm16Data.base64EncodedString()
+            let appendMsg = "{\"type\":\"input_audio_buffer.append\",\"audio\":\"\(base64Audio)\"}"
+            try await wsTask.send(.string(appendMsg))
+
+            framesRead += buffer.frameLength
+
+            let progress = Double(framesRead) / Double(totalFrames)
+            onProgress(0.15 + progress * 0.7)
+        }
+
+        debugLog("Finished sending audio (\(framesRead) frames), sending commit...")
+        onStatusChange("文字起こし中...")
+
+        let commitMsg = "{\"type\":\"input_audio_buffer.commit\",\"final\":true}"
+        try await wsTask.send(.string(commitMsg))
+
+        var fullText = ""
+        var isDone = false
+        while !isDone {
+            let message = try await wsTask.receive()
+            switch message {
+            case .string(let text):
+                if let data = text.data(using: .utf8),
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let type = json["type"] as? String {
+                    if type == "response.audio_transcript.delta",
+                       let delta = json["delta"] as? String {
+                        fullText += delta
+                    } else if type == "response.audio_transcript.done" {
+                        if let doneText = json["text"] as? String {
+                            fullText = doneText
+                        }
+                        isDone = true
+                    }
+                }
+            default:
+                break
+            }
+        }
+
+        wsTask.cancel(with: .normalClosure, reason: nil)
+
+        onProgress(1.0)
+        onStatusChange("完了")
+
+        debugLog("Local ASR batch transcription completed: \(fullText.count) chars, text: \(fullText)")
+
+        return fullText
     }
 }
 

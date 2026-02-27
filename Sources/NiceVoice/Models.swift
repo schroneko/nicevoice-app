@@ -87,12 +87,14 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
     case speechAnalyzer
     case voxtralLocal
     case qwen3ASR
+    case deepgram
 
     var displayName: String {
         switch self {
         case .speechAnalyzer: return "Apple SpeechAnalyzer"
         case .voxtralLocal: return "Voxtral Local (voxmlx)"
         case .qwen3ASR: return "Qwen3 ASR"
+        case .deepgram: return "Deepgram Nova-3"
         }
     }
 
@@ -101,6 +103,21 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
         case .speechAnalyzer: return "macOS 内蔵の音声認識。オフラインで動作し、遅延が少ない"
         case .voxtralLocal: return "voxmlx-serve によるローカル推論。サーバーの起動が必要"
         case .qwen3ASR: return "Qwen3-ASR-1.7B (MLX, ローカル推論)"
+        case .deepgram: return "Deepgram Nova-3 (クラウド API, 高精度)"
+        }
+    }
+
+    var requiresLocalServer: Bool {
+        switch self {
+        case .voxtralLocal, .qwen3ASR: return true
+        case .speechAnalyzer, .deepgram: return false
+        }
+    }
+
+    var requiresApiKey: Bool {
+        switch self {
+        case .deepgram: return true
+        case .speechAnalyzer, .voxtralLocal, .qwen3ASR: return false
         }
     }
 }
