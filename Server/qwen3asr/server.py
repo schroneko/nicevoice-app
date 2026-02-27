@@ -36,8 +36,8 @@ def create_app(model_name: str):
         logger.info("WebSocket connected")
 
         session = session_factory()
-        session.init_streaming(chunk_sec=2.0)
-        full_text = ""
+        state = session.init_streaming(chunk_size_sec=2.0)
+        prev_text = ""
 
         await ws.send_json({"type": "session.created"})
 
@@ -64,9 +64,10 @@ def create_app(model_name: str):
                     pcm16 = np.frombuffer(pcm16_bytes, dtype=np.int16)
                     audio_f32 = pcm16.astype(np.float32) / 32768.0
 
-                    delta = session.feed_audio(audio_f32)
-                    if delta:
-                        full_text += delta
+                    state = session.feed_audio(audio_f32, state)
+                    if state.text != prev_text:
+                        delta = state.text[len(prev_text) :]
+                        prev_text = state.text
                         await ws.send_json(
                             {
                                 "type": "response.audio_transcript.delta",
@@ -77,9 +78,9 @@ def create_app(model_name: str):
                 elif msg_type == "input_audio_buffer.commit":
                     is_final = msg.get("final", False)
                     if is_final:
-                        delta = session.finish_streaming()
-                        if delta:
-                            full_text += delta
+                        state = session.finish_streaming(state)
+                        if state.text != prev_text:
+                            delta = state.text[len(prev_text) :]
                             await ws.send_json(
                                 {
                                     "type": "response.audio_transcript.delta",
@@ -89,11 +90,11 @@ def create_app(model_name: str):
                         await ws.send_json(
                             {
                                 "type": "response.audio_transcript.done",
-                                "text": full_text,
+                                "text": state.text,
                             }
                         )
-                        session.init_streaming(chunk_sec=2.0)
-                        full_text = ""
+                        state = session.init_streaming(chunk_size_sec=2.0)
+                        prev_text = ""
 
         except WebSocketDisconnect:
             logger.info("WebSocket disconnected")
