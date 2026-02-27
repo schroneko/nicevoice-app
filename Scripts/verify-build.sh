@@ -1,9 +1,22 @@
 #!/bin/bash
 
+CONSTANTS_FILE="Sources/NiceVoice/Constants.swift"
+DEEPGRAM_KEY=$(op item get "DEEPGRAM_API_KEY" --fields credential --reveal --vault Automation 2>/dev/null || echo "")
+if [ -n "$DEEPGRAM_KEY" ]; then
+    sed -i '' "s/DEEPGRAM_API_KEY_PLACEHOLDER/$DEEPGRAM_KEY/" "$CONSTANTS_FILE"
+fi
+
 echo "Building (step 1/2: compile)..." >&2
 if ! swift build --product NiceVoice 2>&1 | grep -v "disk I/O error"; then
+    if [ -n "$DEEPGRAM_KEY" ]; then
+        sed -i '' "s/$DEEPGRAM_KEY/DEEPGRAM_API_KEY_PLACEHOLDER/" "$CONSTANTS_FILE"
+    fi
     echo "Build failed" >&2
     exit 1
+fi
+
+if [ -n "$DEEPGRAM_KEY" ]; then
+    sed -i '' "s/$DEEPGRAM_KEY/DEEPGRAM_API_KEY_PLACEHOLDER/" "$CONSTANTS_FILE"
 fi
 
 if [ ! -f .build/debug/NiceVoice ]; then
