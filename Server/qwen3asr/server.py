@@ -107,7 +107,7 @@ def main():
     parser = argparse.ArgumentParser(description="qwen3asr realtime WebSocket server")
     parser.add_argument(
         "--model",
-        default="schroneko/Qwen3-ASR-1.7B-4bit",
+        default="schroneko/Qwen3-ASR-1.7B-MLX-4bit",
         help="Model path or HF model ID",
     )
     parser.add_argument("--port", type=int, default=8001, help="Port to listen on")

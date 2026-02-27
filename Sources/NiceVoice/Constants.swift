@@ -71,7 +71,7 @@ enum Constants {
         static let httpRequestTimeoutSeconds: Double = 3.0
         static let serverStartupTimeoutSeconds: Double = 600.0
         static let healthPollIntervalSeconds: Double = 2.0
-        static let defaultModel = "schroneko/Qwen3-ASR-1.7B-4bit"
+        static let defaultModel = "schroneko/Qwen3-ASR-1.7B-MLX-4bit"
         static let uvxSearchPaths = [
             "/opt/homebrew/bin/uvx",
             "/usr/local/bin/uvx",
