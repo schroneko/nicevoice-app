@@ -52,7 +52,7 @@ enum Constants {
         static let wsEndpoint = "ws://127.0.0.1:8000/v1/realtime"
         static let healthEndpoint = "http://127.0.0.1:8000/health"
         static let sampleRate: Double = 16000
-        static let healthCheckTimeoutSeconds: Double = 3.0
+        static let httpRequestTimeoutSeconds: Double = 3.0
         static let serverStartupTimeoutSeconds: Double = 600.0
         static let healthPollIntervalSeconds: Double = 2.0
         static let defaultModel = "schroneko/Voxtral-Mini-4B-Realtime-2602-MLX-4bit"
@@ -68,7 +68,8 @@ enum Constants {
         static let wsEndpoint = "ws://127.0.0.1:8001/v1/realtime"
         static let healthEndpoint = "http://127.0.0.1:8001/health"
         static let sampleRate: Double = 16000
-        static let healthCheckTimeoutSeconds: Double = 600.0
+        static let httpRequestTimeoutSeconds: Double = 3.0
+        static let serverStartupTimeoutSeconds: Double = 600.0
         static let healthPollIntervalSeconds: Double = 2.0
         static let defaultModel = "schroneko/Qwen3-ASR-1.7B-4bit"
         static let uvxSearchPaths = [
@@ -76,6 +77,14 @@ enum Constants {
             "/usr/local/bin/uvx",
             "\(NSHomeDirectory())/.local/bin/uvx",
             "\(NSHomeDirectory())/.cargo/bin/uvx"
+        ]
+    }
+
+    enum HuggingFace {
+        static let hfSearchPaths = [
+            "/opt/homebrew/bin/hf",
+            "/usr/local/bin/hf",
+            "\(NSHomeDirectory())/.local/bin/hf"
         ]
     }
 

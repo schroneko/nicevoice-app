@@ -150,7 +150,7 @@ final class LocalASRService {
     func checkServerHealth() async -> Bool {
         guard let url = URL(string: Constants.VoxtralLocal.healthEndpoint) else { return false }
         var request = URLRequest(url: url)
-        request.timeoutInterval = Constants.VoxtralLocal.healthCheckTimeoutSeconds
+        request.timeoutInterval = Constants.VoxtralLocal.httpRequestTimeoutSeconds
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
             return (response as? HTTPURLResponse)?.statusCode == 200

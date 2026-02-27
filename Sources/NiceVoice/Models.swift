@@ -120,6 +120,22 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
         case .speechAnalyzer, .voxtralLocal, .qwen3ASR: return false
         }
     }
+
+    var serverCommandName: String? {
+        switch self {
+        case .voxtralLocal: return "voxmlx-serve"
+        case .qwen3ASR: return "qwen3asr-serve"
+        case .speechAnalyzer, .deepgram: return nil
+        }
+    }
+
+    var modelSize: String? {
+        switch self {
+        case .voxtralLocal: return "2.5 GB"
+        case .qwen3ASR: return "1.6 GB"
+        case .speechAnalyzer, .deepgram: return nil
+        }
+    }
 }
 
 struct BenchmarkSample: Identifiable, Codable {

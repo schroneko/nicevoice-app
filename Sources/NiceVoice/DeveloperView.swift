@@ -35,9 +35,6 @@ struct DeveloperView: View {
                                 action: {
                                     transcriptionEngineRaw = engine.rawValue
                                     appState.setupTranscriptionService()
-                                    if engine.requiresLocalServer {
-                                        appState.localServerManager?.start()
-                                    }
                                     Task {
                                         await appState.reinitializeAfterEngineChange()
                                     }
@@ -51,23 +48,43 @@ struct DeveloperView: View {
 
                         HStack(spacing: 12) {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("voxmlx-serve")
+                                Text(selectedEngine.serverCommandName ?? "")
                                     .font(.callout)
                                     .fontWeight(.medium)
 
-                                switch appState.localServerStatus {
-                                case .stopped:
-                                    Text("停止中")
+                                switch appState.modelDownloadStatus {
+                                case .notDownloaded:
+                                    Text("モデル未ダウンロード (\(selectedEngine.modelSize ?? ""))")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
-                                case .starting(let message):
-                                    Text(message)
-                                        .font(.caption)
-                                        .foregroundStyle(.orange)
-                                case .running:
-                                    Text("起動中")
-                                        .font(.caption)
-                                        .foregroundStyle(.green)
+                                case .downloading(let progress, let message):
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        ProgressView(value: progress)
+                                            .progressViewStyle(.linear)
+                                        Text(message)
+                                            .font(.caption)
+                                            .foregroundStyle(.orange)
+                                    }
+                                case .downloaded:
+                                    switch appState.localServerStatus {
+                                    case .stopped:
+                                        Text("停止中")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    case .starting(let message):
+                                        Text(message)
+                                            .font(.caption)
+                                            .foregroundStyle(.orange)
+                                    case .running:
+                                        Text("起動中")
+                                            .font(.caption)
+                                            .foregroundStyle(.green)
+                                    case .error(let message):
+                                        Text(message)
+                                            .font(.caption)
+                                            .foregroundStyle(.red)
+                                            .lineLimit(2)
+                                    }
                                 case .error(let message):
                                     Text(message)
                                         .font(.caption)
@@ -78,13 +95,37 @@ struct DeveloperView: View {
 
                             Spacer()
 
-                            if case .running = appState.localServerStatus {
+                            switch appState.modelDownloadStatus {
+                            case .notDownloaded:
                                 Button {
-                                    appState.localServerManager?.stop()
+                                    appState.downloadModel()
                                 } label: {
                                     HStack(spacing: 6) {
-                                        Image(systemName: "stop.fill")
-                                        Text("停止")
+                                        Image(systemName: "arrow.down.circle.fill")
+                                        Text("ダウンロード")
+                                    }
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(
+                                        LinearGradient(
+                                            colors: [.blue, .purple],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            case .downloading:
+                                Button {
+                                    appState.cancelModelDownload()
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "xmark.circle.fill")
+                                        Text("キャンセル")
                                     }
                                     .font(.caption)
                                     .fontWeight(.semibold)
@@ -101,16 +142,89 @@ struct DeveloperView: View {
                                     .clipShape(Capsule())
                                 }
                                 .buttonStyle(.plain)
-                            } else if case .starting = appState.localServerStatus {
-                                ProgressView()
-                                    .controlSize(.small)
-                            } else {
+                            case .downloaded:
+                                if case .running = appState.localServerStatus {
+                                    Button {
+                                        appState.localServerManager?.stop()
+                                    } label: {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: "stop.fill")
+                                            Text("停止")
+                                        }
+                                        .font(.caption)
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 6)
+                                        .background(
+                                            LinearGradient(
+                                                colors: [.red, .orange],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
+                                        )
+                                        .clipShape(Capsule())
+                                    }
+                                    .buttonStyle(.plain)
+                                } else if case .starting = appState.localServerStatus {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                } else {
+                                    HStack(spacing: 8) {
+                                        Button {
+                                            appState.localServerManager?.start()
+                                        } label: {
+                                            HStack(spacing: 6) {
+                                                Image(systemName: "play.fill")
+                                                Text("起動")
+                                            }
+                                            .font(.caption)
+                                            .fontWeight(.semibold)
+                                            .foregroundStyle(.white)
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 6)
+                                            .background(
+                                                LinearGradient(
+                                                    colors: [.green, .teal],
+                                                    startPoint: .topLeading,
+                                                    endPoint: .bottomTrailing
+                                                )
+                                            )
+                                            .clipShape(Capsule())
+                                        }
+                                        .buttonStyle(.plain)
+
+                                        Button {
+                                            appState.deleteModel()
+                                        } label: {
+                                            HStack(spacing: 6) {
+                                                Image(systemName: "trash.fill")
+                                                Text("削除")
+                                            }
+                                            .font(.caption)
+                                            .fontWeight(.semibold)
+                                            .foregroundStyle(.white)
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 6)
+                                            .background(
+                                                LinearGradient(
+                                                    colors: [.gray, .secondary],
+                                                    startPoint: .topLeading,
+                                                    endPoint: .bottomTrailing
+                                                )
+                                            )
+                                            .clipShape(Capsule())
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                            case .error:
                                 Button {
-                                    appState.localServerManager?.start()
+                                    appState.downloadModel()
                                 } label: {
                                     HStack(spacing: 6) {
-                                        Image(systemName: "play.fill")
-                                        Text("起動")
+                                        Image(systemName: "arrow.clockwise.circle.fill")
+                                        Text("再試行")
                                     }
                                     .font(.caption)
                                     .fontWeight(.semibold)
@@ -119,7 +233,7 @@ struct DeveloperView: View {
                                     .padding(.vertical, 6)
                                     .background(
                                         LinearGradient(
-                                            colors: [.green, .teal],
+                                            colors: [.blue, .purple],
                                             startPoint: .topLeading,
                                             endPoint: .bottomTrailing
                                         )

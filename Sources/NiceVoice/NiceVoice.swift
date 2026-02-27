@@ -293,6 +293,8 @@ final class AppState {
     private var deepgramService: DeepgramService?
     private(set) var localServerManager: LocalServerManager?
     var localServerStatus: LocalServerStatus = .stopped
+    private(set) var modelDownloadManager: ModelDownloadManager?
+    var modelDownloadStatus: ModelDownloadStatus = .downloaded
     private(set) var keyMonitor: KeyMonitor?
     private var floatingPanel: FloatingPanel?
     private var waitingForFinalResult = false
@@ -390,12 +392,12 @@ final class AppState {
     func setupTranscriptionService() {
         localASRService = nil
         deepgramService = nil
-
-        if !transcriptionEngine.requiresLocalServer {
-            localServerManager?.stop()
-            localServerManager = nil
-            localServerStatus = .stopped
-        }
+        modelDownloadManager?.cancelDownload()
+        modelDownloadManager = nil
+        localServerManager?.stop()
+        localServerManager = nil
+        localServerStatus = .stopped
+        modelDownloadStatus = .downloaded
 
         if transcriptionEngine == .deepgram {
             let apiKey = Constants.Deepgram.apiKey
@@ -452,7 +454,8 @@ final class AppState {
             let modelName: String
             let port: Int
             let healthEndpoint: String
-            let healthCheckTimeout: Double
+            let httpRequestTimeout: Double
+            let startupTimeout: Double
             let healthPollInterval: Double
             let uvxSearchPaths: [String]
             let engineLabel: String
@@ -462,11 +465,12 @@ final class AppState {
                 wsEndpoint = Constants.VoxtralLocal.wsEndpoint
                 sampleRate = Constants.VoxtralLocal.sampleRate
                 serverCommand = "voxmlx-serve"
-                serverPackagePath = "voxmlx"
+                serverPackagePath = ""
                 modelName = Constants.VoxtralLocal.defaultModel
                 port = 8000
                 healthEndpoint = Constants.VoxtralLocal.healthEndpoint
-                healthCheckTimeout = Constants.VoxtralLocal.healthCheckTimeoutSeconds
+                httpRequestTimeout = Constants.VoxtralLocal.httpRequestTimeoutSeconds
+                startupTimeout = Constants.VoxtralLocal.serverStartupTimeoutSeconds
                 healthPollInterval = Constants.VoxtralLocal.healthPollIntervalSeconds
                 uvxSearchPaths = Constants.VoxtralLocal.uvxSearchPaths
                 engineLabel = "Voxtral Local"
@@ -478,7 +482,8 @@ final class AppState {
                 modelName = Constants.Qwen3ASR.defaultModel
                 port = 8001
                 healthEndpoint = Constants.Qwen3ASR.healthEndpoint
-                healthCheckTimeout = Constants.Qwen3ASR.healthCheckTimeoutSeconds
+                httpRequestTimeout = Constants.Qwen3ASR.httpRequestTimeoutSeconds
+                startupTimeout = Constants.Qwen3ASR.serverStartupTimeoutSeconds
                 healthPollInterval = Constants.Qwen3ASR.healthPollIntervalSeconds
                 uvxSearchPaths = Constants.Qwen3ASR.uvxSearchPaths
                 engineLabel = "Qwen3 ASR"
@@ -520,31 +525,56 @@ final class AppState {
                     self.audioLevels.append(level)
                 }
             )
-            if localServerManager == nil {
-                localServerManager = LocalServerManager(
-                    serverCommand: serverCommand,
-                    serverPackagePath: serverPackagePath,
-                    modelName: modelName,
-                    port: port,
-                    healthEndpoint: healthEndpoint,
-                    healthCheckTimeout: healthCheckTimeout,
-                    healthPollInterval: healthPollInterval,
-                    uvxSearchPaths: uvxSearchPaths,
-                    onStatusChange: { [weak self] status in
-                        guard let self else { return }
-                        self.localServerStatus = status
-                        if case .running = status {
-                            self.isReady = true
-                            self.statusMessage = "準備完了 (\(engineLabel)) - \(self.shortcutKey.displayName) キーを押して録音"
-                        } else if case .error(let msg) = status {
-                            self.statusMessage = msg
-                        } else if case .starting(let msg) = status {
-                            self.statusMessage = msg
-                        }
+            localServerManager = LocalServerManager(
+                serverCommand: serverCommand,
+                serverPackagePath: serverPackagePath,
+                modelName: modelName,
+                port: port,
+                healthEndpoint: healthEndpoint,
+                httpRequestTimeout: httpRequestTimeout,
+                startupTimeout: startupTimeout,
+                healthPollInterval: healthPollInterval,
+                uvxSearchPaths: uvxSearchPaths,
+                onStatusChange: { [weak self] status in
+                    guard let self else { return }
+                    self.localServerStatus = status
+                    if case .running = status {
+                        self.isReady = true
+                        self.statusMessage = "準備完了 (\(engineLabel)) - \(self.shortcutKey.displayName) キーを押して録音"
+                    } else if case .error(let msg) = status {
+                        self.statusMessage = msg
+                    } else if case .starting(let msg) = status {
+                        self.statusMessage = msg
                     }
-                )
-            }
+                }
+            )
+
+            modelDownloadManager = ModelDownloadManager(
+                modelName: modelName,
+                hfSearchPaths: Constants.HuggingFace.hfSearchPaths,
+                onStatusChange: { [weak self] status in
+                    guard let self else { return }
+                    self.modelDownloadStatus = status
+                    if case .downloaded = status {
+                        self.localServerManager?.start()
+                    }
+                }
+            )
+            modelDownloadManager?.checkAndReport()
         }
+    }
+
+    func downloadModel() {
+        modelDownloadManager?.startDownload()
+    }
+
+    func cancelModelDownload() {
+        modelDownloadManager?.cancelDownload()
+    }
+
+    func deleteModel() {
+        localServerManager?.stop()
+        modelDownloadManager?.deleteModel()
     }
 
     func reinitializeAfterEngineChange() async {
@@ -578,11 +608,15 @@ final class AppState {
                 if case .running = self.localServerStatus {
                     isReady = true
                     statusMessage = "準備完了 (\(engineLabel)) - \(shortcutKey.displayName) キーを押して録音"
-                } else {
+                } else if case .downloaded = self.modelDownloadStatus {
                     statusMessage = "\(engineLabel) サーバーを起動中..."
                     localServerManager?.start()
+                } else if case .notDownloaded = self.modelDownloadStatus {
+                    statusMessage = "モデルのダウンロードが必要です"
+                } else if case .downloading = self.modelDownloadStatus {
+                    statusMessage = "モデルをダウンロード中..."
                 }
-                debugLog("✅ Using \(engineLabel)")
+                debugLog("Using \(engineLabel)")
             }
             return
         }

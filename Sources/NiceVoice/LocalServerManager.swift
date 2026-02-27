@@ -17,7 +17,8 @@ final class LocalServerManager {
     private let modelName: String
     private let port: Int
     private let healthEndpoint: String
-    private let healthCheckTimeout: Double
+    private let httpRequestTimeout: Double
+    private let startupTimeout: Double
     private let healthPollInterval: Double
     private let uvxSearchPaths: [String]
 
@@ -31,7 +32,8 @@ final class LocalServerManager {
         modelName: String,
         port: Int,
         healthEndpoint: String,
-        healthCheckTimeout: Double,
+        httpRequestTimeout: Double,
+        startupTimeout: Double,
         healthPollInterval: Double,
         uvxSearchPaths: [String],
         onStatusChange: @escaping (LocalServerStatus) -> Void
@@ -41,7 +43,8 @@ final class LocalServerManager {
         self.modelName = modelName
         self.port = port
         self.healthEndpoint = healthEndpoint
-        self.healthCheckTimeout = healthCheckTimeout
+        self.httpRequestTimeout = httpRequestTimeout
+        self.startupTimeout = startupTimeout
         self.healthPollInterval = healthPollInterval
         self.uvxSearchPaths = uvxSearchPaths
         self.onStatusChange = onStatusChange
@@ -75,6 +78,7 @@ final class LocalServerManager {
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: uvxPath)
         proc.arguments = [
+            "--reinstall",
             "--from", "\(serverPath)[server]",
             serverCommand,
             "--model", modelName,
@@ -188,8 +192,8 @@ final class LocalServerManager {
                     return
                 }
 
-                if Date().timeIntervalSince(startTime) > self.healthCheckTimeout {
-                    debugLog("[\(self.serverCommand)] startup timeout (\(Int(self.healthCheckTimeout))s)")
+                if Date().timeIntervalSince(startTime) > self.startupTimeout {
+                    debugLog("[\(self.serverCommand)] startup timeout (\(Int(self.startupTimeout))s)")
                     self.stop()
                     await MainActor.run {
                         self.onStatusChange(.error("\(self.serverCommand) の起動がタイムアウトしました"))
@@ -205,7 +209,7 @@ final class LocalServerManager {
     private func checkHealth() async -> Bool {
         guard let url = URL(string: healthEndpoint) else { return false }
         var request = URLRequest(url: url)
-        request.timeoutInterval = healthCheckTimeout
+        request.timeoutInterval = httpRequestTimeout
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
             return (response as? HTTPURLResponse)?.statusCode == 200
