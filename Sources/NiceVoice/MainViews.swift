@@ -95,7 +95,15 @@ struct MainWindowView: View {
 
                     switch selectedPage {
                     case .transcription:
-                        BatchTranscriptionView(appState: appState)
+                        if AuthManager.shared.canUseApp {
+                            BatchTranscriptionView(appState: appState)
+                        } else {
+                            AuthRequiredView {
+                                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                    selectedPage = .account
+                                }
+                            }
+                        }
                     case .history:
                         HistoryContentView(appState: appState)
                     case .dictionary:
@@ -151,6 +159,56 @@ struct SidebarItem: View {
         .accessibilityAddTraits(.isButton)
         .scaleEffect(isHovered && !isSelected ? 1.02 : 1.0)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isHovered)
+    }
+}
+
+struct AuthRequiredView: View {
+    var onNavigateToAccount: () -> Void
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Image(systemName: "lock.shield.fill")
+                .font(.system(size: 56))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [.purple, .indigo],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            VStack(spacing: 8) {
+                Text("サブスクリプションが必要です")
+                    .font(.title2.weight(.semibold))
+
+                Text("この機能を使用するにはログインしてください")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Button {
+                onNavigateToAccount()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "person.crop.circle")
+                    Text("アカウントページへ")
+                }
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 12)
+                .background(
+                    LinearGradient(
+                        colors: [.blue, .cyan],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: Capsule()
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

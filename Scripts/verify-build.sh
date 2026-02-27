@@ -49,7 +49,7 @@ PLIST=".build/bundler/NiceVoice.app/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string nicevoice" "$PLIST" 2>/dev/null || true
 
 echo "Signing..." >&2
-codesign -fs "NiceVoice" --deep .build/bundler/NiceVoice.app
+codesign -fs "NiceVoice" --deep --options runtime --entitlements NiceVoice.entitlements .build/bundler/NiceVoice.app
 
 echo "Restarting app..." >&2
 killall -9 NiceVoice 2>/dev/null || true

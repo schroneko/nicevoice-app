@@ -8,6 +8,19 @@ import CommonCrypto
 
 private let logger = Logger(subsystem: "com.nicevoice.app", category: "general")
 
+func isDebuggerAttached() -> Bool {
+    #if DEBUG
+    return false
+    #else
+    var info = kinfo_proc()
+    var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()]
+    var size = MemoryLayout<kinfo_proc>.stride
+    let result = sysctl(&mib, UInt32(mib.count), &info, &size, nil, 0)
+    guard result == 0 else { return false }
+    return (info.kp_proc.p_flag & P_TRACED) != 0
+    #endif
+}
+
 extension Notification.Name {
     static let recordingStateChanged = Notification.Name("recordingStateChanged")
 }
@@ -709,6 +722,20 @@ final class AppState {
 
     func startRecording() {
         guard #available(macOS 26.0, *) else { return }
+
+        if isDebuggerAttached() {
+            debugLog("startRecording blocked: debugger detected")
+            errorMessage = "不正な環境が検出されました"
+            floatingPanel?.show()
+            return
+        }
+
+        guard AuthManager.shared.canUseApp else {
+            debugLog("startRecording blocked: not authorized")
+            errorMessage = "サブスクリプションが必要です"
+            floatingPanel?.show()
+            return
+        }
 
         debugLog("🔍 [DEBUG] startRecording called - isReady: \(isReady), isRecording: \(isRecording)")
 

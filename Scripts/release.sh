@@ -42,7 +42,7 @@ echo "==> Patching Info.plist..."
 /usr/libexec/PlistBuddy -c "Add :NSAppleEventsUsageDescription string Pastes text into input fields" "${PLIST}" 2>/dev/null || true
 
 echo "==> Signing (ad-hoc)..."
-codesign -fs - --deep "${APP}"
+codesign -fs - --deep --options runtime --entitlements NiceVoice-release.entitlements "${APP}"
 
 echo "==> Creating ${ARCHIVE}..."
 ditto -c -k --keepParent "${APP}" "${ARCHIVE}"

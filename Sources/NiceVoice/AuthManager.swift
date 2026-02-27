@@ -1,10 +1,16 @@
 import Foundation
+import CommonCrypto
 
 struct AuthInfo: Codable {
     let sessionId: String
     let username: String
     let isSubscriber: Bool
     let lastVerified: Date
+}
+
+struct SignedAuthInfo: Codable {
+    let payload: Data
+    let signature: Data
 }
 
 @Observable
@@ -18,6 +24,7 @@ final class AuthManager {
     private(set) var deviceMismatch = false
 
     private let offlineGracePeriodDays = 7
+    private static var hmacSalt: String { ObfuscatedStrings.hmacSalt }
 
     var canUseApp: Bool {
         isSubscriber
@@ -58,7 +65,7 @@ final class AuthManager {
                 lastVerified: Date()
             )
 
-            try LocalStorage.shared.saveCodable(authInfo, for: .authInfo)
+            saveSignedAuthInfo(authInfo)
 
             await MainActor.run {
                 self.isLoggedIn = true
@@ -100,12 +107,18 @@ final class AuthManager {
     }
 
     private func loadFromStorage() {
-        guard let authInfo: AuthInfo = try? LocalStorage.shared.loadCodable(for: .authInfo) else {
-            return
-        }
+        guard let authInfo = loadVerifiedAuthInfo() else { return }
 
         isLoggedIn = true
         username = authInfo.username
+
+        if authInfo.lastVerified > Date() {
+            debugLog("Auth rejected: lastVerified is in the future (tampering?)")
+            isSubscriber = false
+            LocalStorage.shared.clearAuth()
+            return
+        }
+
         isSubscriber = authInfo.isSubscriber
 
         if !isWithinGracePeriod(authInfo) {
@@ -125,9 +138,7 @@ final class AuthManager {
     }
 
     private func shouldVerifyOnline() -> Bool {
-        guard let info: AuthInfo = try? LocalStorage.shared.loadCodable(for: .authInfo) else {
-            return false
-        }
+        guard let info = loadVerifiedAuthInfo() else { return false }
 
         let oneDayAgo = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
         return info.lastVerified < oneDayAgo
@@ -151,7 +162,7 @@ final class AuthManager {
                 lastVerified: Date()
             )
 
-            try LocalStorage.shared.saveCodable(authInfo, for: .authInfo)
+            saveSignedAuthInfo(authInfo)
 
             await MainActor.run {
                 self.username = response.username
@@ -168,6 +179,75 @@ final class AuthManager {
         } catch {
             debugLog("Verification failed (offline?): \(error)")
         }
+    }
+
+    private func saveSignedAuthInfo(_ authInfo: AuthInfo) {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        guard let payload = try? encoder.encode(authInfo) else {
+            debugLog("Failed to encode AuthInfo for signing")
+            return
+        }
+
+        let signature = computeHMAC(payload)
+        let signed = SignedAuthInfo(payload: payload, signature: signature)
+        try? LocalStorage.shared.saveCodable(signed, for: .authInfo)
+    }
+
+    private func loadVerifiedAuthInfo() -> AuthInfo? {
+        if let signed: SignedAuthInfo = try? LocalStorage.shared.loadCodable(for: .authInfo) {
+            let expectedSignature = computeHMAC(signed.payload)
+            guard signed.signature == expectedSignature else {
+                debugLog("Auth signature mismatch - data may be tampered")
+                LocalStorage.shared.clearAuth()
+                return nil
+            }
+
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            return try? decoder.decode(AuthInfo.self, from: signed.payload)
+        }
+
+        if let legacy: AuthInfo = try? LocalStorage.shared.loadCodable(for: .authInfo) {
+            debugLog("Migrating unsigned AuthInfo to signed format")
+            saveSignedAuthInfo(legacy)
+            return legacy
+        }
+
+        return nil
+    }
+
+    private func signingKey() -> Data {
+        let deviceId = LocalStorage.shared.getOrCreateDeviceId()
+        let bundleId = Bundle.main.bundleIdentifier ?? "app.nicevoice.NiceVoice"
+        let material = "\(deviceId)\(bundleId)\(Self.hmacSalt)"
+
+        var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
+        let bytes = Array(material.utf8)
+        bytes.withUnsafeBufferPointer { buffer in
+            _ = CC_SHA256(buffer.baseAddress, CC_LONG(buffer.count), &hash)
+        }
+        return Data(hash)
+    }
+
+    private func computeHMAC(_ data: Data) -> Data {
+        let key = signingKey()
+        var hmac = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
+
+        key.withUnsafeBytes { keyBytes in
+            data.withUnsafeBytes { dataBytes in
+                CCHmac(
+                    CCHmacAlgorithm(kCCHmacAlgSHA256),
+                    keyBytes.baseAddress,
+                    key.count,
+                    dataBytes.baseAddress,
+                    data.count,
+                    &hmac
+                )
+            }
+        }
+
+        return Data(hmac)
     }
 }
 

@@ -49,7 +49,17 @@ struct DeregisterResponse: Codable {
 final class NukosukuAuthService {
     static let shared = NukosukuAuthService()
 
-    private let baseURL = "https://nukosuku.com/api"
+    private var baseURL: String { ObfuscatedStrings.nukosukuBaseURL }
+
+    private lazy var session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 30
+        return URLSession(
+            configuration: config,
+            delegate: PinnedURLSessionDelegate(),
+            delegateQueue: nil
+        )
+    }()
 
     private init() {}
 
@@ -126,7 +136,7 @@ final class NukosukuAuthService {
         let response: URLResponse
 
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await session.data(for: request)
         } catch {
             throw AuthError.networkError(error)
         }
