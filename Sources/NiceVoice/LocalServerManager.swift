@@ -57,6 +57,8 @@ final class LocalServerManager {
     func start() {
         guard !isRunning else { return }
 
+        killExistingProcessOnPort()
+
         guard let uvxPath = findUvx() else {
             let status = LocalServerStatus.error("uvx が見つかりません。uv をインストールしてください")
             debugLog("[\(serverCommand)] uvx not found in search paths")
@@ -184,6 +186,15 @@ final class LocalServerManager {
                     }
                 }
 
+                if !(self.process?.isRunning ?? false) {
+                    debugLog("[\(self.serverCommand)] process died during startup")
+                    await MainActor.run {
+                        self.onStatusChange(.error("\(self.serverCommand) が起動中にクラッシュしました"))
+                    }
+                    self.process = nil
+                    return
+                }
+
                 if await checkHealth() {
                     debugLog("[\(self.serverCommand)] health check passed")
                     await MainActor.run {
@@ -204,6 +215,36 @@ final class LocalServerManager {
                 try? await Task.sleep(nanoseconds: UInt64(self.healthPollInterval * 1_000_000_000))
             }
         }
+    }
+
+    private func killExistingProcessOnPort() {
+        let lsof = Process()
+        lsof.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+        lsof.arguments = ["-ti", ":\(port)"]
+        let pipe = Pipe()
+        lsof.standardOutput = pipe
+        lsof.standardError = FileHandle.nullDevice
+        do {
+            try lsof.run()
+            lsof.waitUntilExit()
+        } catch {
+            return
+        }
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !output.isEmpty else {
+            return
+        }
+
+        for pidStr in output.components(separatedBy: "\n") {
+            if let pid = Int32(pidStr.trimmingCharacters(in: .whitespaces)), pid > 0 {
+                debugLog("[\(serverCommand)] killing stale process on port \(port) (PID: \(pid))")
+                kill(pid, SIGTERM)
+            }
+        }
+
+        usleep(500_000)
     }
 
     private func checkHealth() async -> Bool {
