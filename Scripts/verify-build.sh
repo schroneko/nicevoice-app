@@ -1,4 +1,5 @@
 #!/bin/bash
+set -o pipefail
 
 CONSTANTS_FILE="Sources/NiceVoice/Constants.swift"
 DEEPGRAM_KEY=$(op item get "DEEPGRAM_API_KEY" --fields credential --reveal --vault Automation 2>/dev/null || echo "")
