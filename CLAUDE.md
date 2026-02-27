@@ -253,7 +253,7 @@ Voxtral Local と Qwen3 ASR は同じアーキテクチャを共有する:
 ポート: 8000
 
 - `Server/voxmlx/server.py`: WebSocket サーバー (文字化け修正パッチ適用済み)
-- `Server/voxmlx/pyproject.toml`: Python パッケージ定義と依存関係
+- `Server/pyproject.toml`: Python パッケージ定義と依存関係
 
 文字化け修正: `Server/voxmlx/server.py` の `_decode_steps()` でトークン ID を蓄積し `sp.decode(all_ids)` でまとめてデコード。末尾 U+FFFD を `rstrip('\ufffd')` で除去し、完成した文字のみデルタとして送信。
 
