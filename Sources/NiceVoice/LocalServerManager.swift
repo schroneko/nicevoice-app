@@ -80,7 +80,7 @@ final class LocalServerManager {
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: uvxPath)
         proc.arguments = [
-            "--reinstall",
+            "--refresh",
             "--from", "\(serverPath)[server]",
             serverCommand,
             "--model", modelName,
