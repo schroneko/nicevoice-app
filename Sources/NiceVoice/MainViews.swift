@@ -50,7 +50,7 @@ enum NavigationPage: String, CaseIterable {
 
 struct MainWindowView: View {
     var appState: AppState
-    @State private var selectedPage: NavigationPage = .history
+    @State private var selectedPage: NavigationPage = .settings
     @State private var showOnboarding: Bool
     @State private var hoveredPage: NavigationPage?
 
