@@ -6,6 +6,12 @@ PRODUCT="NiceVoice"
 ARCHIVE="${PRODUCT}-${VERSION}.zip"
 APP=".build/bundler/${PRODUCT}.app"
 PLIST="${APP}/Contents/Info.plist"
+HOMEBREW_TAP_DIR="${HOME}/Sync/homebrew-tap"
+CASK_FILE="${HOMEBREW_TAP_DIR}/Casks/nicevoice.rb"
+NICEVOICE_DIR="$(pwd)"
+
+echo "==> Updating Bundler.toml version to ${VERSION}..."
+sed -i '' "s/^version = '.*'/version = '${VERSION}'/" Bundler.toml
 
 echo "==> Building ${PRODUCT} v${VERSION} (release)..."
 swift build -c release --product "${PRODUCT}" 2>&1 | grep -v "disk I/O error"
@@ -47,8 +53,50 @@ echo ""
 echo "Created: ${ARCHIVE}"
 echo "Size:    $(du -h "${ARCHIVE}" | cut -f1)"
 echo "SHA256:  ${SHA}"
+
 echo ""
-echo "To publish:"
+echo "==> Updating homebrew-tap Cask..."
+
+if [ ! -f "${CASK_FILE}" ]; then
+    echo "Cask file not found: ${CASK_FILE}"
+    exit 1
+fi
+
+sed -i '' "s/^  version \".*\"/  version \"${VERSION}\"/" "${CASK_FILE}"
+sed -i '' "s/^  sha256 .*/  sha256 \"${SHA}\"/" "${CASK_FILE}"
+sed -i '' 's|^  url ".*"|  url "https://github.com/schroneko/homebrew-tap/releases/download/v#{version}/NiceVoice-#{version}.zip"|' "${CASK_FILE}"
+
+echo "Updated: ${CASK_FILE}"
+
+echo "==> Committing homebrew-tap changes..."
+pushd "${HOMEBREW_TAP_DIR}" > /dev/null
+
+BRANCH="release/nicevoice-v${VERSION}"
+git switch -c "${BRANCH}"
+git add Casks/nicevoice.rb
+git commit -m "Update NiceVoice to v${VERSION}"
+git switch main
+git merge "${BRANCH}"
+git branch -d "${BRANCH}"
+git push
+
+echo "==> Managing GitHub Release..."
+gh release delete "v${VERSION}" --repo schroneko/homebrew-tap --yes 2>/dev/null || true
+git push origin --delete "v${VERSION}" 2>/dev/null || true
+
+gh release create "v${VERSION}" "${NICEVOICE_DIR}/${ARCHIVE}" \
+    --title "v${VERSION}" \
+    --notes "NiceVoice v${VERSION}" \
+    --repo schroneko/homebrew-tap
+
+popd > /dev/null
+
+echo ""
+echo "Done! homebrew-tap updated and release created."
+echo ""
+echo "To tag nicevoice-app (manual):"
 echo "  git tag v${VERSION}"
 echo "  git push origin v${VERSION}"
-echo "  gh release create v${VERSION} ${ARCHIVE} --title \"v${VERSION}\""
+echo ""
+echo "To verify:"
+echo "  brew reinstall --cask schroneko/tap/nicevoice"

@@ -3,7 +3,7 @@ format_version = 2
 [apps.NiceVoice]
 identifier = 'app.nicevoice.NiceVoice'
 product = 'NiceVoice'
-version = '0.1.0'
+version = '0.1.1'
 icon = 'AppIcon.icns'
 
 [apps.NiceVoice.plist]
