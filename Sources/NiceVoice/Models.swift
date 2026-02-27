@@ -144,6 +144,14 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
         case .speechAnalyzer, .deepgram: return nil
         }
     }
+
+    var modelDisplayName: String? {
+        switch self {
+        case .voxtralLocal: return "Voxtral Mini 4B Realtime 2602"
+        case .qwen3ASR: return "Qwen3 ASR 1.7B"
+        case .speechAnalyzer, .deepgram: return nil
+        }
+    }
 }
 
 struct BenchmarkSample: Identifiable, Codable {
