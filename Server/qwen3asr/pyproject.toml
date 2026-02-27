@@ -14,5 +14,9 @@ dependencies = [
 [project.optional-dependencies]
 server = ["fastapi", "uvicorn[standard]"]
 
+[tool.setuptools]
+packages = ["qwen3asr"]
+package-dir = {"qwen3asr" = "."}
+
 [project.scripts]
 qwen3asr-serve = "qwen3asr.server:main"
