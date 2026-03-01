@@ -30,6 +30,28 @@ final class AuthManager {
         isSubscriber
     }
 
+    @inline(__always)
+    func verifyAuthIntegrity() -> Bool {
+        guard let signed: SignedAuthInfo = try? LocalStorage.shared.loadCodable(for: .authInfo) else {
+            return false
+        }
+        let expectedSignature = computeHMAC(signed.payload)
+        guard signed.signature == expectedSignature else {
+            isSubscriber = false
+            return false
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        guard let info = try? decoder.decode(AuthInfo.self, from: signed.payload) else {
+            return false
+        }
+        guard info.isSubscriber, info.lastVerified <= Date(), isWithinGracePeriod(info) else {
+            isSubscriber = false
+            return false
+        }
+        return true
+    }
+
     private init() {}
 
     func initialize() async {
@@ -209,9 +231,15 @@ final class AuthManager {
         }
 
         if let legacy: AuthInfo = try? LocalStorage.shared.loadCodable(for: .authInfo) {
-            debugLog("Migrating unsigned AuthInfo to signed format")
-            saveSignedAuthInfo(legacy)
-            return legacy
+            debugLog("Migrating unsigned AuthInfo to signed format (forcing re-verification)")
+            let unverified = AuthInfo(
+                sessionId: legacy.sessionId,
+                username: legacy.username,
+                isSubscriber: false,
+                lastVerified: Date.distantPast
+            )
+            saveSignedAuthInfo(unverified)
+            return unverified
         }
 
         return nil

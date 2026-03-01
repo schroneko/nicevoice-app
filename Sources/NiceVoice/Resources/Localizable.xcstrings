@@ -2862,6 +2862,36 @@
           }
         }
       }
+    },
+    "システム設定に従う": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Follow System"
+          }
+        }
+      }
+    },
+    "言語": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Language"
+          }
+        }
+      }
+    },
+    "表示言語を選択": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select display language"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

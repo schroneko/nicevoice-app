@@ -154,6 +154,36 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
     }
 }
 
+enum AppLanguage: String, CaseIterable {
+    case system
+    case ja
+    case en
+
+    var displayName: String {
+        switch self {
+        case .system: return String(localized: "システム設定に従う")
+        case .ja: return "日本語"
+        case .en: return "English"
+        }
+    }
+
+    var locale: Locale? {
+        switch self {
+        case .system: return nil
+        case .ja: return Locale(identifier: "ja")
+        case .en: return Locale(identifier: "en")
+        }
+    }
+
+    func apply() {
+        if let locale {
+            UserDefaults.standard.set([locale.identifier], forKey: "AppleLanguages")
+        } else {
+            UserDefaults.standard.removeObject(forKey: "AppleLanguages")
+        }
+    }
+}
+
 struct BenchmarkSample: Identifiable, Codable {
     let id: UUID
     let name: String

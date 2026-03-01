@@ -28,10 +28,18 @@ extension Notification.Name {
 @main
 struct NiceVoiceApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @AppStorage("appLanguage") private var appLanguageRaw = AppLanguage.system.rawValue
+
+    private var resolvedLocale: Locale {
+        let lang = AppLanguage(rawValue: appLanguageRaw) ?? .system
+        return lang.locale ?? Locale.current
+    }
 
     var body: some Scene {
         Window("Nice Voice", id: "main") {
             MainWindowView(appState: appDelegate.appState)
+                .environment(\.locale, resolvedLocale)
+                .id(appLanguageRaw)
         }
         .defaultSize(width: 800, height: 600)
     }

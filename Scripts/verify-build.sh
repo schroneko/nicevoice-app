@@ -23,6 +23,9 @@ fi
 echo "Copying Server resources..." >&2
 cp -R Server .build/bundler/NiceVoice.app/Contents/Resources/Server
 
+echo "Compiling localizations..." >&2
+xcrun xcstringstool compile Sources/NiceVoice/Resources/Localizable.xcstrings -o .build/bundler/NiceVoice.app/Contents/Resources
+
 echo "Patching Info.plist..." >&2
 PLIST=".build/bundler/NiceVoice.app/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string app.nicevoice.NiceVoice" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier app.nicevoice.NiceVoice" "$PLIST"

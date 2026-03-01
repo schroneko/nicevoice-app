@@ -32,6 +32,7 @@ final class LocalStorage {
 
     private static let keychainAccountAuthInfo = "authInfo"
     private static let keychainAccountSessionId = "sessionId"
+    private static let keychainAccountDeviceId = "deviceId"
 
     private init() {
         migrateToKeychainIfNeeded()
@@ -87,11 +88,11 @@ final class LocalStorage {
     }
 
     func getOrCreateDeviceId() -> String {
-        if let deviceId = defaults.string(forKey: StorageKey.deviceId.rawValue) {
+        if let deviceId = keychain.loadString(account: Self.keychainAccountDeviceId) {
             return deviceId
         }
         let newDeviceId = UUID().uuidString
-        defaults.set(newDeviceId, forKey: StorageKey.deviceId.rawValue)
+        _ = keychain.saveString(newDeviceId, account: Self.keychainAccountDeviceId)
         return newDeviceId
     }
 
@@ -119,6 +120,12 @@ final class LocalStorage {
             keychain.save(authData, account: Self.keychainAccountAuthInfo)
             defaults.removeObject(forKey: StorageKey.authInfo.rawValue)
             debugLog("Migrated authInfo from UserDefaults to Keychain")
+        }
+
+        if let deviceId = defaults.string(forKey: StorageKey.deviceId.rawValue) {
+            _ = keychain.saveString(deviceId, account: Self.keychainAccountDeviceId)
+            defaults.removeObject(forKey: StorageKey.deviceId.rawValue)
+            debugLog("Migrated deviceId from UserDefaults to Keychain")
         }
     }
 }

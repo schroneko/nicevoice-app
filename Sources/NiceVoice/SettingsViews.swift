@@ -68,6 +68,7 @@ struct SettingsContentView: View {
     var appState: AppState
     @AppStorage("showInMenuBar") private var showInMenuBar = true
     @AppStorage("shortcutKey") private var shortcutKeyRaw = ShortcutKey.fn.rawValue
+    @AppStorage("appLanguage") private var appLanguageRaw = AppLanguage.system.rawValue
     @State private var fillerSettings: FillerSettings
     @State private var sectionAnimations: [Bool] = [false, false, false, false, false]
 
@@ -141,6 +142,30 @@ struct SettingsContentView: View {
                                     }
                                 )
                             }
+                        }
+                    }
+
+                    SectionDivider()
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("言語")
+                                .font(.callout)
+                                .fontWeight(.medium)
+                            Text("表示言語を選択")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Picker("", selection: $appLanguageRaw) {
+                            ForEach(AppLanguage.allCases, id: \.rawValue) { lang in
+                                Text(lang.displayName).tag(lang.rawValue)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .onChange(of: appLanguageRaw) { _, newValue in
+                            let lang = AppLanguage(rawValue: newValue) ?? .system
+                            lang.apply()
                         }
                     }
                 }
