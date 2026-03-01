@@ -11,7 +11,7 @@ enum SupportedLanguage: String, CaseIterable {
 
     var displayName: String {
         switch self {
-        case .japanese: return "日本語"
+        case .japanese: return String(localized: "日本語")
         case .english: return "English"
         }
     }
@@ -158,7 +158,7 @@ final class SpeechAnalyzerService {
             debugLog("🎙️ SpeechAnalyzer recording started (immediate transcription)")
         } catch {
             debugLog("❌ Audio engine failed to start: \(error)")
-            onError("オーディオエンジンの起動に失敗しました")
+            onError(String(localized: "オーディオエンジンの起動に失敗しました"))
             isRunning = false
         }
     }

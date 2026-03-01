@@ -100,10 +100,10 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
 
     var engineDescription: String {
         switch self {
-        case .speechAnalyzer: return "macOS 内蔵の音声認識。オフラインで動作し、遅延が少ない"
-        case .voxtralLocal: return "voxmlx-serve によるローカル推論。サーバーの起動が必要"
-        case .qwen3ASR: return "Qwen3-ASR-1.7B (MLX, ローカル推論)"
-        case .deepgram: return "Deepgram Nova-3 (クラウド API, 高精度)"
+        case .speechAnalyzer: return String(localized: "macOS 内蔵の音声認識。オフラインで動作し、遅延が少ない")
+        case .voxtralLocal: return String(localized: "voxmlx-serve によるローカル推論。サーバーの起動が必要")
+        case .qwen3ASR: return String(localized: "Qwen3-ASR-1.7B (MLX, ローカル推論)")
+        case .deepgram: return String(localized: "Deepgram Nova-3 (クラウド API, 高精度)")
         }
     }
 

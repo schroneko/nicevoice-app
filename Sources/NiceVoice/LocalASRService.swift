@@ -170,7 +170,7 @@ final class LocalASRService {
         webSocketTask?.resume()
 
         debugLog("🔌 voxmlx WebSocket connecting to \(url)")
-        onStatusChange?("voxmlx に接続中...")
+        onStatusChange?(String(localized: "voxmlx に接続中..."))
 
         startReceiving()
     }
@@ -206,7 +206,7 @@ final class LocalASRService {
                     if !Task.isCancelled {
                         debugLog("❌ voxmlx WebSocket receive error: \(error)")
                         await MainActor.run {
-                            self.onError("WebSocket エラー: \(error.localizedDescription)")
+                            self.onError(String(localized: "WebSocket エラー: \(error.localizedDescription)"))
                         }
                     }
                     break
@@ -229,7 +229,7 @@ final class LocalASRService {
             sessionReady = true
             flushPendingChunks()
             DispatchQueue.main.async {
-                self.onStatusChange?("voxmlx 接続完了")
+                self.onStatusChange?(String(localized: "voxmlx 接続完了"))
             }
 
         case "session.updated":
@@ -254,7 +254,7 @@ final class LocalASRService {
             disconnectWebSocket()
 
         case "error":
-            let errorMessage = (json["message"] as? String) ?? "voxmlx エラー"
+            let errorMessage = (json["message"] as? String) ?? String(localized: "voxmlx エラー")
             debugLog("❌ voxmlx error: \(errorMessage)")
             DispatchQueue.main.async {
                 self.onError(errorMessage)
@@ -367,7 +367,7 @@ final class LocalASRService {
             debugLog("🎙️ voxmlx audio capture started")
         } catch {
             debugLog("❌ voxmlx audio engine failed to start: \(error)")
-            onError("オーディオエンジンの起動に失敗しました")
+            onError(String(localized: "オーディオエンジンの起動に失敗しました"))
             isRunning = false
         }
     }

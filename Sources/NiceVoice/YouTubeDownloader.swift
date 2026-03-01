@@ -8,11 +8,11 @@ enum YouTubeDownloadError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .ytDlpNotFound:
-            return "yt-dlp が見つかりません。brew install yt-dlp でインストールしてください"
+            return String(localized: "yt-dlp が見つかりません。brew install yt-dlp でインストールしてください")
         case .downloadFailed(let message):
-            return "ダウンロード失敗: \(message)"
+            return String(localized: "ダウンロード失敗: \(message)")
         case .invalidOutput:
-            return "yt-dlp の出力からファイルパスを取得できませんでした"
+            return String(localized: "yt-dlp の出力からファイルパスを取得できませんでした")
         }
     }
 }

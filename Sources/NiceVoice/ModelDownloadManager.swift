@@ -50,14 +50,14 @@ final class ModelDownloadManager {
         guard let hfPath = findHf() else {
             debugLog("[ModelDownload] hf CLI not found")
             DispatchQueue.main.async {
-                self.onStatusChange(.error("hf コマンドが見つかりません。brew install huggingface-cli でインストールしてください"))
+                self.onStatusChange(.error(String(localized: "hf コマンドが見つかりません。brew install huggingface-cli でインストールしてください")))
             }
             return
         }
 
         debugLog("[ModelDownload] starting download: \(modelName) using \(hfPath)")
         DispatchQueue.main.async {
-            self.onStatusChange(.downloading(progress: 0, message: "ダウンロードを開始中..."))
+            self.onStatusChange(.downloading(progress: 0, message: String(localized: "ダウンロードを開始中...")))
         }
 
         let proc = Process()
@@ -90,7 +90,7 @@ final class ModelDownloadManager {
             } else {
                 debugLog("[ModelDownload] download failed with code \(code)")
                 DispatchQueue.main.async {
-                    self.onStatusChange(.error("ダウンロードに失敗しました (code: \(code))"))
+                    self.onStatusChange(.error(String(localized: "ダウンロードに失敗しました (code: \(code))")))
                 }
             }
         }
@@ -102,7 +102,7 @@ final class ModelDownloadManager {
         } catch {
             debugLog("[ModelDownload] failed to start: \(error)")
             DispatchQueue.main.async {
-                self.onStatusChange(.error("ダウンロードの開始に失敗しました: \(error.localizedDescription)"))
+                self.onStatusChange(.error(String(localized: "ダウンロードの開始に失敗しました: \(error.localizedDescription)")))
             }
         }
     }
@@ -139,7 +139,7 @@ final class ModelDownloadManager {
         } catch {
             debugLog("[ModelDownload] failed to delete cache: \(error)")
             DispatchQueue.main.async {
-                self.onStatusChange(.error("モデルの削除に失敗しました: \(error.localizedDescription)"))
+                self.onStatusChange(.error(String(localized: "モデルの削除に失敗しました: \(error.localizedDescription)")))
             }
         }
     }
@@ -165,8 +165,8 @@ final class ModelDownloadManager {
             if let progress = parseProgress(from: line) {
                 let sizeInfo = parseSizeInfo(from: line) ?? ""
                 let message = sizeInfo.isEmpty
-                    ? "ダウンロード中... \(Int(progress * 100))%"
-                    : "ダウンロード中... \(sizeInfo)"
+                    ? String(localized: "ダウンロード中... \(Int(progress * 100))%")
+                    : String(localized: "ダウンロード中... \(sizeInfo)")
                 DispatchQueue.main.async {
                     self.onStatusChange(.downloading(progress: progress, message: message))
                 }

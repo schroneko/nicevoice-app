@@ -161,7 +161,7 @@ final class DeepgramService {
         webSocketTask?.resume()
 
         debugLog("Deepgram WebSocket connecting...")
-        onStatusChange?("Deepgram に接続中...")
+        onStatusChange?(String(localized: "Deepgram に接続中..."))
 
         startReceiving()
         startKeepAlive()
@@ -190,7 +190,7 @@ final class DeepgramService {
                     if !connected {
                         connected = true
                         await MainActor.run {
-                            self.onStatusChange?("Deepgram 接続完了")
+                            self.onStatusChange?(String(localized: "Deepgram 接続完了"))
                         }
                         debugLog("Deepgram WebSocket connected")
                     }
@@ -208,7 +208,7 @@ final class DeepgramService {
                     if !Task.isCancelled {
                         debugLog("Deepgram WebSocket receive error: \(error)")
                         await MainActor.run {
-                            self.onError("Deepgram WebSocket エラー: \(error.localizedDescription)")
+                            self.onError(String(localized: "Deepgram WebSocket エラー: \(error.localizedDescription)"))
                         }
                     }
                     break
@@ -246,7 +246,7 @@ final class DeepgramService {
         case "Metadata":
             debugLog("Deepgram metadata received")
         case "error", "Error":
-            let errorMessage = (json["message"] as? String) ?? "Deepgram エラー"
+            let errorMessage = (json["message"] as? String) ?? String(localized: "Deepgram エラー")
             debugLog("Deepgram error: \(errorMessage)")
             DispatchQueue.main.async {
                 self.onError(errorMessage)
@@ -369,7 +369,7 @@ final class DeepgramService {
             debugLog("Deepgram audio capture started")
         } catch {
             debugLog("Deepgram audio engine failed to start: \(error)")
-            onError("オーディオエンジンの起動に失敗しました")
+            onError(String(localized: "オーディオエンジンの起動に失敗しました"))
             isRunning = false
         }
     }
@@ -431,12 +431,12 @@ final class DeepgramService {
             }
         }
 
-        onStatusChange("ファイルを読み込み中...")
+        onStatusChange(String(localized: "ファイルを読み込み中..."))
         onProgress(0.05)
 
         let audioData = try Data(contentsOf: fileURL)
 
-        onStatusChange("Deepgram に送信中...")
+        onStatusChange(String(localized: "Deepgram に送信中..."))
         onProgress(0.2)
 
         var components = URLComponents(string: Constants.Deepgram.restEndpoint)!
@@ -468,7 +468,7 @@ final class DeepgramService {
         }
         request.setValue(contentType, forHTTPHeaderField: "Content-Type")
 
-        onStatusChange("文字起こし中...")
+        onStatusChange(String(localized: "文字起こし中..."))
         onProgress(0.5)
 
         let (responseData, response) = try await URLSession.shared.upload(for: request, from: audioData)
@@ -496,7 +496,7 @@ final class DeepgramService {
         }
 
         onProgress(1.0)
-        onStatusChange("完了")
+        onStatusChange(String(localized: "完了"))
 
         debugLog("Deepgram batch transcription completed: \(transcript.count) chars")
         return transcript
@@ -513,15 +513,15 @@ enum DeepgramError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidURL:
-            return "Deepgram の URL が無効です"
+            return String(localized: "Deepgram の URL が無効です")
         case .invalidResponse:
-            return "Deepgram からの応答が無効です"
+            return String(localized: "Deepgram からの応答が無効です")
         case .apiError(let code, let message):
-            return "Deepgram API エラー (\(code)): \(message)"
+            return String(localized: "Deepgram API エラー (\(code)): \(message)")
         case .parseError:
-            return "Deepgram の応答を解析できませんでした"
+            return String(localized: "Deepgram の応答を解析できませんでした")
         case .noApiKey:
-            return "Deepgram API キーが設定されていません。設定画面から入力してください"
+            return String(localized: "Deepgram API キーが設定されていません。設定画面から入力してください")
         }
     }
 }

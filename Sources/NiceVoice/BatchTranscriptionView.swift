@@ -459,7 +459,7 @@ struct BatchTranscriptionView: View {
 
         if engine == .speechAnalyzer {
             guard #available(macOS 26.0, *) else {
-                updateItem(item.id) { $0.status = .failed; $0.error = "macOS 26.0 以上が必要です" }
+                updateItem(item.id) { $0.status = .failed; $0.error = String(localized: "macOS 26.0 以上が必要です") }
                 return
             }
         }
@@ -555,7 +555,7 @@ struct BatchTranscriptionView: View {
         youtubeError = nil
 
         guard YouTubeDownloader.shared.isAvailable() else {
-            youtubeError = "yt-dlp が見つかりません。brew install yt-dlp でインストールしてください"
+            youtubeError = String(localized: "yt-dlp が見つかりません。brew install yt-dlp でインストールしてください")
             return
         }
 
@@ -656,7 +656,7 @@ struct QueueItemRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 } else {
-                    Text(item.status.rawValue)
+                    Text(item.status.displayName)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

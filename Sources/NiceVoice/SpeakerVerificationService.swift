@@ -355,11 +355,21 @@ struct SpeakerFilterResult {
 }
 
 enum SpeakerConfidence: String {
-    case veryHigh = "非常に高い"
-    case high = "高い"
-    case medium = "中程度"
-    case low = "低い"
-    case veryLow = "非常に低い"
+    case veryHigh
+    case high
+    case medium
+    case low
+    case veryLow
+
+    var displayName: String {
+        switch self {
+        case .veryHigh: return String(localized: "非常に高い")
+        case .high: return String(localized: "高い")
+        case .medium: return String(localized: "中程度")
+        case .low: return String(localized: "低い")
+        case .veryLow: return String(localized: "非常に低い")
+        }
+    }
 }
 
 enum SpeakerVerificationError: LocalizedError {
@@ -371,13 +381,13 @@ enum SpeakerVerificationError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notInitialized:
-            return "声紋認証サービスが初期化されていません"
+            return String(localized: "声紋認証サービスが初期化されていません")
         case .notEnrolled:
-            return "声紋が登録されていません。先に声を登録してください"
+            return String(localized: "声紋が登録されていません。先に声を登録してください")
         case .embeddingFailed:
-            return "声紋の抽出に失敗しました"
+            return String(localized: "声紋の抽出に失敗しました")
         case .noAudioData:
-            return "音声データがありません"
+            return String(localized: "音声データがありません")
         }
     }
 }

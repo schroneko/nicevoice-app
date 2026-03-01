@@ -231,14 +231,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
-        let openItem = NSMenuItem(title: "Nice Voice を開く", action: #selector(openMainWindowAction), keyEquivalent: "o")
+        let openItem = NSMenuItem(title: String(localized: "Nice Voice を開く"), action: #selector(openMainWindowAction), keyEquivalent: "o")
         openItem.keyEquivalentModifierMask = .command
         openItem.target = self
         menu.addItem(openItem)
 
         menu.addItem(NSMenuItem.separator())
 
-        let quitItem = NSMenuItem(title: "終了", action: #selector(quitApp), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: String(localized: "終了"), action: #selector(quitApp), keyEquivalent: "q")
         quitItem.keyEquivalentModifierMask = .command
         quitItem.target = self
         menu.addItem(quitItem)
@@ -272,7 +272,7 @@ final class AppState {
     var isRecording = false
     var currentTranscription = ""
     var isReady = false
-    var statusMessage = "初期化中..."
+    var statusMessage = String(localized: "初期化中...")
     var errorMessage: String?
     var history: [TranscriptionRecord] = []
     var audioLevels: [Float] = Array(repeating: 0, count: 20)
@@ -386,7 +386,7 @@ final class AppState {
                 onLanguageDetected: { [weak self] language in
                     DispatchQueue.main.async {
                         debugLog("🌍 Language detected: \(language.displayName)")
-                        self?.statusMessage = "検出: \(language.displayName)"
+                        self?.statusMessage = String(localized: "検出: \(language.displayName)")
                     }
                 }
             )
@@ -420,7 +420,7 @@ final class AppState {
         if transcriptionEngine == .deepgram {
             guard let apiKey = KeychainStorage.shared.loadString(account: StorageKey.deepgramApiKey.rawValue),
                   !apiKey.isEmpty else {
-                statusMessage = "Deepgram API キーが未設定です"
+                statusMessage = String(localized: "Deepgram API キーが未設定です")
                 debugLog("Deepgram: no API key configured")
                 return
             }
@@ -459,7 +459,7 @@ final class AppState {
                 }
             )
             isReady = true
-            statusMessage = "準備完了 (Deepgram) - \(shortcutKey.displayName) キーを押して録音"
+            statusMessage = String(localized: "準備完了 (Deepgram) - \(shortcutKey.displayName) キーを押して録音")
             debugLog("Using Deepgram Nova-3")
             return
         }
@@ -558,7 +558,7 @@ final class AppState {
                     self.localServerStatus = status
                     if case .running = status {
                         self.isReady = true
-                        self.statusMessage = "準備完了 (\(engineLabel)) - \(self.shortcutKey.displayName) キーを押して録音"
+                        self.statusMessage = String(localized: "準備完了 (\(engineLabel)) - \(self.shortcutKey.displayName) キーを押して録音")
                     } else if case .error(let msg) = status {
                         self.statusMessage = msg
                     } else if case .starting(let msg) = status {
@@ -659,16 +659,16 @@ final class AppState {
 
     func reinitializeAfterEngineChange() async {
         isReady = false
-        statusMessage = "エンジンを切り替え中..."
+        statusMessage = String(localized: "エンジンを切り替え中...")
         await requestPermissions()
     }
 
     private func requestPermissions() async {
-        statusMessage = "権限を確認中..."
+        statusMessage = String(localized: "権限を確認中...")
 
         guard #available(macOS 26.0, *) else {
             await MainActor.run {
-                statusMessage = "macOS 26.0 以上が必要です"
+                statusMessage = String(localized: "macOS 26.0 以上が必要です")
                 debugLog("❌ macOS 26.0+ required")
             }
             return
@@ -677,7 +677,7 @@ final class AppState {
         let micStatus = await AVCaptureDevice.requestAccess(for: .audio)
         guard micStatus else {
             await MainActor.run {
-                statusMessage = "マイクの権限が必要です"
+                statusMessage = String(localized: "マイクの権限が必要です")
             }
             return
         }
@@ -687,14 +687,14 @@ final class AppState {
             await MainActor.run {
                 if case .running = self.localServerStatus {
                     isReady = true
-                    statusMessage = "準備完了 (\(engineLabel)) - \(shortcutKey.displayName) キーを押して録音"
+                    statusMessage = String(localized: "準備完了 (\(engineLabel)) - \(shortcutKey.displayName) キーを押して録音")
                 } else if case .downloaded = self.modelDownloadStatus {
-                    statusMessage = "\(engineLabel) サーバーを起動中..."
+                    statusMessage = String(localized: "\(engineLabel) サーバーを起動中...")
                     localServerManager?.start()
                 } else if case .notDownloaded = self.modelDownloadStatus {
-                    statusMessage = "モデルのダウンロードが必要です"
+                    statusMessage = String(localized: "モデルのダウンロードが必要です")
                 } else if case .downloading = self.modelDownloadStatus {
-                    statusMessage = "モデルをダウンロード中..."
+                    statusMessage = String(localized: "モデルをダウンロード中...")
                 }
                 debugLog("Using \(engineLabel)")
             }
@@ -703,19 +703,19 @@ final class AppState {
 
         guard let service = speechAnalyzerService as? SpeechAnalyzerService else {
             await MainActor.run {
-                statusMessage = "SpeechAnalyzer の初期化に失敗しました"
+                statusMessage = String(localized: "SpeechAnalyzer の初期化に失敗しました")
                 debugLog("❌ SpeechAnalyzer not initialized")
             }
             return
         }
 
         await MainActor.run {
-            statusMessage = "SpeechAnalyzer を初期化中..."
+            statusMessage = String(localized: "SpeechAnalyzer を初期化中...")
         }
         await service.start()
         await MainActor.run {
             isReady = true
-            statusMessage = "準備完了 - \(shortcutKey.displayName) キーを押して録音"
+            statusMessage = String(localized: "準備完了 - \(shortcutKey.displayName) キーを押して録音")
             debugLog("✅ Using Apple SpeechAnalyzer")
         }
     }
@@ -725,14 +725,14 @@ final class AppState {
 
         if isDebuggerAttached() {
             debugLog("startRecording blocked: debugger detected")
-            errorMessage = "不正な環境が検出されました"
+            errorMessage = String(localized: "不正な環境が検出されました")
             floatingPanel?.show()
             return
         }
 
-        guard AuthManager.shared.canUseApp else {
+        guard AuthManager.shared.verifyAuthIntegrity() else {
             debugLog("startRecording blocked: not authorized")
-            errorMessage = "サブスクリプションが必要です"
+            errorMessage = String(localized: "サブスクリプションが必要です")
             floatingPanel?.show()
             return
         }
@@ -746,7 +746,7 @@ final class AppState {
 
         if !isReady {
             debugLog("🔍 [DEBUG] startRecording - not ready, showing error")
-            errorMessage = "音声認識が初期化されていません"
+            errorMessage = String(localized: "音声認識が初期化されていません")
             floatingPanel?.show()
             return
         }
@@ -992,6 +992,10 @@ final class AppState {
     private func performPaste(_ text: String) {
         waitingForFinalResult = false
         floatingPanel?.hide()
+        guard AuthManager.shared.verifyAuthIntegrity() else {
+            debugLog("performPaste blocked: auth integrity check failed")
+            return
+        }
         guard !text.isEmpty else {
             debugLog("⚠️ No text to paste - text is empty")
             return

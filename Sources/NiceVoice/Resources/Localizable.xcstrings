@@ -51,6 +51,26 @@
         }
       }
     },
+    "アカウント": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Account"
+          }
+        }
+      }
+    },
+    "開発者": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Developer"
+          }
+        }
+      }
+    },
     "音声認識の使用状況": {
       "localizations": {
         "en": {
@@ -104,9 +124,21 @@
     "%d 文字": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%d characters"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%d character"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%d characters"
+                }
+              }
+            }
           }
         }
       }
@@ -137,6 +169,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Initializing"
+          }
+        }
+      }
+    },
+    "初期化中...": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Initializing..."
           }
         }
       }
@@ -324,9 +366,21 @@
     "残り %lld 日": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld days left"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld day left"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld days left"
+                }
+              }
+            }
           }
         }
       }
@@ -334,9 +388,21 @@
     "次回更新まで %lld 日": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld days until renewal"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld day until renewal"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld days until renewal"
+                }
+              }
+            }
           }
         }
       }
@@ -384,9 +450,21 @@
     "%lld 日後にリセット": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Resets in %lld days"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Resets in %lld day"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Resets in %lld days"
+                }
+              }
+            }
           }
         }
       }
@@ -804,9 +882,21 @@
     "%lld 件のルール": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld rules"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld rule"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld rules"
+                }
+              }
+            }
           }
         }
       }
@@ -944,9 +1034,21 @@
     "%lld 件": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld items"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld item"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld items"
+                }
+              }
+            }
           }
         }
       }
@@ -1187,6 +1289,1576 @@
           "stringUnit": {
             "state": "translated",
             "value": "OK"
+          }
+        }
+      }
+    },
+    "サブスクリプションが必要です": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subscription required"
+          }
+        }
+      }
+    },
+    "この機能を使用するにはログインしてください": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Please log in to use this feature"
+          }
+        }
+      }
+    },
+    "アカウントページへ": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Go to Account"
+          }
+        }
+      }
+    },
+    "macOS 26.0 以降が必要です": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS 26.0 or later required"
+          }
+        }
+      }
+    },
+    "音声認識モデルの準備": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Speech Recognition Model Setup"
+          }
+        }
+      }
+    },
+    "高精度な文字起こしのためにモデルをダウンロードします": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Download models for high-accuracy transcription"
+          }
+        }
+      }
+    },
+    "モデルの準備が完了しました": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Model setup complete"
+          }
+        }
+      }
+    },
+    "ダウンロード中...": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Downloading..."
+          }
+        }
+      }
+    },
+    "権限": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permissions"
+          }
+        }
+      }
+    },
+    "声紋認証": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voice Authentication"
+          }
+        }
+      }
+    },
+    "登録済み": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registered"
+          }
+        }
+      }
+    },
+    "リセット": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reset"
+          }
+        }
+      }
+    },
+    "以下のテキストを普段どおりの声で読み上げてください。録音後に自動で声紋を登録します。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Please read the following text in your normal voice. Your voiceprint will be registered automatically after recording."
+          }
+        }
+      }
+    },
+    "「今日はとてもいい天気ですね。こんな日は散歩にでも出かけたくなります。最近は忙しくてなかなか外に出られないけれど、たまにはゆっくり過ごしたいものです。」": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\"It's such a beautiful day today. On days like this, I feel like going for a walk. I've been busy lately and haven't been able to get outside much, but I'd like to take it easy once in a while.\""
+          }
+        }
+      }
+    },
+    "声紋認証を準備中...": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparing voice authentication..."
+          }
+        }
+      }
+    },
+    "録音を停止": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop Recording"
+          }
+        }
+      }
+    },
+    "録音を開始": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start Recording"
+          }
+        }
+      }
+    },
+    "声紋を登録中...": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registering voiceprint..."
+          }
+        }
+      }
+    },
+    "声紋の登録が完了しました": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voiceprint registered successfully"
+          }
+        }
+      }
+    },
+    "声紋認証の準備が完了していません": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voice authentication not ready"
+          }
+        }
+      }
+    },
+    "音声フォーマットの変換に失敗しました": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to convert audio format"
+          }
+        }
+      }
+    },
+    "録音の開始に失敗しました": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to start recording"
+          }
+        }
+      }
+    },
+    "3秒以上録音してください": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Please record for at least 3 seconds"
+          }
+        }
+      }
+    },
+    "音声データを取得できませんでした": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to retrieve audio data"
+          }
+        }
+      }
+    },
+    "音声データがありません": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No audio data available"
+          }
+        }
+      }
+    },
+    "声紋の登録に失敗しました": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to register voiceprint"
+          }
+        }
+      }
+    },
+    "マイク": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Microphone"
+          }
+        }
+      }
+    },
+    "音声を録音するために必要": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Required for audio recording"
+          }
+        }
+      }
+    },
+    "ショートカットキーを監視するために必要": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Required for monitoring shortcut keys"
+          }
+        }
+      }
+    },
+    "認証の管理": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manage authentication"
+          }
+        }
+      }
+    },
+    "認証": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Authentication"
+          }
+        }
+      }
+    },
+    "X (Twitter) アカウントでログインして利用を開始できます": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Log in with your X (Twitter) account to get started"
+          }
+        }
+      }
+    },
+    "X でログイン": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Log in with X"
+          }
+        }
+      }
+    },
+    "認証済み": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Authenticated"
+          }
+        }
+      }
+    },
+    "サブスクライバー": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subscriber"
+          }
+        }
+      }
+    },
+    "別のデバイスで認証済みです": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Authenticated on another device"
+          }
+        }
+      }
+    },
+    "このデバイスで使用するには、既存のデバイス登録を解除してください": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "To use on this device, please deregister the existing device"
+          }
+        }
+      }
+    },
+    "デバイスを切り替える": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switch Device"
+          }
+        }
+      }
+    },
+    "ログアウト": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Log Out"
+          }
+        }
+      }
+    },
+    "バッチ文字起こし": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Batch Transcription"
+          }
+        }
+      }
+    },
+    "音声ファイルをドラッグ＆ドロップ、または選択して文字起こし": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Drag & drop audio files or select to transcribe"
+          }
+        }
+      }
+    },
+    "音声ファイルをドロップ": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Drop audio files here"
+          }
+        }
+      }
+    },
+    "ファイルを選択": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select Files"
+          }
+        }
+      }
+    },
+    "音声をダウンロード中...": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Downloading audio..."
+          }
+        }
+      }
+    },
+    "処理キュー": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Processing Queue"
+          }
+        }
+      }
+    },
+    "ファイルが追加されていません": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No files added"
+          }
+        }
+      }
+    },
+    "コピー済み": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copied"
+          }
+        }
+      }
+    },
+    "macOS 26.0 以上が必要です": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS 26.0 or later required"
+          }
+        }
+      }
+    },
+    "内部設定 (リリースビルドでは非表示)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Internal settings (hidden in release builds)"
+          }
+        }
+      }
+    },
+    "音声認識エンジン": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Speech Recognition Engine"
+          }
+        }
+      }
+    },
+    "モデル管理": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Model Management"
+          }
+        }
+      }
+    },
+    "使用中": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In Use"
+          }
+        }
+      }
+    },
+    "Deepgram API Key 設定済み": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deepgram API Key configured"
+          }
+        }
+      }
+    },
+    "デバッグ情報": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Debug Info"
+          }
+        }
+      }
+    },
+    "エンジン": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Engine"
+          }
+        }
+      }
+    },
+    "モデル": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Model"
+          }
+        }
+      }
+    },
+    "ステータス": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Status"
+          }
+        }
+      }
+    },
+    "準備状態": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ready State"
+          }
+        }
+      }
+    },
+    "ダウンロード済み": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Downloaded"
+          }
+        }
+      }
+    },
+    "再試行": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry"
+          }
+        }
+      }
+    },
+    "ダウンロード": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Download"
+          }
+        }
+      }
+    },
+    "Nice Voice を開く": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Nice Voice"
+          }
+        }
+      }
+    },
+    "終了": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quit"
+          }
+        }
+      }
+    },
+    "検出: %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Detected: %@"
+          }
+        }
+      }
+    },
+    "Deepgram API キーが未設定です": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deepgram API key not configured"
+          }
+        }
+      }
+    },
+    "準備完了 (Deepgram) - %@ キーを押して録音": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ready (Deepgram) - Press %@ to record"
+          }
+        }
+      }
+    },
+    "準備完了 (%@) - %@ キーを押して録音": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ready (%1$@) - Press %2$@ to record"
+          }
+        }
+      }
+    },
+    "エンジンを切り替え中...": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switching engine..."
+          }
+        }
+      }
+    },
+    "権限を確認中...": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checking permissions..."
+          }
+        }
+      }
+    },
+    "マイクの権限が必要です": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Microphone permission required"
+          }
+        }
+      }
+    },
+    "%@ サーバーを起動中...": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starting %@ server..."
+          }
+        }
+      }
+    },
+    "モデルのダウンロードが必要です": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Model download required"
+          }
+        }
+      }
+    },
+    "モデルをダウンロード中...": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Downloading model..."
+          }
+        }
+      }
+    },
+    "SpeechAnalyzer の初期化に失敗しました": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to initialize SpeechAnalyzer"
+          }
+        }
+      }
+    },
+    "SpeechAnalyzer を初期化中...": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Initializing SpeechAnalyzer..."
+          }
+        }
+      }
+    },
+    "準備完了 - %@ キーを押して録音": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ready - Press %@ to record"
+          }
+        }
+      }
+    },
+    "不正な環境が検出されました": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unauthorized environment detected"
+          }
+        }
+      }
+    },
+    "音声認識が初期化されていません": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Speech recognition not initialized"
+          }
+        }
+      }
+    },
+    "左 Shift": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Left Shift"
+          }
+        }
+      }
+    },
+    "右 Shift": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Right Shift"
+          }
+        }
+      }
+    },
+    "左 Control": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Left Control"
+          }
+        }
+      }
+    },
+    "右 Control": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Right Control"
+          }
+        }
+      }
+    },
+    "左 Option": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Left Option"
+          }
+        }
+      }
+    },
+    "右 Option": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Right Option"
+          }
+        }
+      }
+    },
+    "左 Command": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Left Command"
+          }
+        }
+      }
+    },
+    "右 Command": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Right Command"
+          }
+        }
+      }
+    },
+    "macOS 内蔵の音声認識。オフラインで動作し、遅延が少ない": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Built-in macOS speech recognition. Works offline with low latency"
+          }
+        }
+      }
+    },
+    "voxmlx-serve によるローカル推論。サーバーの起動が必要": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local inference via voxmlx-serve. Requires server startup"
+          }
+        }
+      }
+    },
+    "Qwen3-ASR-1.7B (MLX, ローカル推論)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen3-ASR-1.7B (MLX, local inference)"
+          }
+        }
+      }
+    },
+    "Deepgram Nova-3 (クラウド API, 高精度)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deepgram Nova-3 (Cloud API, high accuracy)"
+          }
+        }
+      }
+    },
+    "日本語": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Japanese"
+          }
+        }
+      }
+    },
+    "オーディオエンジンの起動に失敗しました": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to start audio engine"
+          }
+        }
+      }
+    },
+    "音声認識モデルをダウンロード中...": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Downloading speech recognition model..."
+          }
+        }
+      }
+    },
+    "モデルのダウンロードに失敗: %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Model download failed: %@"
+          }
+        }
+      }
+    },
+    "SpeechAnalyzer が初期化されていません": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SpeechAnalyzer not initialized"
+          }
+        }
+      }
+    },
+    "SpeechTranscriber の作成に失敗しました": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to create SpeechTranscriber"
+          }
+        }
+      }
+    },
+    "SpeechAnalyzer の作成に失敗しました": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to create SpeechAnalyzer"
+          }
+        }
+      }
+    },
+    "音声認識エラー: %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Speech recognition error: %@"
+          }
+        }
+      }
+    },
+    "待機中": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pending"
+          }
+        }
+      }
+    },
+    "処理中": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Processing"
+          }
+        }
+      }
+    },
+    "完了": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Completed"
+          }
+        }
+      }
+    },
+    "失敗": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed"
+          }
+        }
+      }
+    },
+    "ファイルを読み込み中...": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading file..."
+          }
+        }
+      }
+    },
+    "音声認識モデルを準備中...": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparing speech recognition model..."
+          }
+        }
+      }
+    },
+    "音声を処理中...": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Processing audio..."
+          }
+        }
+      }
+    },
+    "文字起こし中...": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transcribing..."
+          }
+        }
+      }
+    },
+    "完了処理中...": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finishing up..."
+          }
+        }
+      }
+    },
+    "文字起こし完了": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transcription complete"
+          }
+        }
+      }
+    },
+    "文字起こし失敗": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transcription failed"
+          }
+        }
+      }
+    },
+    "文字起こしが完了しました": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transcription completed"
+          }
+        }
+      }
+    },
+    "処理中にエラーが発生しました": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "An error occurred during processing"
+          }
+        }
+      }
+    },
+    "サーバーに接続中...": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connecting to server..."
+          }
+        }
+      }
+    },
+    "音声を送信中...": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sending audio..."
+          }
+        }
+      }
+    },
+    "音声形式が利用できません": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Audio format not available"
+          }
+        }
+      }
+    },
+    "音声認識エンジンの初期化に失敗しました": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to initialize speech recognition engine"
+          }
+        }
+      }
+    },
+    "ファイルの読み込みに失敗しました": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to load file"
+          }
+        }
+      }
+    },
+    "Deepgram に接続中...": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connecting to Deepgram..."
+          }
+        }
+      }
+    },
+    "Deepgram 接続完了": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connected to Deepgram"
+          }
+        }
+      }
+    },
+    "Deepgram WebSocket エラー: %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deepgram WebSocket error: %@"
+          }
+        }
+      }
+    },
+    "Deepgram エラー": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deepgram error"
+          }
+        }
+      }
+    },
+    "voxmlx エラー": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "voxmlx error"
+          }
+        }
+      }
+    },
+    "Deepgram に送信中...": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sending to Deepgram..."
+          }
+        }
+      }
+    },
+    "Deepgram の URL が無効です": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid Deepgram URL"
+          }
+        }
+      }
+    },
+    "Deepgram からの応答が無効です": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid response from Deepgram"
+          }
+        }
+      }
+    },
+    "Deepgram API エラー (%lld): %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deepgram API error (%1$lld): %2$@"
+          }
+        }
+      }
+    },
+    "Deepgram の応答を解析できませんでした": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to parse Deepgram response"
+          }
+        }
+      }
+    },
+    "Deepgram API キーが設定されていません。設定画面から入力してください": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deepgram API key not configured. Please enter it in Settings"
+          }
+        }
+      }
+    },
+    "voxmlx に接続中...": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connecting to voxmlx..."
+          }
+        }
+      }
+    },
+    "WebSocket エラー: %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WebSocket error: %@"
+          }
+        }
+      }
+    },
+    "voxmlx 接続完了": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connected to voxmlx"
+          }
+        }
+      }
+    },
+    "uvx が見つかりません。uv をインストールしてください": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "uvx not found. Please install uv"
+          }
+        }
+      }
+    },
+    "Server リソースが見つかりません": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server resources not found"
+          }
+        }
+      }
+    },
+    "%@ が異常終了しました (code: %lld)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ terminated abnormally (code: %2$lld)"
+          }
+        }
+      }
+    },
+    "%@ の起動に失敗しました: %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to start %1$@: %2$@"
+          }
+        }
+      }
+    },
+    "%@ を起動中...": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starting %@..."
+          }
+        }
+      }
+    },
+    "モデルを読み込み中... (初回はダウンロードに数分かかります)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading model... (first time may take a few minutes to download)"
+          }
+        }
+      }
+    },
+    "%@ が起動中にクラッシュしました": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ crashed during startup"
+          }
+        }
+      }
+    },
+    "%@ の起動がタイムアウトしました": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ startup timed out"
+          }
+        }
+      }
+    },
+    "hf コマンドが見つかりません。brew install huggingface-cli でインストールしてください": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "hf command not found. Install with: brew install huggingface-cli"
+          }
+        }
+      }
+    },
+    "ダウンロードを開始中...": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starting download..."
+          }
+        }
+      }
+    },
+    "ダウンロードに失敗しました (code: %lld)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Download failed (code: %lld)"
+          }
+        }
+      }
+    },
+    "ダウンロードの開始に失敗しました: %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to start download: %@"
+          }
+        }
+      }
+    },
+    "モデルの削除に失敗しました: %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to delete model: %@"
+          }
+        }
+      }
+    },
+    "ダウンロード中... %lld%%": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Downloading... %lld%%"
+          }
+        }
+      }
+    },
+    "ダウンロード中... %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Downloading... %@"
+          }
+        }
+      }
+    },
+    "yt-dlp が見つかりません。brew install yt-dlp でインストールしてください": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "yt-dlp not found. Install with: brew install yt-dlp"
+          }
+        }
+      }
+    },
+    "ダウンロード失敗: %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Download failed: %@"
+          }
+        }
+      }
+    },
+    "yt-dlp の出力からファイルパスを取得できませんでした": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not extract file path from yt-dlp output"
+          }
+        }
+      }
+    },
+    "非常に高い": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Very High"
+          }
+        }
+      }
+    },
+    "高い": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "High"
+          }
+        }
+      }
+    },
+    "中程度": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Medium"
+          }
+        }
+      }
+    },
+    "低い": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Low"
+          }
+        }
+      }
+    },
+    "非常に低い": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Very Low"
+          }
+        }
+      }
+    },
+    "声紋認証サービスが初期化されていません": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voice authentication service not initialized"
+          }
+        }
+      }
+    },
+    "声紋が登録されていません。先に声を登録してください": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No voiceprint registered. Please register your voice first"
+          }
+        }
+      }
+    },
+    "声紋の抽出に失敗しました": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to extract voiceprint"
+          }
+        }
+      }
+    },
+    "Nice Voice を開く...": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Nice Voice..."
           }
         }
       }

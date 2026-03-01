@@ -461,7 +461,7 @@ struct VoiceEnrollmentSection: View {
     private func startRecording() {
         guard !isRecording else { return }
         guard isReady else {
-            enrollmentStatus = .failed("声紋認証の準備が完了していません")
+            enrollmentStatus = .failed(String(localized: "声紋認証の準備が完了していません"))
             return
         }
 
@@ -470,7 +470,7 @@ struct VoiceEnrollmentSection: View {
         let inputFormat = inputNode.outputFormat(forBus: 0)
         let targetFormat = recordingFormat
         guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
-            enrollmentStatus = .failed("音声フォーマットの変換に失敗しました")
+            enrollmentStatus = .failed(String(localized: "音声フォーマットの変換に失敗しました"))
             debugLog("SpeakerVerification UI: converter creation failed")
             return
         }
@@ -520,7 +520,7 @@ struct VoiceEnrollmentSection: View {
             stopTimer()
             isRecording = false
             isPulseAnimating = false
-            enrollmentStatus = .failed("録音の開始に失敗しました")
+            enrollmentStatus = .failed(String(localized: "録音の開始に失敗しました"))
             debugLog("SpeakerVerification UI: recording start failed \(error)")
         }
     }
@@ -546,12 +546,12 @@ struct VoiceEnrollmentSection: View {
         }
 
         guard recordingDuration >= 3 else {
-            enrollmentStatus = .failed("3秒以上録音してください")
+            enrollmentStatus = .failed(String(localized: "3秒以上録音してください"))
             return
         }
 
         guard !capturedPCMData.isEmpty else {
-            enrollmentStatus = .failed("音声データを取得できませんでした")
+            enrollmentStatus = .failed(String(localized: "音声データを取得できませんでした"))
             return
         }
 
@@ -567,7 +567,7 @@ struct VoiceEnrollmentSection: View {
     @MainActor
     private func enrollRecordedData() async {
         guard let recordedData else {
-            enrollmentStatus = .failed("音声データがありません")
+            enrollmentStatus = .failed(String(localized: "音声データがありません"))
             return
         }
 
@@ -583,7 +583,7 @@ struct VoiceEnrollmentSection: View {
                 isEnrolled = SpeakerVerificationService.shared.isEnrolled
                 debugLog("SpeakerVerification UI: enrollment success")
             } else {
-                enrollmentStatus = .failed("声紋の登録に失敗しました")
+                enrollmentStatus = .failed(String(localized: "声紋の登録に失敗しました"))
                 debugLog("SpeakerVerification UI: enrollment returned false")
             }
         } catch {

@@ -189,10 +189,10 @@ struct DeveloperView: View {
                     gradientColors: [.green, .teal]
                 ) {
                     VStack(alignment: .leading, spacing: 8) {
-                        DebugInfoRow(label: "エンジン", value: selectedEngine.displayName)
-                        DebugInfoRow(label: "モデル", value: selectedEngine.hfModelName ?? selectedEngine.displayName)
-                        DebugInfoRow(label: "ステータス", value: appState.statusMessage)
-                        DebugInfoRow(label: "準備状態", value: appState.isReady ? "Ready" : "Not Ready")
+                        DebugInfoRow(label: String(localized: "エンジン"), value: selectedEngine.displayName)
+                        DebugInfoRow(label: String(localized: "モデル"), value: selectedEngine.hfModelName ?? selectedEngine.displayName)
+                        DebugInfoRow(label: String(localized: "ステータス"), value: appState.statusMessage)
+                        DebugInfoRow(label: String(localized: "準備状態"), value: appState.isReady ? "Ready" : "Not Ready")
 
                         Button {
                             let info = """

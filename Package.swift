@@ -4,6 +4,7 @@ import PackageDescription
 
 let package = Package(
     name: "NiceVoice",
+    defaultLocalization: "ja",
     platforms: [.macOS(.v26)],
     dependencies: [
         .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.7.9"),

@@ -16,10 +16,19 @@ struct BatchTranscriptionItem: Identifiable {
 }
 
 enum BatchTranscriptionStatus: String {
-    case pending = "待機中"
-    case processing = "処理中"
-    case completed = "完了"
-    case failed = "失敗"
+    case pending
+    case processing
+    case completed
+    case failed
+
+    var displayName: String {
+        switch self {
+        case .pending: return String(localized: "待機中")
+        case .processing: return String(localized: "処理中")
+        case .completed: return String(localized: "完了")
+        case .failed: return String(localized: "失敗")
+        }
+    }
 }
 
 @available(macOS 26.0, *)
@@ -45,6 +54,9 @@ final class BatchTranscriptionService: @unchecked Sendable {
         onProgress: @escaping (Double) -> Void,
         onStatusChange: @escaping (String) -> Void
     ) async throws -> String {
+        guard AuthManager.shared.verifyAuthIntegrity() else {
+            throw NSError(domain: "NiceVoice", code: 401, userInfo: [NSLocalizedDescriptionKey: String(localized: "サブスクリプションが必要です")])
+        }
         switch engine {
         case .speechAnalyzer:
             return try await transcribeWithSpeechAnalyzer(
@@ -94,7 +106,7 @@ final class BatchTranscriptionService: @unchecked Sendable {
             }
         }
 
-        onStatusChange("ファイルを読み込み中...")
+        onStatusChange(String(localized: "ファイルを読み込み中..."))
         onProgress(0.05)
 
         let audioFile = try AVAudioFile(forReading: url)
@@ -103,7 +115,7 @@ final class BatchTranscriptionService: @unchecked Sendable {
 
         debugLog("Audio file: \(url.lastPathComponent), format: \(processingFormat.sampleRate)Hz, \(processingFormat.channelCount)ch, frames: \(totalFrames)")
 
-        onStatusChange("音声認識モデルを準備中...")
+        onStatusChange(String(localized: "音声認識モデルを準備中..."))
         onProgress(0.1)
 
         var transcribers: [SpeechTranscriber] = []
@@ -118,7 +130,7 @@ final class BatchTranscriptionService: @unchecked Sendable {
         }
 
         if let downloader = try await AssetInventory.assetInstallationRequest(supporting: transcribers) {
-            onStatusChange("音声認識モデルをダウンロード中...")
+            onStatusChange(String(localized: "音声認識モデルをダウンロード中..."))
             try await downloader.downloadAndInstall()
         }
 
@@ -132,7 +144,7 @@ final class BatchTranscriptionService: @unchecked Sendable {
         let analyzer = SpeechAnalyzer(modules: transcribers)
         debugLog("SpeechAnalyzer created")
 
-        onStatusChange("音声を処理中...")
+        onStatusChange(String(localized: "音声を処理中..."))
         onProgress(0.2)
 
         let bufferSize: AVAudioFrameCount = 4096
@@ -253,13 +265,13 @@ final class BatchTranscriptionService: @unchecked Sendable {
             debugLog("analyzer.start() completed")
         }
 
-        onStatusChange("文字起こし中...")
+        onStatusChange(String(localized: "文字起こし中..."))
 
         try await analyzerTask.value
         debugLog("analyzerTask completed, calling finalize...")
 
         onProgress(0.9)
-        onStatusChange("完了処理中...")
+        onStatusChange(String(localized: "完了処理中..."))
 
         try await analyzer.finalizeAndFinishThroughEndOfInput()
         debugLog("finalizeAndFinishThroughEndOfInput completed")
@@ -268,7 +280,7 @@ final class BatchTranscriptionService: @unchecked Sendable {
         debugLog("resultsTask completed")
 
         onProgress(1.0)
-        onStatusChange("完了")
+        onStatusChange(String(localized: "完了"))
 
         debugLog("Batch transcription completed: \(transcriptionResult.count) chars, text: \(transcriptionResult)")
 
@@ -279,10 +291,10 @@ final class BatchTranscriptionService: @unchecked Sendable {
         let center = UNUserNotificationCenter.current()
 
         let content = UNMutableNotificationContent()
-        content.title = success ? "文字起こし完了" : "文字起こし失敗"
+        content.title = success ? String(localized: "文字起こし完了") : String(localized: "文字起こし失敗")
         content.body = success
-            ? "\(fileName) の文字起こしが完了しました（\(charCount)文字）"
-            : "\(fileName) の処理中にエラーが発生しました"
+            ? String(localized: "\(fileName) の文字起こしが完了しました（\(charCount)文字）")
+            : String(localized: "\(fileName) の処理中にエラーが発生しました")
         content.sound = .default
 
         let request = UNNotificationRequest(
@@ -313,7 +325,7 @@ final class BatchTranscriptionService: @unchecked Sendable {
             }
         }
 
-        onStatusChange("ファイルを読み込み中...")
+        onStatusChange(String(localized: "ファイルを読み込み中..."))
         onProgress(0.05)
 
         let audioFile = try AVAudioFile(forReading: url)
@@ -337,7 +349,7 @@ final class BatchTranscriptionService: @unchecked Sendable {
             debugLog("Audio converter created: \(processingFormat.sampleRate)Hz \(processingFormat.channelCount)ch -> \(sampleRate)Hz 1ch")
         }
 
-        onStatusChange("サーバーに接続中...")
+        onStatusChange(String(localized: "サーバーに接続中..."))
         onProgress(0.1)
 
         guard let wsURL = URL(string: wsEndpoint) else {
@@ -350,7 +362,7 @@ final class BatchTranscriptionService: @unchecked Sendable {
         let createdMsg = try await wsTask.receive()
         debugLog("WebSocket connected: \(createdMsg)")
 
-        onStatusChange("音声を送信中...")
+        onStatusChange(String(localized: "音声を送信中..."))
         onProgress(0.15)
 
         let bufferSize: AVAudioFrameCount = 4096
@@ -426,7 +438,7 @@ final class BatchTranscriptionService: @unchecked Sendable {
         }
 
         debugLog("Finished sending audio (\(framesRead) frames), sending commit...")
-        onStatusChange("文字起こし中...")
+        onStatusChange(String(localized: "文字起こし中..."))
 
         let commitMsg = "{\"type\":\"input_audio_buffer.commit\",\"final\":true}"
         try await wsTask.send(.string(commitMsg))
@@ -458,7 +470,7 @@ final class BatchTranscriptionService: @unchecked Sendable {
         wsTask.cancel(with: .normalClosure, reason: nil)
 
         onProgress(1.0)
-        onStatusChange("完了")
+        onStatusChange(String(localized: "完了"))
 
         debugLog("Local ASR batch transcription completed: \(fullText.count) chars, text: \(fullText)")
 
@@ -474,11 +486,11 @@ enum BatchTranscriptionError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .formatNotAvailable:
-            return "音声形式が利用できません"
+            return String(localized: "音声形式が利用できません")
         case .analyzerInitFailed:
-            return "音声認識エンジンの初期化に失敗しました"
+            return String(localized: "音声認識エンジンの初期化に失敗しました")
         case .fileReadFailed:
-            return "ファイルの読み込みに失敗しました"
+            return String(localized: "ファイルの読み込みに失敗しました")
         }
     }
 }

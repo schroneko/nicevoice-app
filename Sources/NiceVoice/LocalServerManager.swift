@@ -60,7 +60,7 @@ final class LocalServerManager {
         killExistingProcessOnPort()
 
         guard let uvxPath = findUvx() else {
-            let status = LocalServerStatus.error("uvx が見つかりません。uv をインストールしてください")
+            let status = LocalServerStatus.error(String(localized: "uvx が見つかりません。uv をインストールしてください"))
             debugLog("[\(serverCommand)] uvx not found in search paths")
             onStatusChange(status)
             return
@@ -69,7 +69,7 @@ final class LocalServerManager {
         guard let serverPath = Bundle.main.resourceURL?
             .appendingPathComponent("Server")
             .appendingPathComponent(serverPackagePath).path else {
-            let status = LocalServerStatus.error("Server リソースが見つかりません")
+            let status = LocalServerStatus.error(String(localized: "Server リソースが見つかりません"))
             debugLog("[\(serverCommand)] Server resource not found in app bundle")
             onStatusChange(status)
             return
@@ -114,7 +114,7 @@ final class LocalServerManager {
             if code != 0 && code != 15 {
                 debugLog("[\(self.serverCommand)] process exited with code \(code)")
                 DispatchQueue.main.async {
-                    self.onStatusChange(.error("\(self.serverCommand) が異常終了しました (code: \(code))"))
+                    self.onStatusChange(.error(String(localized: "\(self.serverCommand) が異常終了しました (code: \(code))")))
                 }
             }
         }
@@ -123,13 +123,13 @@ final class LocalServerManager {
             try proc.run()
         } catch {
             debugLog("[\(serverCommand)] failed to start process: \(error)")
-            onStatusChange(.error("\(serverCommand) の起動に失敗しました: \(error.localizedDescription)"))
+            onStatusChange(.error(String(localized: "\(serverCommand) の起動に失敗しました: \(error.localizedDescription)")))
             return
         }
 
         process = proc
         debugLog("[\(serverCommand)] process started (PID: \(proc.processIdentifier))")
-        onStatusChange(.starting("\(serverCommand) を起動中..."))
+        onStatusChange(.starting(String(localized: "\(serverCommand) を起動中...")))
         startHealthPolling()
     }
 
@@ -182,14 +182,14 @@ final class LocalServerManager {
                 if firstPoll {
                     firstPoll = false
                     await MainActor.run {
-                        self.onStatusChange(.starting("モデルを読み込み中... (初回はダウンロードに数分かかります)"))
+                        self.onStatusChange(.starting(String(localized: "モデルを読み込み中... (初回はダウンロードに数分かかります)")))
                     }
                 }
 
                 if !(self.process?.isRunning ?? false) {
                     debugLog("[\(self.serverCommand)] process died during startup")
                     await MainActor.run {
-                        self.onStatusChange(.error("\(self.serverCommand) が起動中にクラッシュしました"))
+                        self.onStatusChange(.error(String(localized: "\(self.serverCommand) が起動中にクラッシュしました")))
                     }
                     self.process = nil
                     return
@@ -207,7 +207,7 @@ final class LocalServerManager {
                     debugLog("[\(self.serverCommand)] startup timeout (\(Int(self.startupTimeout))s)")
                     self.stop()
                     await MainActor.run {
-                        self.onStatusChange(.error("\(self.serverCommand) の起動がタイムアウトしました"))
+                        self.onStatusChange(.error(String(localized: "\(self.serverCommand) の起動がタイムアウトしました")))
                     }
                     return
                 }
