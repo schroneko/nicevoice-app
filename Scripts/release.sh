@@ -43,6 +43,11 @@ echo "==> Patching Info.plist..."
 /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string Uses microphone for voice input" "${PLIST}" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c "Add :NSSpeechRecognitionUsageDescription string Converts speech to text" "${PLIST}" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c "Add :NSAppleEventsUsageDescription string Pastes text into input fields" "${PLIST}" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "${PLIST}" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" "${PLIST}" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLName string app.nicevoice.NiceVoice" "${PLIST}" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "${PLIST}" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string nicevoice" "${PLIST}" 2>/dev/null || true
 
 echo "==> Signing (ad-hoc)..."
 codesign -fs - --deep --options runtime --entitlements NiceVoice-release.entitlements "${APP}"
