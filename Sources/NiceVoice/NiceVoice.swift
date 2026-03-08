@@ -1746,7 +1746,7 @@ struct FloatingPanelView: View {
                 ErrorIndicatorView(message: appState.errorMessage ?? "")
             } else {
                 RecordingIndicatorView(
-                    level: appState.audioLevels.last ?? 0,
+                    currentLevel: { appState.audioLevels.last ?? 0 },
                     startDate: appState.recordingStartDate
                 )
             }
@@ -1766,7 +1766,7 @@ struct FloatingPanelView: View {
 }
 
 struct RecordingIndicatorView: View {
-    let level: Float
+    let currentLevel: () -> Float
     let startDate: Date?
 
     var body: some View {
@@ -1775,7 +1775,7 @@ struct RecordingIndicatorView: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.red)
 
-            BrailleMeterView(level: level)
+            BrailleMeterView(currentLevel: currentLevel)
 
             if let startDate {
                 RecordingTimerView(startDate: startDate)
@@ -1844,12 +1844,12 @@ final class BrailleMeterState {
 }
 
 struct BrailleMeterView: View {
-    let level: Float
+    let currentLevel: () -> Float
     @State private var state = BrailleMeterState()
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: Constants.BrailleMeter.updateInterval)) { _ in
-            Text(state.nextText(level: level))
+            Text(state.nextText(level: currentLevel()))
                 .font(.system(size: 16, weight: .medium, design: .monospaced))
                 .foregroundStyle(.red.opacity(0.85))
         }
