@@ -334,6 +334,7 @@ final class AppState {
     private var finalResultTimer: DispatchWorkItem?
     private var speakerCheckTimer: Timer?
     private var isEnrolledSpeakerActive = true
+    private var lastInteractiveLoginAt: Date?
     private var capturedTextElement: AXUIElement?
     private var insertionPointLocation: Int = 0
     private var inlinePreviewLength: Int = 0
@@ -755,8 +756,19 @@ final class AppState {
 
         guard AuthManager.shared.verifyAuthIntegrity() else {
             debugLog("startRecording blocked: not authorized")
-            errorMessage = AuthManager.shared.accessState.lockedMessage
-            floatingPanel?.show()
+            if AuthManager.shared.shouldStartInteractiveLogin {
+                let now = Date()
+                if lastInteractiveLoginAt == nil || now.timeIntervalSince(lastInteractiveLoginAt!) > 2 {
+                    lastInteractiveLoginAt = now
+                    statusMessage = String(localized: "ブラウザでログインページを開きました")
+                    AuthManager.shared.login()
+                }
+                errorMessage = nil
+                floatingPanel?.hide()
+            } else {
+                errorMessage = AuthManager.shared.accessState.lockedMessage
+                floatingPanel?.show()
+            }
             return
         }
 

@@ -38,6 +38,10 @@ final class AuthManager {
         accessState.isUnlocked
     }
 
+    var shouldStartInteractiveLogin: Bool {
+        !AppAccessPolicy.isPublicReleaseEnabled && !isLoggedIn
+    }
+
     @inline(__always)
     func verifyAuthIntegrity() -> Bool {
         if AppAccessPolicy.isPublicReleaseEnabled {
