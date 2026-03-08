@@ -191,12 +191,13 @@ struct AuthRequiredView: View {
                 )
 
             VStack(spacing: 8) {
-                Text("サブスクリプションが必要です")
+                Text("先行アクセスが必要です")
                     .font(.title2.weight(.semibold))
 
-                Text("この機能を使用するにはログインしてください")
+                Text("現在はぬこスク加入者向けの先行配布です。ログインして利用してください")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             }
 
             Button {
@@ -204,7 +205,7 @@ struct AuthRequiredView: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "person.crop.circle")
-                    Text("アカウントページへ")
+                    Text("ログインして確認")
                 }
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(.white)

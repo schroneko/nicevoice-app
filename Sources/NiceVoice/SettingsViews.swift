@@ -988,7 +988,9 @@ struct AccountStatusView: View {
         VStack(alignment: .leading, spacing: 16) {
             if !authManager.isLoggedIn {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("X (Twitter) アカウントでログインして利用を開始できます")
+                    Text(AppAccessPolicy.isPublicReleaseEnabled
+                         ? "現在は一般公開モードです。ログインしなくても利用できますが、先行特典やアカウント連携を使う場合はログインしてください"
+                         : "現在はぬこスク加入者向けの先行アクセスです。X アカウントでログインして利用を開始できます")
                         .font(.callout)
                         .foregroundStyle(.secondary)
 
@@ -1022,7 +1024,7 @@ struct AccountStatusView: View {
                                 .font(.title3)
                                 .fontWeight(.bold)
 
-                            if authManager.isSubscriber {
+                            if authManager.hasEarlyAccessEntitlement {
                                 Text("認証済み")
                                     .font(.caption2)
                                     .fontWeight(.semibold)
@@ -1034,14 +1036,14 @@ struct AccountStatusView: View {
                             }
                         }
 
-                        if authManager.isSubscriber {
-                            Text("サブスクライバー")
+                        if authManager.hasEarlyAccessEntitlement {
+                            Text("先行アクセス特典あり")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         } else {
-                            Text("サブスクリプションが必要です")
+                            Text(authManager.accessState.accountStatusText)
                                 .font(.caption)
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(AppAccessPolicy.isPublicReleaseEnabled ? Color.secondary : .orange)
                         }
                     }
 

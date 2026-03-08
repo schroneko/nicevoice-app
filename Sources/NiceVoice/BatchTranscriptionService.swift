@@ -55,7 +55,7 @@ final class BatchTranscriptionService: @unchecked Sendable {
         onStatusChange: @escaping (String) -> Void
     ) async throws -> String {
         guard AuthManager.shared.verifyAuthIntegrity() else {
-            throw NSError(domain: "NiceVoice", code: 401, userInfo: [NSLocalizedDescriptionKey: String(localized: "サブスクリプションが必要です")])
+            throw NSError(domain: "NiceVoice", code: 401, userInfo: [NSLocalizedDescriptionKey: AuthManager.shared.accessState.lockedMessage])
         }
         switch engine {
         case .speechAnalyzer:

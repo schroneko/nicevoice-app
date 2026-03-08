@@ -146,12 +146,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func initializeAuthManager() {
         Task {
             await AuthManager.shared.initialize()
-            debugLog("AuthManager initialized: subscriber=\(AuthManager.shared.isSubscriber)")
+            debugLog("AuthManager initialized: earlyAccess=\(AuthManager.shared.hasEarlyAccessEntitlement)")
         }
     }
 
     @objc private func authDidChange() {
-        debugLog("Auth changed: subscriber=\(AuthManager.shared.isSubscriber)")
+        debugLog("Auth changed: earlyAccess=\(AuthManager.shared.hasEarlyAccessEntitlement)")
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -749,7 +749,7 @@ final class AppState {
 
         guard AuthManager.shared.verifyAuthIntegrity() else {
             debugLog("startRecording blocked: not authorized")
-            errorMessage = String(localized: "サブスクリプションが必要です")
+            errorMessage = AuthManager.shared.accessState.lockedMessage
             floatingPanel?.show()
             return
         }

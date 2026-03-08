@@ -26,12 +26,23 @@ final class AuthManager {
     private let offlineGracePeriodDays = 7
     private static var hmacSalt: String { ObfuscatedStrings.hmacSalt }
 
-    var canUseApp: Bool {
+    var hasEarlyAccessEntitlement: Bool {
         isSubscriber
+    }
+
+    var accessState: AppAccessState {
+        AppAccessPolicy.accessState(hasEarlyAccess: hasEarlyAccessEntitlement)
+    }
+
+    var canUseApp: Bool {
+        accessState.isUnlocked
     }
 
     @inline(__always)
     func verifyAuthIntegrity() -> Bool {
+        if AppAccessPolicy.isPublicReleaseEnabled {
+            return true
+        }
         guard let signed: SignedAuthInfo = try? LocalStorage.shared.loadCodable(for: .authInfo) else {
             isSubscriber = false
             return false
@@ -70,7 +81,7 @@ final class AuthManager {
         }
 
         isInitialized = true
-        debugLog("AuthManager initialized: subscriber=\(isSubscriber), user=\(username ?? "none")")
+        debugLog("AuthManager initialized: earlyAccess=\(hasEarlyAccessEntitlement), public=\(AppAccessPolicy.isPublicReleaseEnabled), user=\(username ?? "none")")
     }
 
     func login() {
