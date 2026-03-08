@@ -16,7 +16,7 @@ enum Constants {
 
     enum BrailleMeter {
         static let symbols: [Character] = ["⠤", "⠴", "⠶", "⠷", "⡷", "⡿", "⣿"]
-        static let historyLength = 5
+        static let historyLength = 4
         static let updateInterval: TimeInterval = 0.06
         static let attack: Double = 0.80
         static let release: Double = 0.25

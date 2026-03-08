@@ -396,9 +396,11 @@ final class AppState {
                     }
                 },
                 onAudioLevel: { [weak self] level in
-                    guard let self else { return }
-                    self.audioLevels.removeFirst()
-                    self.audioLevels.append(level)
+                    DispatchQueue.main.async {
+                        guard let self else { return }
+                        self.audioLevels.removeFirst()
+                        self.audioLevels.append(level)
+                    }
                 },
                 onLanguageDetected: { [weak self] language in
                     DispatchQueue.main.async {
@@ -470,9 +472,11 @@ final class AppState {
                     }
                 },
                 onAudioLevel: { [weak self] level in
-                    guard let self else { return }
-                    self.audioLevels.removeFirst()
-                    self.audioLevels.append(level)
+                    DispatchQueue.main.async {
+                        guard let self else { return }
+                        self.audioLevels.removeFirst()
+                        self.audioLevels.append(level)
+                    }
                 }
             )
             isReady = true
@@ -555,9 +559,11 @@ final class AppState {
                     }
                 },
                 onAudioLevel: { [weak self] level in
-                    guard let self else { return }
-                    self.audioLevels.removeFirst()
-                    self.audioLevels.append(level)
+                    DispatchQueue.main.async {
+                        guard let self else { return }
+                        self.audioLevels.removeFirst()
+                        self.audioLevels.append(level)
+                    }
                 }
             )
             localServerManager = LocalServerManager(
@@ -1506,12 +1512,20 @@ final class AppState {
     }
 
     func clearHistory() {
+        for record in history {
+            if let path = record.audioPath {
+                try? FileManager.default.removeItem(atPath: path)
+            }
+        }
         history.removeAll()
         saveHistory()
         debugLog("🗑️ History cleared")
     }
 
     func removeHistoryItem(_ record: TranscriptionRecord) {
+        if let path = record.audioPath {
+            try? FileManager.default.removeItem(atPath: path)
+        }
         history.removeAll { $0.id == record.id }
         saveHistory()
         debugLog("🗑️ Removed from history: \(record.text.count) chars")

@@ -77,7 +77,10 @@ final class AuthManager {
         loadFromStorage()
 
         if let sessionId = LocalStorage.shared.getSessionId() {
-            await verifyIfNeeded(sessionId: sessionId)
+            await verifyIfNeeded(
+                sessionId: sessionId,
+                force: loadVerifiedAuthInfo() == nil
+            )
         }
 
         isInitialized = true
@@ -89,8 +92,6 @@ final class AuthManager {
     }
 
     func handleLoginCallback(sessionId: String) async {
-        LocalStorage.shared.saveSessionId(sessionId)
-
         let deviceId = LocalStorage.shared.getOrCreateDeviceId()
 
         do {
@@ -106,6 +107,7 @@ final class AuthManager {
                 lastVerified: Date()
             )
 
+            LocalStorage.shared.saveSessionId(sessionId)
             saveSignedAuthInfo(authInfo)
 
             await MainActor.run {
@@ -117,6 +119,9 @@ final class AuthManager {
             }
         } catch {
             debugLog("Login verification failed: \(error)")
+            if LocalStorage.shared.getSessionId() == sessionId {
+                LocalStorage.shared.delete(for: .sessionId)
+            }
         }
     }
 
@@ -192,8 +197,8 @@ final class AuthManager {
         return info.lastVerified < oneDayAgo
     }
 
-    private func verifyIfNeeded(sessionId: String) async {
-        guard shouldVerifyOnline() else { return }
+    private func verifyIfNeeded(sessionId: String, force: Bool = false) async {
+        guard force || shouldVerifyOnline() else { return }
 
         let deviceId = LocalStorage.shared.getOrCreateDeviceId()
 
@@ -213,6 +218,7 @@ final class AuthManager {
             saveSignedAuthInfo(authInfo)
 
             await MainActor.run {
+                self.isLoggedIn = true
                 self.username = response.username
                 self.isSubscriber = response.isSubscriber && response.deviceRegistered
                 self.deviceMismatch = response.error == "device_mismatch"
@@ -222,6 +228,7 @@ final class AuthManager {
                 self.isLoggedIn = false
                 self.isSubscriber = false
                 self.username = nil
+                self.deviceMismatch = false
             }
             LocalStorage.shared.clearAuth()
         } catch {
