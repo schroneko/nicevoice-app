@@ -38,6 +38,38 @@ set_plist_value() {
         /usr/libexec/PlistBuddy -c "Add :${key} ${type} ${value}" "${plist}"
 }
 
+sign_nested_code() {
+    local sign_identity="$1"
+    local frameworks_dir="$2"
+    local -a sign_args=(codesign -fs "${sign_identity}")
+
+    if [[ "${sign_identity}" != "-" ]]; then
+        sign_args+=(--options runtime)
+    fi
+
+    if [[ ! -d "${frameworks_dir}" ]]; then
+        return
+    fi
+
+    while IFS= read -r executable; do
+        "${sign_args[@]}" "${executable}"
+    done < <(
+        find "${frameworks_dir}" -type f -perm -111 \
+            | awk '{ print length($0) " " $0 }' \
+            | sort -rn \
+            | cut -d' ' -f2-
+    )
+
+    while IFS= read -r bundle; do
+        "${sign_args[@]}" "${bundle}"
+    done < <(
+        find "${frameworks_dir}" \( -name "*.app" -o -name "*.xpc" -o -name "*.framework" \) -type d \
+            | awk '{ print length($0) " " $0 }' \
+            | sort -rn \
+            | cut -d' ' -f2-
+    )
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --configuration)
@@ -95,6 +127,7 @@ cd "${ROOT_DIR}"
 PRODUCTS_DIR=".build/arm64-apple-macosx/${CONFIGURATION}"
 APP_PATH=".build/bundler/${PRODUCT}.app"
 PLIST_PATH="${APP_PATH}/Contents/Info.plist"
+FRAMEWORKS_DIR="${APP_PATH}/Contents/Frameworks"
 
 echo "==> Building ${PRODUCT} (${CONFIGURATION})..."
 if [[ "${CONFIGURATION}" == "debug" ]]; then
@@ -119,6 +152,17 @@ fi
 echo "==> Copying Server resources..."
 rm -rf "${APP_PATH}/Contents/Resources/Server"
 cp -R Server "${APP_PATH}/Contents/Resources/Server"
+
+if [[ -d "${PRODUCTS_DIR}/Sparkle.framework" ]]; then
+    echo "==> Copying Sparkle.framework..."
+    mkdir -p "${FRAMEWORKS_DIR}"
+    rm -rf "${FRAMEWORKS_DIR}/Sparkle.framework"
+    ditto "${PRODUCTS_DIR}/Sparkle.framework" "${FRAMEWORKS_DIR}/Sparkle.framework"
+
+    if ! otool -l "${APP_PATH}/Contents/MacOS/${PRODUCT}" | grep -q "@loader_path/../Frameworks"; then
+        install_name_tool -add_rpath "@loader_path/../Frameworks" "${APP_PATH}/Contents/MacOS/${PRODUCT}"
+    fi
+fi
 
 echo "==> Compiling localizations..."
 xcrun xcstringstool compile Sources/NiceVoice/Resources/Localizable.xcstrings -o "${APP_PATH}/Contents/Resources"
@@ -156,7 +200,12 @@ fi
 
 if [[ -n "${SIGN_IDENTITY}" ]]; then
     echo "==> Signing app..."
-    CODESIGN_ARGS=(codesign -fs "${SIGN_IDENTITY}" --deep --options runtime)
+    sign_nested_code "${SIGN_IDENTITY}" "${FRAMEWORKS_DIR}"
+
+    CODESIGN_ARGS=(codesign -fs "${SIGN_IDENTITY}")
+    if [[ "${SIGN_IDENTITY}" != "-" ]]; then
+        CODESIGN_ARGS+=(--options runtime)
+    fi
     if [[ -n "${ENTITLEMENTS}" ]]; then
         CODESIGN_ARGS+=(--entitlements "${ENTITLEMENTS}")
     fi
