@@ -128,6 +128,41 @@ PRODUCTS_DIR=".build/arm64-apple-macosx/${CONFIGURATION}"
 APP_PATH=".build/bundler/${PRODUCT}.app"
 PLIST_PATH="${APP_PATH}/Contents/Info.plist"
 FRAMEWORKS_DIR="${APP_PATH}/Contents/Frameworks"
+BINARY_PATH="${APP_PATH}/Contents/MacOS/${PRODUCT}"
+
+validate_bundle() {
+    local app_path="$1"
+    local binary_path="$2"
+    local frameworks_dir="$3"
+    local sign_identity="$4"
+
+    echo "==> Validating app bundle..."
+
+    if otool -L "${binary_path}" | grep -q "Sparkle.framework"; then
+        if [[ ! -d "${frameworks_dir}/Sparkle.framework" ]]; then
+            echo "Validation failed: Sparkle.framework is linked but not bundled." >&2
+            exit 1
+        fi
+
+        if ! otool -l "${binary_path}" | grep -q "@loader_path/../Frameworks"; then
+            echo "Validation failed: ${PRODUCT} is missing @loader_path/../Frameworks rpath." >&2
+            exit 1
+        fi
+
+        codesign --verify --strict "${frameworks_dir}/Sparkle.framework"
+    fi
+
+    if [[ -n "${sign_identity}" ]]; then
+        codesign --verify --deep --strict "${app_path}"
+
+        if [[ "${sign_identity}" == "-" ]]; then
+            if codesign -dvv "${app_path}" 2>&1 | grep -q "flags=.*runtime"; then
+                echo "Validation failed: ad-hoc signed debug app must not enable hardened runtime." >&2
+                exit 1
+            fi
+        fi
+    fi
+}
 
 echo "==> Building ${PRODUCT} (${CONFIGURATION})..."
 if [[ "${CONFIGURATION}" == "debug" ]]; then
@@ -218,6 +253,8 @@ if [[ -n "${COPY_DEST}" ]]; then
     rm -rf "${COPY_DEST}"
     cp -R "${APP_PATH}" "${COPY_DEST}"
 fi
+
+validate_bundle "${APP_PATH}" "${BINARY_PATH}" "${FRAMEWORKS_DIR}" "${SIGN_IDENTITY}"
 
 if [[ "${LAUNCH_AFTER_BUILD}" == "1" ]]; then
     TARGET_PATH="${COPY_DEST:-${APP_PATH}}"

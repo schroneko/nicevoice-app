@@ -6,7 +6,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 echo "Building and bundling..." >&2
 "${ROOT_DIR}/Scripts/package-app.sh" \
     --configuration debug \
-    --sign-identity "NiceVoice" \
+    --sign-identity "-" \
     --entitlements "NiceVoice.entitlements"
 
 echo "Restarting app..." >&2
