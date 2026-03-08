@@ -276,7 +276,7 @@ final class BatchTranscriptionService: @unchecked Sendable {
         try await analyzer.finalizeAndFinishThroughEndOfInput()
         debugLog("finalizeAndFinishThroughEndOfInput completed")
 
-        try await resultsTask.value
+        await resultsTask.value
         debugLog("resultsTask completed")
 
         onProgress(1.0)
