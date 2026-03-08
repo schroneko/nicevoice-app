@@ -46,6 +46,19 @@ enum NavigationPage: String, CaseIterable {
             return LinearGradient(colors: [.red, .orange], startPoint: .topLeading, endPoint: .bottomTrailing)
         }
     }
+
+    static var visiblePages: [NavigationPage] {
+        let basePages: [NavigationPage] = [
+            .transcription,
+            .history,
+            .dictionary,
+            .account,
+            .settings
+        ]
+        return AppFeatureFlags.isDeveloperToolsEnabled()
+            ? basePages + [.developer]
+            : basePages
+    }
 }
 
 struct MainWindowView: View {
@@ -67,7 +80,7 @@ struct MainWindowView: View {
         } else {
             NavigationSplitView {
                 VStack(spacing: 8) {
-                    ForEach(NavigationPage.allCases, id: \.self) { page in
+                    ForEach(NavigationPage.visiblePages, id: \.self) { page in
                         SidebarItem(
                             page: page,
                             isSelected: selectedPage == page,
@@ -231,4 +244,3 @@ struct MeshGradientBackground: View {
         .ignoresSafeArea()
     }
 }
-

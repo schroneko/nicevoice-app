@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>更新履歴 | NiceVoice</title>
+  <meta name="description" content="NiceVoice の更新履歴。各リリースで追加・改善・修正された内容をまとめています。">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="legal.css">
+</head>
+<body class="legal-body">
+  <div class="noise"></div>
+
+  <header class="header legal-header">
+    <nav class="nav">
+      <a href="index.html" class="logo">
+        <svg class="logo-icon" viewBox="0 0 32 32" fill="none">
+          <circle cx="16" cy="16" r="14" stroke="currentColor" stroke-width="2"/>
+          <path d="M12 20V12L20 16L12 20Z" fill="currentColor"/>
+        </svg>
+        <span>NiceVoice</span>
+      </a>
+      <div class="nav-links">
+        <a href="index.html">トップ</a>
+        <a href="privacy.html">プライバシー</a>
+        <a href="terms.html">利用規約</a>
+        <a href="commercial.html">特商法表記</a>
+      </div>
+      <button class="mobile-menu" aria-label="メニュー">
+        <span></span>
+        <span></span>
+      </button>
+    </nav>
+  </header>
+
+  <main class="legal-shell">
+    <section class="legal-hero">
+      <div>
+        <div class="legal-kicker"><span class="legal-dot"></span>Release Notes</div>
+        <h1 class="legal-title">
+          更新履歴
+          <span class="muted">何が変わったかを短く正確に</span>
+        </h1>
+        <p class="legal-summary">
+          NiceVoice の主要な追加機能、改善、修正をまとめています。アプリ内更新が有効な場合は、この内容に沿って順次配信されます。
+        </p>
+      </div>
+
+      <aside class="legal-meta">
+        <h2>Release Channel</h2>
+        <div class="meta-list">
+          <div class="meta-item">
+            <span>最新安定版</span>
+            <strong>0.1.4</strong>
+          </div>
+          <div class="meta-item">
+            <span>配布方法</span>
+            <strong>Homebrew Cask / ZIP</strong>
+          </div>
+          <div class="meta-item">
+            <span>更新方式</span>
+            <strong>Sparkle appcast 対応準備中</strong>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <div class="update-grid">
+      <section class="update-card">
+        <div class="update-tag">Latest</div>
+        <div class="update-head">
+          <h2>Version 0.1.4</h2>
+          <div class="update-date">2026-03-08</div>
+        </div>
+        <ul class="release-list">
+          <li>バンドル済みアプリでローカル ASR サーバーを扱う構成を整理</li>
+          <li>設定画面に環境診断、法務リンク、更新導線を追加</li>
+          <li>開発者タブをリリースビルドで非表示にする制御を追加</li>
+          <li>CI、テスト、配布スクリプトを整備</li>
+        </ul>
+      </section>
+
+      <section class="update-card">
+        <div class="update-head">
+          <h2>Version 0.1.3</h2>
+          <div class="update-date">2025-xx-xx</div>
+        </div>
+        <ul class="release-list">
+          <li>話者認証機能を追加</li>
+          <li>履歴・辞書・設定 UI を改善</li>
+          <li>Deepgram / ローカル ASR 切替機能を拡張</li>
+        </ul>
+      </section>
+
+      <section class="update-card">
+        <div class="update-head">
+          <h2>Version 0.1.2</h2>
+          <div class="update-date">2025-xx-xx</div>
+        </div>
+        <ul class="release-list">
+          <li>YouTube / ファイルのバッチ文字起こしを追加</li>
+          <li>ローカルモデル管理とダウンロード進捗表示を追加</li>
+        </ul>
+      </section>
+
+      <section class="update-card">
+        <div class="update-head">
+          <h2>Version 0.1.0</h2>
+          <div class="update-date">2025-xx-xx</div>
+        </div>
+        <ul class="release-list">
+          <li>Push-to-talk 音声入力の初期版を公開</li>
+          <li>辞書変換、フィラー除去、句読点補正を実装</li>
+        </ul>
+      </section>
+    </div>
+
+    <footer class="legal-footer">
+      <p>
+        関連文書:
+        <a href="privacy.html">プライバシーポリシー</a> /
+        <a href="terms.html">利用規約</a> /
+        <a href="commercial.html">特定商取引法に基づく表記</a>
+      </p>
+    </footer>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>

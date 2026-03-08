@@ -5,7 +5,8 @@ cask "nicevoice" do
   url "https://github.com/schroneko/homebrew-tap/releases/download/v#{version}/NiceVoice-#{version}.zip"
   name "NiceVoice"
   desc "Voice input app for macOS"
-  homepage "https://github.com/schroneko/nicevoice-app"
+  homepage "https://nicevoice.app"
+  auto_updates true
 
   depends_on formula: "uv"
 

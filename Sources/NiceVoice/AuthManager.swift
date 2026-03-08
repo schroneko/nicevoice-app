@@ -33,16 +33,24 @@ final class AuthManager {
     @inline(__always)
     func verifyAuthIntegrity() -> Bool {
         guard let signed: SignedAuthInfo = try? LocalStorage.shared.loadCodable(for: .authInfo) else {
+            isSubscriber = false
             return false
         }
         let expectedSignature = computeHMAC(signed.payload)
         guard signed.signature == expectedSignature else {
-            isSubscriber = false
+            invalidatePersistedAuth()
             return false
         }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         guard let info = try? decoder.decode(AuthInfo.self, from: signed.payload) else {
+            invalidatePersistedAuth()
+            return false
+        }
+        guard let storedSessionId = LocalStorage.shared.getSessionId(),
+              storedSessionId == info.sessionId else {
+            debugLog("Auth rejected: session mismatch between Keychain and signed payload")
+            invalidatePersistedAuth()
             return false
         }
         guard info.isSubscriber, info.lastVerified <= Date(), isWithinGracePeriod(info) else {
@@ -130,6 +138,13 @@ final class AuthManager {
 
     private func loadFromStorage() {
         guard let authInfo = loadVerifiedAuthInfo() else { return }
+
+        guard let storedSessionId = LocalStorage.shared.getSessionId(),
+              storedSessionId == authInfo.sessionId else {
+            debugLog("Auth rejected: stored session missing or mismatched")
+            invalidatePersistedAuth()
+            return
+        }
 
         isLoggedIn = true
         username = authInfo.username
@@ -243,6 +258,14 @@ final class AuthManager {
         }
 
         return nil
+    }
+
+    private func invalidatePersistedAuth() {
+        LocalStorage.shared.clearAuth()
+        isLoggedIn = false
+        isSubscriber = false
+        username = nil
+        deviceMismatch = false
     }
 
     private func signingKey() -> Data {

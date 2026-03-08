@@ -50,7 +50,7 @@ final class ModelDownloadManager {
         guard let hfPath = findHf() else {
             debugLog("[ModelDownload] hf CLI not found")
             DispatchQueue.main.async {
-                self.onStatusChange(.error(String(localized: "hf コマンドが見つかりません。brew install huggingface-cli でインストールしてください")))
+                self.onStatusChange(.error(CommandLineTool.hf.installHint))
             }
             return
         }
@@ -150,12 +150,7 @@ final class ModelDownloadManager {
     }
 
     private func findHf() -> String? {
-        for path in hfSearchPaths {
-            if FileManager.default.isExecutableFile(atPath: path) {
-                return path
-            }
-        }
-        return nil
+        CommandLineTool.hf.resolvedURL(additionalAbsolutePaths: hfSearchPaths)?.path
     }
 
     private func handleProgressOutput(_ output: String) {

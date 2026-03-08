@@ -1,48 +1,16 @@
 #!/bin/bash
-set -o pipefail
+set -euo pipefail
 
-echo "Building (step 1/2: compile)..." >&2
-if ! swift build --product NiceVoice 2>&1 | grep -v "disk I/O error"; then
-    echo "Build failed" >&2
-    exit 1
-fi
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
-if [ ! -f .build/debug/NiceVoice ]; then
-    echo "Build output not found" >&2
-    exit 1
-fi
-
-echo "Building (step 2/2: bundle)..." >&2
-mint run stackotter/swift-bundler bundle --skip-build --products-directory .build/arm64-apple-macosx/debug 2>&1 | grep -v "disk I/O error" || true
-
-if [ ! -d .build/bundler/NiceVoice.app ]; then
-    echo "Bundle not created" >&2
-    exit 1
-fi
-
-echo "Copying Server resources..." >&2
-cp -R Server .build/bundler/NiceVoice.app/Contents/Resources/Server
-
-echo "Compiling localizations..." >&2
-xcrun xcstringstool compile Sources/NiceVoice/Resources/Localizable.xcstrings -o .build/bundler/NiceVoice.app/Contents/Resources
-
-echo "Patching Info.plist..." >&2
-PLIST=".build/bundler/NiceVoice.app/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string app.nicevoice.NiceVoice" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier app.nicevoice.NiceVoice" "$PLIST"
-/usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string 音声入力のためにマイクを使用します" "$PLIST" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :NSSpeechRecognitionUsageDescription string 音声をテキストに変換するために使用します" "$PLIST" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :NSAppleEventsUsageDescription string テキストを入力欄に貼り付けるために使用します" "$PLIST" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "$PLIST" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" "$PLIST" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLName string app.nicevoice.NiceVoice" "$PLIST" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "$PLIST" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string nicevoice" "$PLIST" 2>/dev/null || true
-
-echo "Signing..." >&2
-codesign -fs "NiceVoice" --deep --options runtime --entitlements NiceVoice.entitlements .build/bundler/NiceVoice.app
+echo "Building and bundling..." >&2
+"${ROOT_DIR}/Scripts/package-app.sh" \
+    --configuration debug \
+    --sign-identity "NiceVoice" \
+    --entitlements "NiceVoice.entitlements"
 
 echo "Restarting app..." >&2
 killall -9 NiceVoice 2>/dev/null || true
-open .build/bundler/NiceVoice.app
+open "${ROOT_DIR}/.build/bundler/NiceVoice.app"
 
 echo "Build verified and app restarted." >&2

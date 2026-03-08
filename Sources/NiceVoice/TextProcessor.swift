@@ -32,6 +32,7 @@ struct TextProcessor {
         ("API機", "APIキー"),
         ("クラウドフレア", "Cloudflare"),
         ("アンソロピック", "Anthropic"),
+        ("反角", "半角"),
     ]
 
     private static let sentenceEndings = ["ました", "ません", "でした"]
@@ -79,6 +80,7 @@ struct TextProcessor {
         result = removeJapaneseWordSpaces(from: result)
         result = removeSpacesBeforePunctuation(from: result)
         result = applyDictionaryReplacements(to: result)
+        result = normalizeJapanesePunctuation(in: result)
         result = removeTrailingRepetitions(from: result)
         if fillerSettings.addPunctuation {
             result = insertSentenceEndPunctuation(in: result)
@@ -459,6 +461,13 @@ struct TextProcessor {
         let afterParticle = text.index(after: index)
         if afterParticle >= text.endIndex { return true }
         return isPunctuation(text[afterParticle])
+    }
+
+    private func normalizeJapanesePunctuation(in text: String) -> String {
+        var result = text
+        result = result.replacingOccurrences(of: "?", with: "？")
+        result = result.replacingOccurrences(of: "!", with: "！")
+        return result
     }
 
     private func isPunctuation(_ char: Character) -> Bool {

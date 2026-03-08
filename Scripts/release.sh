@@ -5,7 +5,6 @@ VERSION="${1:?Usage: ./Scripts/release.sh <version>}"
 PRODUCT="NiceVoice"
 ARCHIVE="${PRODUCT}-${VERSION}.zip"
 APP=".build/bundler/${PRODUCT}.app"
-PLIST="${APP}/Contents/Info.plist"
 HOMEBREW_TAP_DIR="${HOME}/Sync/homebrew-tap"
 CASK_FILE="${HOMEBREW_TAP_DIR}/Casks/nicevoice.rb"
 NICEVOICE_DIR="$(pwd)"
@@ -14,46 +13,25 @@ echo "==> Updating Bundler.toml version to ${VERSION}..."
 sed -i '' "s/^version = '.*'/version = '${VERSION}'/" Bundler.toml
 
 echo "==> Building ${PRODUCT} v${VERSION} (release)..."
-swift build -c release --product "${PRODUCT}" 2>&1 | grep -v "disk I/O error"
-
-if [ ! -f ".build/release/${PRODUCT}" ]; then
-    echo "Build output not found"
-    exit 1
-fi
-
-echo "==> Bundling..."
-mint run stackotter/swift-bundler bundle --skip-build --products-directory .build/arm64-apple-macosx/release 2>&1 | grep -v "disk I/O error" || true
-
-if [ ! -d "${APP}" ]; then
-    echo "Bundle not created"
-    exit 1
-fi
-
-echo "==> Copying Server resources..."
-cp -R Server "${APP}/Contents/Resources/Server"
-
-echo "==> Compiling localizations..."
-xcrun xcstringstool compile Sources/NiceVoice/Resources/Localizable.xcstrings -o "${APP}/Contents/Resources"
-
-echo "==> Patching Info.plist..."
-/usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string app.nicevoice.NiceVoice" "${PLIST}" 2>/dev/null || \
-    /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier app.nicevoice.NiceVoice" "${PLIST}"
-/usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string ${VERSION}" "${PLIST}" 2>/dev/null || \
-    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION}" "${PLIST}"
-/usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string Uses microphone for voice input" "${PLIST}" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :NSSpeechRecognitionUsageDescription string Converts speech to text" "${PLIST}" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :NSAppleEventsUsageDescription string Pastes text into input fields" "${PLIST}" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "${PLIST}" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" "${PLIST}" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLName string app.nicevoice.NiceVoice" "${PLIST}" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "${PLIST}" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string nicevoice" "${PLIST}" 2>/dev/null || true
-
-echo "==> Signing (ad-hoc)..."
-codesign -fs - --deep --options runtime --entitlements NiceVoice-release.entitlements "${APP}"
+"${NICEVOICE_DIR}/Scripts/package-app.sh" \
+    --configuration release \
+    --version "${VERSION}" \
+    --sign-identity "${NICEVOICE_SIGN_IDENTITY:--}" \
+    --entitlements "NiceVoice-release.entitlements"
 
 echo "==> Creating ${ARCHIVE}..."
+rm -f "${ARCHIVE}"
 ditto -c -k --keepParent "${APP}" "${ARCHIVE}"
+
+if [[ "${NICEVOICE_NOTARIZE:-0}" == "1" ]]; then
+    echo "==> Notarizing archive..."
+    "${NICEVOICE_DIR}/Scripts/notarize.sh" "${ARCHIVE}" "${APP}"
+fi
+
+if [[ "${NICEVOICE_GENERATE_APPCAST:-0}" == "1" ]]; then
+    echo "==> Generating appcast..."
+    "${NICEVOICE_DIR}/Scripts/generate-appcast.sh" "${NICEVOICE_UPDATES_DIR:-${NICEVOICE_DIR}/Updates}" "${ARCHIVE}"
+fi
 
 SHA=$(shasum -a 256 "${ARCHIVE}" | cut -d' ' -f1)
 

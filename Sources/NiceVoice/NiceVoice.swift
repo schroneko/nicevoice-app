@@ -29,6 +29,7 @@ extension Notification.Name {
 struct NiceVoiceApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @AppStorage("appLanguage") private var appLanguageRaw = AppLanguage.system.rawValue
+    @StateObject private var updateManager = AppUpdateManager.shared
 
     private var resolvedLocale: Locale {
         let lang = AppLanguage(rawValue: appLanguageRaw) ?? .system
@@ -42,6 +43,14 @@ struct NiceVoiceApp: App {
                 .id(appLanguageRaw)
         }
         .defaultSize(width: 800, height: 600)
+        .commands {
+            CommandGroup(after: .appInfo) {
+                Button(updateManager.primaryActionTitle) {
+                    updateManager.performPrimaryAction()
+                }
+                .keyboardShortcut("u", modifiers: [.command, .option])
+            }
+        }
     }
 }
 
@@ -1752,8 +1761,7 @@ struct RecordingIndicatorView: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.red)
 
-            FluidGlowView(level: level)
-                .frame(width: 80, height: 28)
+            BrailleMeterView(level: level)
 
             if let startDate {
                 RecordingTimerView(startDate: startDate)
@@ -1779,73 +1787,57 @@ struct RecordingTimerView: View {
     }
 }
 
-struct FluidGlowView: View {
-    let level: Float
-    @State private var smoothedLevel: CGFloat = 0
+final class BrailleMeterState {
+    private var history: [Character]
+    private var noiseEma: Double = 0.02
+    private var env: Double = 0.0
 
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { timeline in
-            Canvas { context, size in
-                let time = timeline.date.timeIntervalSinceReferenceDate
-                drawFluidGlow(context: context, size: size, time: time)
-            }
-        }
-        .onChange(of: level) { _, newLevel in
-            withAnimation(.spring(response: 0.15, dampingFraction: 0.7)) {
-                let scaled = CGFloat(newLevel) * Constants.Waveform.amplificationFactor
-                smoothedLevel = Constants.Waveform.minAmplitude + min(1.0 - Constants.Waveform.minAmplitude, scaled)
-            }
-        }
+    init() {
+        history = Array(
+            repeating: Constants.BrailleMeter.symbols[0],
+            count: Constants.BrailleMeter.historyLength
+        )
     }
 
-    private func drawFluidGlow(context: GraphicsContext, size: CGSize, time: Double) {
-        let intensity = smoothedLevel
-        let speed = 1.2
+    func nextText(level: Float) -> String {
+        let symbols = Constants.BrailleMeter.symbols
+        let latestPeak = Double(level)
 
-        let blobs: [(color: Color, xPhase: Double, yPhase: Double, scale: Double)] = [
-            (.red, 0.0, 0.5, 1.0),
-            (.orange, 2.1, 1.3, 0.8),
-            (.pink, 4.2, 2.6, 0.9),
-        ]
-
-        var glowContext = context
-        glowContext.addFilter(.blur(radius: 12))
-        glowContext.opacity = 0.7 + Double(intensity) * 0.3
-
-        for blob in blobs {
-            let baseSize = size.height * (0.5 + Double(intensity) * 0.5) * blob.scale
-            let cx = size.width * (0.5 + 0.3 * sin(time * speed + blob.xPhase))
-            let cy = size.height * (0.5 + 0.2 * cos(time * speed * 0.8 + blob.yPhase))
-            let rect = CGRect(
-                x: cx - baseSize * 0.6,
-                y: cy - baseSize * 0.5,
-                width: baseSize * 1.2,
-                height: baseSize
-            )
-            let gradient = Gradient(colors: [blob.color.opacity(0.8), blob.color.opacity(0)])
-            glowContext.fill(
-                Path(ellipseIn: rect),
-                with: .radialGradient(gradient, center: CGPoint(x: cx, y: cy), startRadius: 0, endRadius: baseSize * 0.6)
-            )
+        if latestPeak > env {
+            env = Constants.BrailleMeter.attack * latestPeak
+                + (1.0 - Constants.BrailleMeter.attack) * env
+        } else {
+            env = Constants.BrailleMeter.release * latestPeak
+                + (1.0 - Constants.BrailleMeter.release) * env
         }
 
-        var coreContext = context
-        coreContext.opacity = 0.9
-        for blob in blobs {
-            let baseSize = size.height * (0.3 + Double(intensity) * 0.3) * blob.scale
-            let cx = size.width * (0.5 + 0.25 * sin(time * speed * 1.1 + blob.xPhase + 0.5))
-            let cy = size.height * (0.5 + 0.15 * cos(time * speed * 0.9 + blob.yPhase + 0.5))
-            let rect = CGRect(
-                x: cx - baseSize * 0.5,
-                y: cy - baseSize * 0.5,
-                width: baseSize,
-                height: baseSize
-            )
-            let gradient = Gradient(colors: [blob.color.opacity(0.6), blob.color.opacity(0)])
-            coreContext.fill(
-                Path(ellipseIn: rect),
-                with: .radialGradient(gradient, center: CGPoint(x: cx, y: cy), startRadius: 0, endRadius: baseSize * 0.5)
-            )
+        let rmsApprox = env * 0.7
+        noiseEma = (1.0 - Constants.BrailleMeter.alphaNoiseFloor) * noiseEma
+            + Constants.BrailleMeter.alphaNoiseFloor * rmsApprox
+        let refLevel = max(noiseEma, 0.01)
+        let fastSignal = 0.8 * latestPeak + 0.2 * env
+        let raw = max(fastSignal / (refLevel * 2.0), 0.0)
+        let k = 1.6
+        let compressed = min(log1p(raw) / log1p(k), 1.0)
+        let maxIdx = Double(symbols.count - 1)
+        let idx = Int(min(max((compressed * maxIdx).rounded(), 0), maxIdx))
+
+        history.removeFirst()
+        history.append(symbols[idx])
+
+        return String(history)
+    }
+}
+
+struct BrailleMeterView: View {
+    let level: Float
+    @State private var state = BrailleMeterState()
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: Constants.BrailleMeter.updateInterval)) { _ in
+            Text(state.nextText(level: level))
+                .font(.system(size: 16, weight: .medium, design: .monospaced))
+                .foregroundStyle(.red.opacity(0.85))
         }
     }
 }
@@ -1910,4 +1902,3 @@ struct MenuBarView: View {
         .frame(width: 200)
     }
 }
-

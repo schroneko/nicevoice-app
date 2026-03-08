@@ -70,7 +70,7 @@ struct SettingsContentView: View {
     @AppStorage("shortcutKey") private var shortcutKeyRaw = ShortcutKey.fn.rawValue
     @AppStorage("appLanguage") private var appLanguageRaw = AppLanguage.system.rawValue
     @State private var fillerSettings: FillerSettings
-    @State private var sectionAnimations: [Bool] = [false, false, false, false, false]
+    @State private var sectionAnimations: [Bool] = Array(repeating: false, count: 8)
 
     private var selectedShortcutKey: ShortcutKey {
         ShortcutKey(rawValue: shortcutKeyRaw) ?? .fn
@@ -103,6 +103,26 @@ struct SettingsContentView: View {
                 }
                 .opacity(sectionAnimations[0] ? 1 : 0)
                 .offset(y: sectionAnimations[0] ? 0 : 16)
+
+                SettingsSection(
+                    title: "環境診断",
+                    icon: "wrench.and.screwdriver.fill",
+                    gradientColors: [.orange, .yellow]
+                ) {
+                    EnvironmentDiagnosticsContentView()
+                }
+                .opacity(sectionAnimations[1] ? 1 : 0)
+                .offset(y: sectionAnimations[1] ? 0 : 16)
+
+                SettingsSection(
+                    title: "アップデート",
+                    icon: "arrow.triangle.2.circlepath.circle.fill",
+                    gradientColors: [.blue, .indigo]
+                ) {
+                    UpdateSettingsContentView()
+                }
+                .opacity(sectionAnimations[2] ? 1 : 0)
+                .offset(y: sectionAnimations[2] ? 0 : 16)
 
                 SettingsSection(
                     title: "一般",
@@ -169,8 +189,8 @@ struct SettingsContentView: View {
                         }
                     }
                 }
-                .opacity(sectionAnimations[1] ? 1 : 0)
-                .offset(y: sectionAnimations[1] ? 0 : 16)
+                .opacity(sectionAnimations[3] ? 1 : 0)
+                .offset(y: sectionAnimations[3] ? 0 : 16)
 
                 SettingsSection(
                     title: "書き起こし調整",
@@ -197,8 +217,8 @@ struct SettingsContentView: View {
                         appState.updateFillerSettings(fillerSettings)
                     }
                 }
-                .opacity(sectionAnimations[2] ? 1 : 0)
-                .offset(y: sectionAnimations[2] ? 0 : 16)
+                .opacity(sectionAnimations[4] ? 1 : 0)
+                .offset(y: sectionAnimations[4] ? 0 : 16)
 
                 SettingsSection(
                     title: "フィラー除去",
@@ -214,8 +234,8 @@ struct SettingsContentView: View {
                         appState.updateFillerSettings(fillerSettings)
                     }
                 }
-                .opacity(sectionAnimations[3] ? 1 : 0)
-                .offset(y: sectionAnimations[3] ? 0 : 16)
+                .opacity(sectionAnimations[5] ? 1 : 0)
+                .offset(y: sectionAnimations[5] ? 0 : 16)
 
                 SettingsSection(
                     title: "声紋認証",
@@ -224,8 +244,18 @@ struct SettingsContentView: View {
                 ) {
                     VoiceEnrollmentSection()
                 }
-                .opacity(sectionAnimations[4] ? 1 : 0)
-                .offset(y: sectionAnimations[4] ? 0 : 16)
+                .opacity(sectionAnimations[6] ? 1 : 0)
+                .offset(y: sectionAnimations[6] ? 0 : 16)
+
+                SettingsSection(
+                    title: "サポート",
+                    icon: "doc.text.fill",
+                    gradientColors: [.mint, .blue]
+                ) {
+                    SupportLinksContentView()
+                }
+                .opacity(sectionAnimations[7] ? 1 : 0)
+                .offset(y: sectionAnimations[7] ? 0 : 16)
 
                 Spacer(minLength: 20)
             }

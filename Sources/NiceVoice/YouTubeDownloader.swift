@@ -8,7 +8,7 @@ enum YouTubeDownloadError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .ytDlpNotFound:
-            return String(localized: "yt-dlp が見つかりません。brew install yt-dlp でインストールしてください")
+            return CommandLineTool.ytDlp.installHint
         case .downloadFailed(let message):
             return String(localized: "ダウンロード失敗: \(message)")
         case .invalidOutput:
@@ -23,11 +23,11 @@ final class YouTubeDownloader {
     private init() {}
 
     func isAvailable() -> Bool {
-        findYtDlp() != nil
+        resolvedExecutablePath() != nil
     }
 
     func download(url: String, outputDir: URL) async throws -> URL {
-        guard let ytDlpPath = findYtDlp() else {
+        guard let ytDlpPath = resolvedExecutablePath() else {
             throw YouTubeDownloadError.ytDlpNotFound
         }
 
@@ -82,12 +82,11 @@ final class YouTubeDownloader {
         }
     }
 
-    private func findYtDlp() -> String? {
-        let paths = [
-            "/opt/homebrew/bin/yt-dlp",
-            "/usr/local/bin/yt-dlp",
-            "\(FileManager.default.homeDirectoryForCurrentUser.path)/.local/bin/yt-dlp"
-        ]
-        return paths.first { FileManager.default.fileExists(atPath: $0) }
+    func installationHint() -> String {
+        CommandLineTool.ytDlp.installHint
+    }
+
+    private func resolvedExecutablePath() -> String? {
+        CommandLineTool.ytDlp.resolvedURL()?.path
     }
 }

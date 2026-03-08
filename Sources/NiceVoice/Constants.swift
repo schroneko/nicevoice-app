@@ -14,11 +14,13 @@ enum Constants {
         static let finalizationWaitMilliseconds: UInt64 = 500
     }
 
-    enum Waveform {
-        static let minAmplitude: CGFloat = 0.08
-        static let amplificationFactor: CGFloat = 15.0
-        static let animationSpeed: Double = 2.5
-        static let maxAmplitudeRatio: CGFloat = 0.48
+    enum BrailleMeter {
+        static let symbols: [Character] = ["⠤", "⠴", "⠶", "⠷", "⡷", "⡿", "⣿"]
+        static let historyLength = 5
+        static let updateInterval: TimeInterval = 0.06
+        static let attack: Double = 0.80
+        static let release: Double = 0.25
+        static let alphaNoiseFloor: Double = 0.05
     }
 
     enum Timing {

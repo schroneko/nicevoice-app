@@ -555,7 +555,7 @@ struct BatchTranscriptionView: View {
         youtubeError = nil
 
         guard YouTubeDownloader.shared.isAvailable() else {
-            youtubeError = String(localized: "yt-dlp が見つかりません。brew install yt-dlp でインストールしてください")
+            youtubeError = YouTubeDownloader.shared.installationHint()
             return
         }
 

@@ -60,16 +60,14 @@ final class LocalServerManager {
         killExistingProcessOnPort()
 
         guard let uvxPath = findUvx() else {
-            let status = LocalServerStatus.error(String(localized: "uvx が見つかりません。uv をインストールしてください"))
+            let status = LocalServerStatus.error(CommandLineTool.uvx.installHint)
             debugLog("[\(serverCommand)] uvx not found in search paths")
             onStatusChange(status)
             return
         }
 
-        guard let serverPath = Bundle.main.resourceURL?
-            .appendingPathComponent("Server")
-            .appendingPathComponent(serverPackagePath).path else {
-            let status = LocalServerStatus.error(String(localized: "Server リソースが見つかりません"))
+        guard let serverPath = ServerResourceLocator.packageDirectory(relativePath: serverPackagePath)?.path else {
+            let status = LocalServerStatus.error(String(localized: "Server リソースが見つかりません。`Scripts/package-app.sh` でアプリを再バンドルしてください"))
             debugLog("[\(serverCommand)] Server resource not found in app bundle")
             onStatusChange(status)
             return
@@ -162,12 +160,7 @@ final class LocalServerManager {
     }
 
     private func findUvx() -> String? {
-        for path in uvxSearchPaths {
-            if FileManager.default.isExecutableFile(atPath: path) {
-                return path
-            }
-        }
-        return nil
+        CommandLineTool.uvx.resolvedURL(additionalAbsolutePaths: uvxSearchPaths)?.path
     }
 
     private func startHealthPolling() {

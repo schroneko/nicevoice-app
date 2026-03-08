@@ -1,16 +1,12 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
-cd "$(dirname "$0")/.."
-
-swift build --product NiceVoice || true
-mint run stackotter/swift-bundler bundle --skip-build --products-directory .build/arm64-apple-macosx/debug
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 killall -9 NiceVoice 2>/dev/null || true
 
-codesign -fs "NiceVoice" --deep .build/bundler/NiceVoice.app
-
-rm -rf /Applications/NiceVoice.app
-cp -R .build/bundler/NiceVoice.app /Applications/
-
-open /Applications/NiceVoice.app
+"${ROOT_DIR}/Scripts/package-app.sh" \
+    --configuration debug \
+    --sign-identity "NiceVoice" \
+    --copy-to "/Applications/NiceVoice.app" \
+    --launch
