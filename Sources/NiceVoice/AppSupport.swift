@@ -148,7 +148,7 @@ enum SupportLink: String, CaseIterable, Identifiable {
         case .updates: return "最新のリリース内容と更新状況"
         case .privacyPolicy: return "保存データと外部送信先の取り扱い"
         case .termsOfService: return "利用条件と禁止事項"
-        case .commercialDisclosure: return "販売条件・提供時期・返金方針"
+        case .commercialDisclosure: return "現在の提供形態と問い合わせ先"
         case .supportEmail: return "不具合報告やサポートへの連絡先"
         }
     }

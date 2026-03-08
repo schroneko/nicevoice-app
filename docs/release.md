@@ -44,4 +44,5 @@ NICEVOICE_GENERATE_APPCAST=1 \
 - `Scripts/package-app.sh` is now the single path that handles bundling, Server resource copying, localization compilation, plist patching, and Sparkle plist injection.
 - `Scripts/notarize.sh` submits the generated zip and staples the app when an app path is provided.
 - `Scripts/generate-appcast.sh` expects Sparkle's `generate_appcast` tool either in `SPARKLE_BIN_DIR`, on `PATH`, or under `.build/checkouts/Sparkle/bin`.
+- Access mode changes are documented in [access-modes.md](/Users/username/Sync/nicevoice-app/docs/access-modes.md).
 - Update the public operator information in [commercial.html](/Users/username/Sync/nicevoice-app/landing/commercial.html) before publishing the legal pages.

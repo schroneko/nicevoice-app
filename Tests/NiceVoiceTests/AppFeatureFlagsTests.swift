@@ -31,4 +31,18 @@ struct AppFeatureFlagsTests {
 
         #expect(isEnabled == false)
     }
+
+    @Test
+    func accessPolicyMatchesCurrentMode() {
+        let locked = AppAccessPolicy.accessState(hasEarlyAccess: false)
+        let unlocked = AppAccessPolicy.accessState(hasEarlyAccess: true)
+
+        if AppAccessPolicy.isPublicReleaseEnabled {
+            #expect(locked == .publicRelease)
+            #expect(unlocked == .publicRelease)
+        } else {
+            #expect(locked == .earlyAccessRequired)
+            #expect(unlocked == .earlyAccessGranted)
+        }
+    }
 }
