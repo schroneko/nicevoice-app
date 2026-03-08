@@ -57,8 +57,6 @@ final class LocalServerManager {
     func start() {
         guard !isRunning else { return }
 
-        killExistingProcessOnPort()
-
         guard let uvxPath = findUvx() else {
             let status = LocalServerStatus.error(CommandLineTool.uvx.installHint)
             debugLog("[\(serverCommand)] uvx not found in search paths")
@@ -70,6 +68,14 @@ final class LocalServerManager {
             let status = LocalServerStatus.error(String(localized: "Server リソースが見つかりません。`Scripts/package-app.sh` でアプリを再バンドルしてください"))
             debugLog("[\(serverCommand)] Server resource not found in app bundle")
             onStatusChange(status)
+            return
+        }
+
+        do {
+            try clearConflictingProcessOnPort()
+        } catch {
+            debugLog("[\(serverCommand)] port conflict: \(error.localizedDescription)")
+            onStatusChange(.error(error.localizedDescription))
             return
         }
 
@@ -210,7 +216,7 @@ final class LocalServerManager {
         }
     }
 
-    private func killExistingProcessOnPort() {
+    private func clearConflictingProcessOnPort() throws {
         let lsof = Process()
         lsof.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
         lsof.arguments = ["-ti", ":\(port)"]
@@ -232,12 +238,64 @@ final class LocalServerManager {
 
         for pidStr in output.components(separatedBy: "\n") {
             if let pid = Int32(pidStr.trimmingCharacters(in: .whitespaces)), pid > 0 {
-                debugLog("[\(serverCommand)] killing stale process on port \(port) (PID: \(pid))")
-                kill(pid, SIGTERM)
+                guard let commandLine = processCommandLine(pid: pid) else {
+                    throw NSError(
+                        domain: "NiceVoice.LocalServerManager",
+                        code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: String(localized: "ポート \(port) を使用中のプロセス (PID: \(pid)) を確認できませんでした。手動で停止してください")]
+                    )
+                }
+
+                if isManagedServerProcess(commandLine) {
+                    debugLog("[\(serverCommand)] killing stale managed process on port \(port) (PID: \(pid))")
+                    kill(pid, SIGTERM)
+                } else {
+                    throw NSError(
+                        domain: "NiceVoice.LocalServerManager",
+                        code: 2,
+                        userInfo: [NSLocalizedDescriptionKey: String(localized: "ポート \(port) は別のプロセスが使用中です。NiceVoice 以外のプロセスは自動停止しません。該当プロセスを停止してから再試行してください")]
+                    )
+                }
             }
         }
 
         usleep(500_000)
+    }
+
+    private func processCommandLine(pid: Int32) -> String? {
+        let ps = Process()
+        ps.executableURL = URL(fileURLWithPath: "/bin/ps")
+        ps.arguments = ["-o", "command=", "-p", String(pid)]
+        let pipe = Pipe()
+        ps.standardOutput = pipe
+        ps.standardError = FileHandle.nullDevice
+        do {
+            try ps.run()
+            ps.waitUntilExit()
+        } catch {
+            return nil
+        }
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let output = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return output?.isEmpty == false ? output : nil
+    }
+
+    private func isManagedServerProcess(_ commandLine: String) -> Bool {
+        if commandLine.contains(serverCommand) {
+            return true
+        }
+
+        if !serverPackagePath.isEmpty, commandLine.contains(serverPackagePath) {
+            return true
+        }
+
+        if commandLine.contains("voxmlx") || commandLine.contains("qwen3asr") {
+            return true
+        }
+
+        return false
     }
 
     private func checkHealth() async -> Bool {

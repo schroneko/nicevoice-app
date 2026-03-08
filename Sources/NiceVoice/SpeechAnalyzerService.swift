@@ -523,7 +523,7 @@ final class SpeechAnalyzerService {
         }
     }
 
-    func getRecordedAudioData() -> Data? {
+    func getRecordedAudioData(consuming: Bool = true) -> Data? {
         guard let format = recordingFormat, !audioBuffers.isEmpty else {
             debugLog("❌ No audio buffers to convert (SpeechAnalyzer)")
             return nil
@@ -560,7 +560,9 @@ final class SpeechAnalyzerService {
         }
 
         debugLog("🎵 WAV data created: \(audioData.count) bytes (SpeechAnalyzer)")
-        audioBuffers = []
+        if consuming {
+            audioBuffers = []
+        }
         return audioData
     }
 

@@ -87,7 +87,7 @@ final class LocalASRService {
         disconnectWebSocket()
     }
 
-    func getRecordedAudioData() -> Data? {
+    func getRecordedAudioData(consuming: Bool = true) -> Data? {
         guard let format = recordingFormat, !audioBuffers.isEmpty else {
             debugLog("❌ No audio buffers to convert (voxmlx)")
             return nil
@@ -139,7 +139,9 @@ final class LocalASRService {
         }
 
         debugLog("🎵 WAV data created: \(audioData.count) bytes (voxmlx)")
-        audioBuffers = []
+        if consuming {
+            audioBuffers = []
+        }
         return audioData
     }
 

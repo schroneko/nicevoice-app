@@ -803,7 +803,7 @@ final class AppState {
     }
 
     private func performSpeakerCheck() {
-        guard let audioData = getRecordedAudioDataFromActiveService() else { return }
+        guard let audioData = getRecordedAudioDataFromActiveService(consuming: false) else { return }
         Task.detached(priority: .utility) {
             do {
                 let isMatch = try await SpeakerVerificationService.shared.quickVerify(wavData: audioData)
@@ -879,7 +879,7 @@ final class AppState {
             return
         }
 
-        let audioData = getRecordedAudioDataFromActiveService()
+        let audioData = getRecordedAudioDataFromActiveService(consuming: true)
 
         if SpeakerVerificationService.shared.isEnrolled && SpeakerVerificationService.shared.isReady,
            let audioData {
@@ -1579,15 +1579,15 @@ final class AppState {
         return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
     }
 
-    private func getRecordedAudioDataFromActiveService() -> Data? {
+    private func getRecordedAudioDataFromActiveService(consuming: Bool) -> Data? {
         switch transcriptionEngine {
         case .deepgram:
-            return deepgramService?.getRecordedAudioData()
+            return deepgramService?.getRecordedAudioData(consuming: consuming)
         case .voxtralLocal, .qwen3ASR:
-            return localASRService?.getRecordedAudioData()
+            return localASRService?.getRecordedAudioData(consuming: consuming)
         case .speechAnalyzer:
             guard #available(macOS 26.0, *) else { return nil }
-            return (speechAnalyzerService as? SpeechAnalyzerService)?.getRecordedAudioData()
+            return (speechAnalyzerService as? SpeechAnalyzerService)?.getRecordedAudioData(consuming: consuming)
         }
     }
 

@@ -75,7 +75,7 @@ final class DeepgramService {
         disconnectWebSocket()
     }
 
-    func getRecordedAudioData() -> Data? {
+    func getRecordedAudioData(consuming: Bool = true) -> Data? {
         guard let format = recordingFormat, !audioBuffers.isEmpty else {
             debugLog("No audio buffers to convert (Deepgram)")
             return nil
@@ -127,7 +127,9 @@ final class DeepgramService {
         }
 
         debugLog("WAV data created: \(audioData.count) bytes (Deepgram)")
-        audioBuffers = []
+        if consuming {
+            audioBuffers = []
+        }
         return audioData
     }
 
