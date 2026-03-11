@@ -9,6 +9,11 @@ HOMEBREW_TAP_DIR="${HOME}/Sync/homebrew-tap"
 CASK_FILE="${HOMEBREW_TAP_DIR}/Casks/nicevoice.rb"
 NICEVOICE_DIR="$(pwd)"
 
+: "${NICEVOICE_SIGN_IDENTITY:=Developer ID Application: Determinant, Inc. (NZ3YY9P9Q7)}"
+: "${NICEVOICE_NOTARIZE:=1}"
+: "${NOTARYTOOL_PROFILE:=NiceVoice-Notarize}"
+export NOTARYTOOL_PROFILE
+
 echo "==> Updating Bundler.toml version to ${VERSION}..."
 sed -i '' "s/^version = '.*'/version = '${VERSION}'/" Bundler.toml
 
@@ -16,16 +21,20 @@ echo "==> Building ${PRODUCT} v${VERSION} (release)..."
 "${NICEVOICE_DIR}/Scripts/package-app.sh" \
     --configuration release \
     --version "${VERSION}" \
-    --sign-identity "${NICEVOICE_SIGN_IDENTITY:--}" \
+    --sign-identity "${NICEVOICE_SIGN_IDENTITY}" \
     --entitlements "NiceVoice-release.entitlements"
 
 echo "==> Creating ${ARCHIVE}..."
 rm -f "${ARCHIVE}"
 ditto -c -k --keepParent "${APP}" "${ARCHIVE}"
 
-if [[ "${NICEVOICE_NOTARIZE:-0}" == "1" ]]; then
+if [[ "${NICEVOICE_NOTARIZE}" == "1" ]]; then
     echo "==> Notarizing archive..."
     "${NICEVOICE_DIR}/Scripts/notarize.sh" "${ARCHIVE}" "${APP}"
+
+    echo "==> Recreating ${ARCHIVE} with stapled ticket..."
+    rm -f "${ARCHIVE}"
+    ditto -c -k --keepParent "${APP}" "${ARCHIVE}"
 fi
 
 if [[ "${NICEVOICE_GENERATE_APPCAST:-0}" == "1" ]]; then
@@ -50,7 +59,7 @@ fi
 
 sed -i '' "s/^  version \".*\"/  version \"${VERSION}\"/" "${CASK_FILE}"
 sed -i '' "s/^  sha256 .*/  sha256 \"${SHA}\"/" "${CASK_FILE}"
-sed -i '' 's|^  url ".*"|  url "https://github.com/schroneko/homebrew-tap/releases/download/v#{version}/NiceVoice-#{version}.zip"|' "${CASK_FILE}"
+sed -i '' 's|^  url ".*"|  url "https://github.com/schroneko/nicevoice-app/releases/download/v#{version}/NiceVoice-#{version}.zip"|' "${CASK_FILE}"
 
 echo "Updated: ${CASK_FILE}"
 
@@ -66,16 +75,16 @@ git merge "${BRANCH}"
 git branch -d "${BRANCH}"
 git push
 
-echo "==> Managing GitHub Release..."
-gh release delete "v${VERSION}" --repo schroneko/homebrew-tap --yes 2>/dev/null || true
+popd > /dev/null
+
+echo "==> Managing GitHub Release on nicevoice-app..."
+gh release delete "v${VERSION}" --repo schroneko/nicevoice-app --yes 2>/dev/null || true
 git push origin --delete "v${VERSION}" 2>/dev/null || true
 
 gh release create "v${VERSION}" "${NICEVOICE_DIR}/${ARCHIVE}" \
     --title "v${VERSION}" \
     --notes "NiceVoice v${VERSION}" \
-    --repo schroneko/homebrew-tap
-
-popd > /dev/null
+    --repo schroneko/nicevoice-app
 
 echo ""
 echo "Done! homebrew-tap updated and release created."
