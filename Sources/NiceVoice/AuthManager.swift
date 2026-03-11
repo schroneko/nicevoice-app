@@ -111,16 +111,8 @@ final class AuthManager {
                 lastVerified: Date()
             )
 
-            LocalStorage.shared.saveSessionId(sessionId)
-            saveSignedAuthInfo(authInfo)
-
-            await MainActor.run {
-                self.isLoggedIn = true
-                self.username = response.username
-                self.isSubscriber = response.isSubscriber && response.deviceRegistered
-                self.deviceMismatch = response.error == "device_mismatch"
-                NotificationCenter.default.post(name: .authDidChange, object: nil)
-            }
+            debugLog("Login verification: subscriber=\(response.isSubscriber), registered=\(response.deviceRegistered), error=\(response.error ?? "none")")
+            applyVerifiedAuth(response: response, sessionId: sessionId, authInfo: authInfo)
         } catch {
             debugLog("Login verification failed: \(error)")
             if LocalStorage.shared.getSessionId() == sessionId {
@@ -130,11 +122,32 @@ final class AuthManager {
     }
 
     func switchDevice() async {
-        guard let sessionId = LocalStorage.shared.getSessionId() else { return }
+        guard let sessionId = LocalStorage.shared.getSessionId() else {
+            debugLog("Device switch skipped: missing sessionId")
+            return
+        }
+
+        debugLog("Device switch requested")
 
         do {
-            _ = try await NukosukuAuthService.shared.deregisterDevice(sessionId: sessionId)
-            await handleLoginCallback(sessionId: sessionId)
+            let deregisterResponse = try await NukosukuAuthService.shared.deregisterDevice(sessionId: sessionId)
+            debugLog("Device switch deregister response: \(deregisterResponse.deregistered)")
+
+            let deviceId = LocalStorage.shared.getOrCreateDeviceId()
+            let response = try await NukosukuAuthService.shared.verify(
+                sessionId: sessionId,
+                deviceId: deviceId
+            )
+
+            let authInfo = AuthInfo(
+                sessionId: sessionId,
+                username: response.username,
+                isSubscriber: response.isSubscriber && response.deviceRegistered,
+                lastVerified: Date()
+            )
+
+            debugLog("Device switch verify: subscriber=\(response.isSubscriber), registered=\(response.deviceRegistered), error=\(response.error ?? "none")")
+            applyVerifiedAuth(response: response, sessionId: sessionId, authInfo: authInfo)
         } catch {
             debugLog("Device switch failed: \(error)")
         }
@@ -219,14 +232,7 @@ final class AuthManager {
                 lastVerified: Date()
             )
 
-            saveSignedAuthInfo(authInfo)
-
-            await MainActor.run {
-                self.isLoggedIn = true
-                self.username = response.username
-                self.isSubscriber = response.isSubscriber && response.deviceRegistered
-                self.deviceMismatch = response.error == "device_mismatch"
-            }
+            applyVerifiedAuth(response: response, sessionId: sessionId, authInfo: authInfo, notify: false)
         } catch AuthError.unauthorized {
             await MainActor.run {
                 self.isLoggedIn = false
@@ -237,6 +243,26 @@ final class AuthManager {
             LocalStorage.shared.clearAuth()
         } catch {
             debugLog("Verification failed (offline?): \(error)")
+        }
+    }
+
+    private func applyVerifiedAuth(
+        response: VerifyResponse,
+        sessionId: String,
+        authInfo: AuthInfo,
+        notify: Bool = true
+    ) {
+        LocalStorage.shared.saveSessionId(sessionId)
+        saveSignedAuthInfo(authInfo)
+
+        Task { @MainActor in
+            self.isLoggedIn = true
+            self.username = response.username
+            self.isSubscriber = response.isSubscriber && response.deviceRegistered
+            self.deviceMismatch = response.error == "device_mismatch"
+            if notify {
+                NotificationCenter.default.post(name: .authDidChange, object: nil)
+            }
         }
     }
 
