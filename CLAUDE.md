@@ -132,7 +132,7 @@ rm .build/build.db .build/build.db-journal
 
 配布用の Homebrew cask (`schroneko/tap/nicevoice`) をローカルでテストする手順。
 
-cask 定義: `/Users/username/Sync/homebrew-tap/Casks/nicevoice.rb`
+cask 定義: `$(ghq list -p schroneko/homebrew-tap)/Casks/nicevoice.rb`（release.sh が動的に解決）
 
 開発中は `url` を `file://` に、`sha256` を `:no_check` に設定してローカル ZIP を参照する。配布時は GitHub Releases の URL と実際の SHA256 に戻す。
 

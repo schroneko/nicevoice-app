@@ -5,7 +5,11 @@ VERSION="${1:?Usage: ./Scripts/release.sh <version>}"
 PRODUCT="NiceVoice"
 ARCHIVE="${PRODUCT}-${VERSION}.zip"
 APP=".build/bundler/${PRODUCT}.app"
-HOMEBREW_TAP_DIR="${HOME}/Sync/homebrew-tap"
+HOMEBREW_TAP_DIR="$(ghq list -p schroneko/homebrew-tap)"
+if [[ -z "${HOMEBREW_TAP_DIR}" ]]; then
+    echo "Error: schroneko/homebrew-tap not found. Run: ghq get schroneko/homebrew-tap"
+    exit 1
+fi
 CASK_FILE="${HOMEBREW_TAP_DIR}/Casks/nicevoice.rb"
 NICEVOICE_DIR="$(pwd)"
 
