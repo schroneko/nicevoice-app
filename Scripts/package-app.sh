@@ -237,6 +237,14 @@ if [[ -n "${SIGN_IDENTITY}" ]]; then
     echo "==> Signing app..."
     sign_nested_code "${SIGN_IDENTITY}" "${FRAMEWORKS_DIR}"
 
+    RESOURCE_SIGN_ARGS=(codesign -fs "${SIGN_IDENTITY}")
+    if [[ "${SIGN_IDENTITY}" != "-" ]]; then
+        RESOURCE_SIGN_ARGS+=(--options runtime)
+    fi
+    while IFS= read -r bundle; do
+        "${RESOURCE_SIGN_ARGS[@]}" "${bundle}"
+    done < <(find "${APP_PATH}/Contents/Resources" -name "*.bundle" -type d 2>/dev/null)
+
     CODESIGN_ARGS=(codesign -fs "${SIGN_IDENTITY}")
     if [[ "${SIGN_IDENTITY}" != "-" ]]; then
         CODESIGN_ARGS+=(--options runtime)
