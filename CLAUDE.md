@@ -141,14 +141,7 @@ cask 定義: `/Users/username/Sync/homebrew-tap/Casks/nicevoice.rb`
 brew reinstall --cask schroneko/tap/nicevoice
 ```
 
-release.sh は ad-hoc 署名のため、インストール後に権限リセットが必要な場合がある:
-
-```bash
-xattr -cr /Applications/NiceVoice.app
-tccutil reset Microphone app.nicevoice.NiceVoice
-tccutil reset Accessibility app.nicevoice.NiceVoice
-tccutil reset SpeechRecognition app.nicevoice.NiceVoice
-```
+release.sh は Developer ID 署名 + 公証 (notarization) で配布するため、Gatekeeper の警告は出ない。
 
 ## 解決済みの問題
 
