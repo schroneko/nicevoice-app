@@ -51,16 +51,6 @@
         }
       }
     },
-    "アカウント": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Account"
-          }
-        }
-      }
-    },
     "開発者": {
       "localizations": {
         "en": {

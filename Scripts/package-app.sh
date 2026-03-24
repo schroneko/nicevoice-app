@@ -210,12 +210,6 @@ set_plist_value "${PLIST_PATH}" string "NSMicrophoneUsageDescription" "音声入
 set_plist_value "${PLIST_PATH}" string "NSSpeechRecognitionUsageDescription" "音声をテキストに変換するために使用します"
 set_plist_value "${PLIST_PATH}" string "NSAppleEventsUsageDescription" "テキストを入力欄に貼り付けるために使用します"
 
-/usr/libexec/PlistBuddy -c "Delete :CFBundleURLTypes" "${PLIST_PATH}" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "${PLIST_PATH}"
-/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" "${PLIST_PATH}"
-/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLName string app.nicevoice.NiceVoice" "${PLIST_PATH}"
-/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "${PLIST_PATH}"
-/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string nicevoice" "${PLIST_PATH}"
 
 if [[ -n "${NICEVOICE_APPCAST_URL:-}" ]]; then
     set_plist_value "${PLIST_PATH}" string "SUFeedURL" "${NICEVOICE_APPCAST_URL}"

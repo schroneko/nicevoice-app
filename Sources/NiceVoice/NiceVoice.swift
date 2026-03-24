@@ -4,7 +4,6 @@ import AppKit
 import Carbon.HIToolbox
 import ApplicationServices
 import os.log
-import CommonCrypto
 
 private let logger = Logger(subsystem: "com.nicevoice.app", category: "general")
 
@@ -119,7 +118,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         debugLog("✅ NiceVoice started")
         checkAccessibilityPermission()
         setupStatusItem()
-        initializeAuthManager()
 
         NotificationCenter.default.addObserver(
             self,
@@ -134,54 +132,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             name: .recordingStateChanged,
             object: nil
         )
-
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(authDidChange),
-            name: .authDidChange,
-            object: nil
-        )
     }
-
-    private func initializeAuthManager() {
-        Task {
-            await AuthManager.shared.initialize()
-            debugLog("AuthManager initialized: earlyAccess=\(AuthManager.shared.hasEarlyAccessEntitlement)")
-        }
-    }
-
-    @objc private func authDidChange() {
-        debugLog("Auth changed: earlyAccess=\(AuthManager.shared.hasEarlyAccessEntitlement)")
-    }
-
-    func application(_ application: NSApplication, open urls: [URL]) {
-        for url in urls {
-            handleURLScheme(url)
-        }
-    }
-
-    private func handleURLScheme(_ url: URL) {
-        debugLog("URL scheme received: \(url)")
-
-        guard url.scheme == "nicevoice",
-              url.host == "auth",
-              url.path == "/callback" else {
-            debugLog("Unhandled URL scheme: \(url)")
-            return
-        }
-
-        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let sessionId = components.queryItems?.first(where: { $0.name == "session_id" })?.value else {
-            debugLog("Missing session_id in callback URL")
-            return
-        }
-
-        debugLog("Auth callback received with session_id")
-        Task {
-            await AuthManager.shared.handleLoginCallback(sessionId: sessionId)
-        }
-    }
-
 
     @objc private func recordingStateChanged() {
         updateStatusItemIcon()
@@ -334,7 +285,6 @@ final class AppState {
     private var finalResultTimer: DispatchWorkItem?
     private var speakerCheckTimer: Timer?
     private var isEnrolledSpeakerActive = true
-    private var lastInteractiveLoginAt: Date?
     private var capturedTextElement: AXUIElement?
     private var insertionPointLocation: Int = 0
     private var inlinePreviewLength: Int = 0
@@ -754,24 +704,6 @@ final class AppState {
             return
         }
 
-        guard AuthManager.shared.verifyAuthIntegrity() else {
-            debugLog("startRecording blocked: not authorized")
-            if AuthManager.shared.shouldStartInteractiveLogin {
-                let now = Date()
-                if lastInteractiveLoginAt == nil || now.timeIntervalSince(lastInteractiveLoginAt!) > 2 {
-                    lastInteractiveLoginAt = now
-                    statusMessage = String(localized: "ブラウザでログインページを開きました")
-                    AuthManager.shared.login()
-                }
-                errorMessage = nil
-                floatingPanel?.hide()
-            } else {
-                errorMessage = AuthManager.shared.accessState.lockedMessage
-                floatingPanel?.show()
-            }
-            return
-        }
-
         debugLog("🔍 [DEBUG] startRecording called - isReady: \(isReady), isRecording: \(isRecording)")
 
         guard !isRecording else {
@@ -1027,10 +959,6 @@ final class AppState {
     private func performPaste(_ text: String) {
         waitingForFinalResult = false
         floatingPanel?.hide()
-        guard AuthManager.shared.verifyAuthIntegrity() else {
-            debugLog("performPaste blocked: auth integrity check failed")
-            return
-        }
         guard !text.isEmpty else {
             debugLog("⚠️ No text to paste - text is empty")
             return

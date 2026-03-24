@@ -42,31 +42,6 @@ OpenAI Whisper（API・ローカル問わず）は絶対に使わない。ハル
 - AssemblyAI
 - Deepgram（Nova-3、現在使用中）
 
-## 認証方式
-
-nukosuku.com の X サブスクライバー認証を使用。サブスクライバーなら全機能利用可能の二値認証。
-
-### 認証フロー
-
-1. ASWebAuthenticationSession で `https://nukosuku.com/api/auth/login?platform=nicevoice` を開く
-2. X OAuth 2.0 (PKCE) でログイン
-3. nukosuku.com のコールバックが `nicevoice://auth/callback?session_id=xxx` にリダイレクト
-4. Bearer トークンで `/api/nicevoice/verify` を呼び出し、サブスクライバー判定 + デバイス登録
-
-### デバイス制限
-
-1 アカウント 1 デバイス。`nicevoice_devices` テーブル (PRIMARY KEY: x_username) で管理。デバイス切替は既存デバイスを解除してから再登録。
-
-### オフライン猶予
-
-最終検証から 7 日間はオフラインでも利用可能。オンライン時は 1 日に 1 回再検証。
-
-### 関連ファイル
-
-- `NukosukuAuthService.swift`: ASWebAuthenticationSession / Bearer トークン API
-- `AuthManager.swift`: @Observable シングルトン、認証状態管理
-- nukosuku-com: `worker/routes/nicevoice.ts` (verify/device エンドポイント)
-
 ## ビルド方法
 
 ```bash

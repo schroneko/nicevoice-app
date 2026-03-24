@@ -4,7 +4,6 @@ enum NavigationPage: String, CaseIterable {
     case transcription
     case history
     case dictionary
-    case account
     case settings
     case developer
 
@@ -13,7 +12,6 @@ enum NavigationPage: String, CaseIterable {
         case .transcription: return String(localized: "文字起こし")
         case .history: return String(localized: "履歴")
         case .dictionary: return String(localized: "辞書")
-        case .account: return String(localized: "アカウント")
         case .settings: return String(localized: "設定")
         case .developer: return String(localized: "開発者")
         }
@@ -24,7 +22,6 @@ enum NavigationPage: String, CaseIterable {
         case .transcription: return "waveform.badge.mic"
         case .history: return "clock.fill"
         case .dictionary: return "character.book.closed.fill"
-        case .account: return "person.crop.circle.fill"
         case .settings: return "gearshape.fill"
         case .developer: return "hammer.fill"
         }
@@ -38,8 +35,6 @@ enum NavigationPage: String, CaseIterable {
             return LinearGradient(colors: [.orange, .pink], startPoint: .topLeading, endPoint: .bottomTrailing)
         case .dictionary:
             return LinearGradient(colors: [.green, .teal], startPoint: .topLeading, endPoint: .bottomTrailing)
-        case .account:
-            return LinearGradient(colors: [.blue, .cyan], startPoint: .topLeading, endPoint: .bottomTrailing)
         case .settings:
             return LinearGradient(colors: [.gray, .secondary], startPoint: .topLeading, endPoint: .bottomTrailing)
         case .developer:
@@ -52,7 +47,6 @@ enum NavigationPage: String, CaseIterable {
             .transcription,
             .history,
             .dictionary,
-            .account,
             .settings
         ]
         return AppFeatureFlags.isDeveloperToolsEnabled()
@@ -108,21 +102,11 @@ struct MainWindowView: View {
 
                     switch selectedPage {
                     case .transcription:
-                        if AuthManager.shared.canUseApp {
-                            BatchTranscriptionView(appState: appState)
-                        } else {
-                            AuthRequiredView {
-                                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                                    selectedPage = .account
-                                }
-                            }
-                        }
+                        BatchTranscriptionView(appState: appState)
                     case .history:
                         HistoryContentView(appState: appState)
                     case .dictionary:
                         DictionaryView(appState: appState)
-                    case .account:
-                        AccountContentView()
                     case .settings:
                         SettingsContentView(appState: appState)
                     case .developer:
@@ -175,56 +159,6 @@ struct SidebarItem: View {
     }
 }
 
-struct AuthRequiredView: View {
-    var onNavigateToAccount: () -> Void
-
-    var body: some View {
-        VStack(spacing: 24) {
-            Image(systemName: "lock.shield.fill")
-                .font(.system(size: 56))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [.purple, .indigo],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-
-            VStack(spacing: 8) {
-                Text("先行アクセスが必要です")
-                    .font(.title2.weight(.semibold))
-
-                Text("現在はぬこスク加入者向けの先行配布です。ログインして利用してください")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-
-            Button {
-                onNavigateToAccount()
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "person.crop.circle")
-                    Text("ログインして確認")
-                }
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 12)
-                .background(
-                    LinearGradient(
-                        colors: [.blue, .cyan],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    in: Capsule()
-                )
-            }
-            .buttonStyle(.plain)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
 
 struct MeshGradientBackground: View {
     var body: some View {

@@ -31,67 +31,6 @@ enum AppFeatureFlags {
     }
 }
 
-enum AppAccessState: Equatable {
-    case publicRelease
-    case earlyAccessGranted
-    case earlyAccessRequired
-
-    var isUnlocked: Bool {
-        switch self {
-        case .publicRelease, .earlyAccessGranted:
-            return true
-        case .earlyAccessRequired:
-            return false
-        }
-    }
-
-    var accountStatusText: String {
-        switch self {
-        case .publicRelease:
-            return "現在は一般公開モードです"
-        case .earlyAccessGranted:
-            return "先行アクセス特典が有効です"
-        case .earlyAccessRequired:
-            return "現在はぬこスク加入者向けの先行アクセスです"
-        }
-    }
-
-    var lockedMessage: String {
-        switch self {
-        case .publicRelease:
-            return "利用できます"
-        case .earlyAccessGranted:
-            return "先行アクセス特典が有効です"
-        case .earlyAccessRequired:
-            return "現在はぬこスク加入者向けの先行アクセスです"
-        }
-    }
-}
-
-enum AppAccessPolicy {
-    // Compare against a stable hash instead of embedding a plain public-release flag.
-    private static let publicReleaseSignature: UInt64 = 0x0477EB1BB0607E25
-
-    static var isPublicReleaseEnabled: Bool {
-        stableHash(ObfuscatedStrings.accessModeMarker) == publicReleaseSignature
-    }
-
-    static func accessState(hasEarlyAccess: Bool) -> AppAccessState {
-        if isPublicReleaseEnabled {
-            return .publicRelease
-        }
-        return hasEarlyAccess ? .earlyAccessGranted : .earlyAccessRequired
-    }
-
-    private static func stableHash(_ text: String) -> UInt64 {
-        var hash: UInt64 = 0xcbf29ce484222325
-        for byte in text.utf8 {
-            hash ^= UInt64(byte)
-            hash = hash &* 0x100000001b3
-        }
-        return hash
-    }
-}
 
 enum BundleInfo {
     static func shortVersion(in bundle: Bundle = .main) -> String {
