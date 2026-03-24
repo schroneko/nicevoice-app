@@ -842,6 +842,7 @@ struct FlowLayout: Layout {
 struct PermissionStatusView: View {
     @State private var microphoneStatus: Bool = false
     @State private var accessibilityStatus: Bool = false
+    @State private var accessibilityPollingTimer: Timer?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -858,18 +859,41 @@ struct PermissionStatusView: View {
                 title: "アクセシビリティ",
                 description: "ショートカットキーを監視するために必要",
                 isGranted: accessibilityStatus,
-                action: { openSystemPreferences("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") }
+                action: { requestAccessibilityPermission() }
             )
         }
         .onAppear { checkPermissions() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             checkPermissions()
         }
+        .onDisappear {
+            accessibilityPollingTimer?.invalidate()
+            accessibilityPollingTimer = nil
+        }
     }
 
     private func checkPermissions() {
         microphoneStatus = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
         accessibilityStatus = AXIsProcessTrusted()
+    }
+
+    private func requestAccessibilityPermission() {
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        accessibilityStatus = AXIsProcessTrustedWithOptions(options)
+        startAccessibilityPolling()
+        openSystemPreferences("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+    }
+
+    private func startAccessibilityPolling() {
+        accessibilityPollingTimer?.invalidate()
+        accessibilityPollingTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { timer in
+            let granted = AXIsProcessTrusted()
+            accessibilityStatus = granted
+            if granted {
+                timer.invalidate()
+                accessibilityPollingTimer = nil
+            }
+        }
     }
 
     private func openSystemPreferences(_ urlString: String) {
@@ -940,4 +964,3 @@ struct PermissionRow: View {
         }
     }
 }
-
