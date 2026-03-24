@@ -43,7 +43,7 @@ sign_nested_code() {
     local frameworks_dir="$2"
     local -a sign_args=(codesign -fs "${sign_identity}")
 
-    if [[ "${sign_identity}" != "-" ]]; then
+    if [[ "${CONFIGURATION}" == "release" && "${sign_identity}" != "-" ]]; then
         sign_args+=(--options runtime)
     fi
 
@@ -155,9 +155,9 @@ validate_bundle() {
     if [[ -n "${sign_identity}" ]]; then
         codesign --verify --deep --strict "${app_path}"
 
-        if [[ "${sign_identity}" == "-" ]]; then
+        if [[ "${CONFIGURATION}" == "debug" ]]; then
             if codesign -dvv "${app_path}" 2>&1 | grep -q "flags=.*runtime"; then
-                echo "Validation failed: ad-hoc signed debug app must not enable hardened runtime." >&2
+                echo "Validation failed: debug app must not enable hardened runtime." >&2
                 exit 1
             fi
         fi
@@ -232,7 +232,7 @@ if [[ -n "${SIGN_IDENTITY}" ]]; then
     sign_nested_code "${SIGN_IDENTITY}" "${FRAMEWORKS_DIR}"
 
     RESOURCE_SIGN_ARGS=(codesign -fs "${SIGN_IDENTITY}")
-    if [[ "${SIGN_IDENTITY}" != "-" ]]; then
+    if [[ "${CONFIGURATION}" == "release" && "${SIGN_IDENTITY}" != "-" ]]; then
         RESOURCE_SIGN_ARGS+=(--options runtime)
     fi
     while IFS= read -r bundle; do
@@ -240,7 +240,7 @@ if [[ -n "${SIGN_IDENTITY}" ]]; then
     done < <(find "${APP_PATH}/Contents/Resources" -name "*.bundle" -type d 2>/dev/null)
 
     CODESIGN_ARGS=(codesign -fs "${SIGN_IDENTITY}")
-    if [[ "${SIGN_IDENTITY}" != "-" ]]; then
+    if [[ "${CONFIGURATION}" == "release" && "${SIGN_IDENTITY}" != "-" ]]; then
         CODESIGN_ARGS+=(--options runtime)
     fi
     if [[ -n "${ENTITLEMENTS}" ]]; then
