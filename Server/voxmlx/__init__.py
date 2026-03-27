@@ -4,12 +4,12 @@ import argparse
 from pathlib import Path
 
 import mlx.core as mx
-
 from mistral_common.tokens.tokenizers.base import SpecialTokenPolicy
 from mistral_common.tokens.tokenizers.tekken import Tekkenizer
 
 from .generate import generate
-from .weights import download_model, load_model as _load_weights
+from .weights import download_model
+from .weights import load_model as _load_weights
 
 
 def _load_tokenizer(model_path: Path) -> Tekkenizer:
@@ -31,13 +31,10 @@ def _build_prompt_tokens(
 def load_model(model_path: str = "mlx-community/Voxtral-Mini-4B-Realtime-6bit"):
     mx.metal.set_cache_limit(4 * 1024 * 1024 * 1024)  # 4 GB
 
-    if not Path(model_path).exists():
-        model_path = download_model(model_path)
-    else:
-        model_path = Path(model_path)
+    resolved_model_path = download_model(model_path) if not Path(model_path).exists() else Path(model_path)
 
-    model, config = _load_weights(model_path)
-    sp = _load_tokenizer(model_path)
+    model, config = _load_weights(resolved_model_path)
+    sp = _load_tokenizer(resolved_model_path)
     return model, sp, config
 
 
@@ -73,9 +70,11 @@ def main():
     args = parser.parse_args()
 
     if args.serve:
-        from .server import create_app
         import logging
+
         import uvicorn
+
+        from .server import create_app
 
         logging.basicConfig(
             level=logging.INFO,

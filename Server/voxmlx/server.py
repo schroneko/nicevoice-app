@@ -37,9 +37,7 @@ class StreamingSession:
         self.prefix_len = len(prompt_tokens)
         self.eos_token_id = sp.eos_id
 
-        self.t_cond = model.time_embedding(
-            mx.array([n_delay_tokens], dtype=mx.float32)
-        )
+        self.t_cond = model.time_embedding(mx.array([n_delay_tokens], dtype=mx.float32))
         mx.eval(self.t_cond)
 
         prompt_ids = mx.array([prompt_tokens])
@@ -85,13 +83,10 @@ class StreamingSession:
         """Decode n_to_decode positions. Returns (n_consumed, hit_eos, tokens)."""
         tokens = []
         for i in range(n_to_decode):
-            token_embed = self.model.language_model.embed(
-                self.y.reshape(1, 1)
-            )[0, 0]
+            assert self.y is not None
+            token_embed = self.model.language_model.embed(self.y.reshape(1, 1))[0, 0]
             step_embed = (embeds[i] + token_embed)[None, None, :]
-            logits = self.model.decode(
-                step_embed, self.t_cond, mask=None, cache=self.cache
-            )
+            logits = self.model.decode(step_embed, self.t_cond, mask=None, cache=self.cache)
             next_y = self._sample(logits)
             mx.async_eval(next_y)
 
@@ -104,8 +99,8 @@ class StreamingSession:
             self._token_ids.append(token_id)
             full_decoded = self.sp.decode(self._token_ids, special_token_policy=SpecialTokenPolicy.IGNORE)
             self.full_text = full_decoded
-            clean_decoded = full_decoded.rstrip('\ufffd')
-            new_text = clean_decoded[len(self._prev_clean):]
+            clean_decoded = full_decoded.rstrip("\ufffd")
+            new_text = clean_decoded[len(self._prev_clean) :]
             if new_text:
                 tokens.append(new_text)
                 self._prev_clean = clean_decoded
@@ -120,25 +115,19 @@ class StreamingSession:
     def _encode_audio(self):
         """Encode pending audio into embeddings. Returns True if new embeds produced."""
         if self.first_cycle and len(self.pending_audio) >= SAMPLES_PER_TOKEN:
-            left_pad = np.zeros(
-                N_LEFT_PAD_TOKENS * SAMPLES_PER_TOKEN, dtype=np.float32
-            )
+            left_pad = np.zeros(N_LEFT_PAD_TOKENS * SAMPLES_PER_TOKEN, dtype=np.float32)
             n_feed = (len(self.pending_audio) // SAMPLES_PER_TOKEN) * SAMPLES_PER_TOKEN
             chunk = np.concatenate([left_pad, self.pending_audio[:n_feed]])
             self.pending_audio = self.pending_audio[n_feed:]
             self.n_audio_samples_fed += n_feed
 
-            mel, self.audio_tail = log_mel_spectrogram_step(
-                chunk, self.audio_tail
-            )
-            new_embeds, self.conv1_tail, self.conv2_tail, self.encoder_cache, self.ds_buf = (
-                self.model.encode_step(
-                    mel,
-                    self.conv1_tail,
-                    self.conv2_tail,
-                    self.encoder_cache,
-                    self.ds_buf,
-                )
+            mel, self.audio_tail = log_mel_spectrogram_step(chunk, self.audio_tail)
+            new_embeds, self.conv1_tail, self.conv2_tail, self.encoder_cache, self.ds_buf = self.model.encode_step(
+                mel,
+                self.conv1_tail,
+                self.conv2_tail,
+                self.encoder_cache,
+                self.ds_buf,
             )
             if new_embeds is not None:
                 mx.eval(new_embeds)
@@ -152,24 +141,18 @@ class StreamingSession:
             self.pending_audio = self.pending_audio[n_feed:]
             self.n_audio_samples_fed += n_feed
 
-            mel, self.audio_tail = log_mel_spectrogram_step(
-                chunk, self.audio_tail
-            )
-            new_embeds, self.conv1_tail, self.conv2_tail, self.encoder_cache, self.ds_buf = (
-                self.model.encode_step(
-                    mel,
-                    self.conv1_tail,
-                    self.conv2_tail,
-                    self.encoder_cache,
-                    self.ds_buf,
-                )
+            mel, self.audio_tail = log_mel_spectrogram_step(chunk, self.audio_tail)
+            new_embeds, self.conv1_tail, self.conv2_tail, self.encoder_cache, self.ds_buf = self.model.encode_step(
+                mel,
+                self.conv1_tail,
+                self.conv2_tail,
+                self.encoder_cache,
+                self.ds_buf,
             )
             if new_embeds is not None:
                 mx.eval(new_embeds)
                 if self.audio_embeds is not None:
-                    self.audio_embeds = mx.concatenate(
-                        [self.audio_embeds, new_embeds]
-                    )
+                    self.audio_embeds = mx.concatenate([self.audio_embeds, new_embeds])
                     mx.eval(self.audio_embeds)
                 else:
                     self.audio_embeds = new_embeds
@@ -184,16 +167,12 @@ class StreamingSession:
         if self.n_total_decoded + self.audio_embeds.shape[0] < self.prefix_len:
             return False
 
-        self.cache = [
-            RotatingKVCache(self.sliding_window) for _ in range(self.n_layers)
-        ]
+        self.cache = [RotatingKVCache(self.sliding_window) for _ in range(self.n_layers)]
 
         prefix_embeds = self.text_embeds + self.audio_embeds[: self.prefix_len]
         prefix_embeds = prefix_embeds[None, :, :]
 
-        logits = self.model.decode(
-            prefix_embeds, self.t_cond, "causal", self.cache
-        )
+        logits = self.model.decode(prefix_embeds, self.t_cond, "causal", self.cache)
         mx.eval(logits, *[x for c in self.cache for x in (c.keys, c.values)])
 
         self.y = self._sample(logits)
@@ -209,18 +188,12 @@ class StreamingSession:
         if self.audio_embeds is None:
             return []
 
-        safe_total = (
-            N_LEFT_PAD_TOKENS + self.n_audio_samples_fed // SAMPLES_PER_TOKEN
-        )
-        n_decodable = min(
-            self.audio_embeds.shape[0], safe_total - self.n_total_decoded
-        )
+        safe_total = N_LEFT_PAD_TOKENS + self.n_audio_samples_fed // SAMPLES_PER_TOKEN
+        n_decodable = min(self.audio_embeds.shape[0], safe_total - self.n_total_decoded)
         if n_decodable <= 0:
             return []
 
-        n_consumed, hit_eos, tokens = self._decode_steps(
-            self.audio_embeds, n_decodable
-        )
+        n_consumed, hit_eos, tokens = self._decode_steps(self.audio_embeds, n_decodable)
         self.n_total_decoded += n_consumed
 
         if self.audio_embeds.shape[0] > n_consumed:
@@ -270,16 +243,12 @@ class StreamingSession:
         self.eos_text = None
         was_first_cycle = self.first_cycle
 
-        right_pad = np.zeros(
-            N_RIGHT_PAD_TOKENS * SAMPLES_PER_TOKEN, dtype=np.float32
-        )
+        right_pad = np.zeros(N_RIGHT_PAD_TOKENS * SAMPLES_PER_TOKEN, dtype=np.float32)
         flush_chunk = np.concatenate([self.pending_audio, right_pad])
         self.pending_audio = np.zeros(0, dtype=np.float32)
 
         if was_first_cycle:
-            left_pad = np.zeros(
-                N_LEFT_PAD_TOKENS * SAMPLES_PER_TOKEN, dtype=np.float32
-            )
+            left_pad = np.zeros(N_LEFT_PAD_TOKENS * SAMPLES_PER_TOKEN, dtype=np.float32)
             flush_chunk = np.concatenate([left_pad, flush_chunk])
 
         n_feed = (len(flush_chunk) // SAMPLES_PER_TOKEN) * SAMPLES_PER_TOKEN
@@ -287,28 +256,21 @@ class StreamingSession:
             return []
 
         chunk = flush_chunk[:n_feed]
-        pad_samples = (
-            N_RIGHT_PAD_TOKENS * SAMPLES_PER_TOKEN
-            + (N_LEFT_PAD_TOKENS * SAMPLES_PER_TOKEN if was_first_cycle else 0)
-        )
+        pad_samples = N_RIGHT_PAD_TOKENS * SAMPLES_PER_TOKEN + (N_LEFT_PAD_TOKENS * SAMPLES_PER_TOKEN if was_first_cycle else 0)
         self.n_audio_samples_fed += n_feed - pad_samples
 
         mel, self.audio_tail = log_mel_spectrogram_step(chunk, self.audio_tail)
-        new_embeds, self.conv1_tail, self.conv2_tail, self.encoder_cache, self.ds_buf = (
-            self.model.encode_step(
-                mel,
-                self.conv1_tail,
-                self.conv2_tail,
-                self.encoder_cache,
-                self.ds_buf,
-            )
+        new_embeds, self.conv1_tail, self.conv2_tail, self.encoder_cache, self.ds_buf = self.model.encode_step(
+            mel,
+            self.conv1_tail,
+            self.conv2_tail,
+            self.encoder_cache,
+            self.ds_buf,
         )
         if new_embeds is not None:
             mx.eval(new_embeds)
             if self.audio_embeds is not None:
-                self.audio_embeds = mx.concatenate(
-                    [self.audio_embeds, new_embeds]
-                )
+                self.audio_embeds = mx.concatenate([self.audio_embeds, new_embeds])
                 mx.eval(self.audio_embeds)
             else:
                 self.audio_embeds = new_embeds
@@ -321,9 +283,7 @@ class StreamingSession:
 
         all_tokens = []
         if self.prefilled and self.audio_embeds is not None:
-            n_consumed, hit_eos, tokens = self._decode_steps(
-                self.audio_embeds, self.audio_embeds.shape[0]
-            )
+            n_consumed, hit_eos, tokens = self._decode_steps(self.audio_embeds, self.audio_embeds.shape[0])
             all_tokens.extend(tokens)
             self.audio_embeds = None
 
@@ -334,10 +294,13 @@ class StreamingSession:
             token_id = self.y.item()
             if token_id != self.eos_token_id:
                 self._token_ids.append(token_id)
-                full_decoded = self.sp.decode(self._token_ids, special_token_policy=SpecialTokenPolicy.IGNORE)
+                full_decoded = self.sp.decode(
+                    self._token_ids,
+                    special_token_policy=SpecialTokenPolicy.IGNORE,
+                )
                 self.full_text = full_decoded
 
-        new_text = self.full_text[len(self._prev_clean):]
+        new_text = self.full_text[len(self._prev_clean) :]
         if new_text:
             all_tokens.append(new_text)
 
@@ -378,9 +341,7 @@ def create_app(model_path: str, temperature: float = 0.0):
                 try:
                     msg = json.loads(raw)
                 except json.JSONDecodeError:
-                    await ws.send_json(
-                        {"type": "error", "message": "Invalid JSON"}
-                    )
+                    await ws.send_json({"type": "error", "message": "Invalid JSON"})
                     continue
 
                 msg_type = msg.get("type", "")
@@ -446,23 +407,15 @@ def create_app(model_path: str, temperature: float = 0.0):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="voxmlx realtime WebSocket server"
-    )
+    parser = argparse.ArgumentParser(description="voxmlx realtime WebSocket server")
     parser.add_argument(
         "--model",
         default="mlx-community/Voxtral-Mini-4B-Realtime-6bit",
         help="Model path or HF model ID",
     )
-    parser.add_argument(
-        "--port", type=int, default=8000, help="Port to listen on"
-    )
-    parser.add_argument(
-        "--host", default="127.0.0.1", help="Host to bind to"
-    )
-    parser.add_argument(
-        "--temp", type=float, default=0.0, help="Sampling temperature"
-    )
+    parser.add_argument("--port", type=int, default=8000, help="Port to listen on")
+    parser.add_argument("--host", default="127.0.0.1", help="Host to bind to")
+    parser.add_argument("--temp", type=float, default=0.0, help="Sampling temperature")
     args = parser.parse_args()
 
     logging.basicConfig(

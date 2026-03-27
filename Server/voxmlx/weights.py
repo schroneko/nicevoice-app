@@ -56,7 +56,11 @@ _REMAP_PATTERNS = [
 
 
 def _remap_name(name: str) -> str | None:
-    name = re.sub(r"^(mm_streams_embeddings\.embedding_module|mm_whisper_embeddings)\.", "", name)
+    name = re.sub(
+        r"^(mm_streams_embeddings\.embedding_module|mm_whisper_embeddings)\.",
+        "",
+        name,
+    )
     for pattern, replacement in _REMAP_PATTERNS:
         new_name, n = re.subn(f"^{pattern}$", replacement, name)
         if n > 0:
@@ -70,6 +74,15 @@ def _is_conv_weight(name: str) -> bool:
 
 def _is_converted_format(model_path: Path) -> bool:
     return (model_path / "config.json").exists() and not (model_path / "consolidated.safetensors").exists()
+
+
+def _load_weight_map(path: Path) -> dict[str, mx.array]:
+    loaded = mx.load(str(path))
+    if isinstance(loaded, tuple):
+        loaded = loaded[0]
+    if not isinstance(loaded, dict):
+        raise TypeError(f"Unexpected weight payload type: {type(loaded)!r}")
+    return {str(name): tensor for name, tensor in loaded.items() if isinstance(tensor, mx.array)}
 
 
 def _load_converted(model_path: Path) -> tuple[VoxtralRealtime, dict]:
@@ -101,11 +114,11 @@ def _load_converted(model_path: Path) -> tuple[VoxtralRealtime, dict]:
         with open(index_path) as f:
             index = json.load(f)
         shard_files = sorted(set(index["weight_map"].values()))
-        weights = {}
+        weights: dict[str, mx.array] = {}
         for shard_file in shard_files:
-            weights.update(mx.load(str(model_path / shard_file)))
+            weights.update(_load_weight_map(model_path / shard_file))
     else:
-        weights = mx.load(str(model_path / "model.safetensors"))
+        weights = _load_weight_map(model_path / "model.safetensors")
 
     model.load_weights(list(weights.items()))
     mx.eval(model.parameters())
@@ -119,7 +132,7 @@ def _load_original(model_path: Path) -> tuple[VoxtralRealtime, dict]:
 
     model = VoxtralRealtime(config)
 
-    weights = mx.load(str(model_path / "consolidated.safetensors"))
+    weights = _load_weight_map(model_path / "consolidated.safetensors")
 
     remapped = {}
     skipped = []

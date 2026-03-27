@@ -24,6 +24,22 @@ server = ["fastapi", "uvicorn[standard]"]
 [tool.setuptools.packages.find]
 include = ["voxmlx"]
 
+[dependency-groups]
+dev = [
+    "fastapi>=0.135.2",
+    "mlx-qwen3-asr>=0.3.2",
+    "ruff>=0.15.7",
+    "ty>=0.0.25",
+    "uvicorn[standard]>=0.42.0",
+]
+
+[tool.ruff]
+line-length = 130
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
 [project.scripts]
 voxmlx = "voxmlx:main"
 voxmlx-convert = "voxmlx.convert:main"

@@ -12,9 +12,7 @@ class TimeEmbedding(nn.Module):
     def __init__(self, dim: int = 32, theta: float = 10000.0):
         super().__init__()
         self.dim = dim
-        inv_freq = mx.exp(
-            -math.log(theta) * mx.arange(dim // 2).astype(mx.float32) / (dim // 2)
-        )
+        inv_freq = mx.exp(-math.log(theta) * mx.arange(dim // 2).astype(mx.float32) / (dim // 2))
         self._inv_freq = inv_freq
 
     def __call__(self, t: mx.array) -> mx.array:
@@ -93,15 +91,10 @@ class VoxtralRealtime(nn.Module):
         """Incrementally encode new mel frames."""
         x_mel = new_mel.T[None, :, :].astype(self.encoder.conv1.weight.dtype)
 
-        x, conv1_tail, conv2_tail = self.encoder.forward_conv_step(
-            x_mel, conv1_tail, conv2_tail
-        )
+        x, conv1_tail, conv2_tail = self.encoder.forward_conv_step(x_mel, conv1_tail, conv2_tail)
 
         if encoder_cache is None:
-            encoder_cache = [
-                RotatingKVCache(8192)
-                for _ in range(len(self.encoder.layers))
-            ]
+            encoder_cache = [RotatingKVCache(8192) for _ in range(len(self.encoder.layers))]
 
         x = self.encoder.forward_transformer(x, cache=encoder_cache)
         x = x[0]

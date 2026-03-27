@@ -44,6 +44,7 @@ def stream_transcribe(
         nonlocal cache, y
 
         for i in range(n_to_decode):
+            assert y is not None
             token_embed = model.language_model.embed(y.reshape(1, 1))[0, 0]
             step_embed = (embeds[i] + token_embed)[None, None, :]
             logits = model.decode(step_embed, t_cond, mask=None, cache=cache)
@@ -57,9 +58,7 @@ def stream_transcribe(
                 y = None
                 return i, True
 
-            text = sp.decode(
-                [token_id], special_token_policy=SpecialTokenPolicy.IGNORE
-            )
+            text = sp.decode([token_id], special_token_policy=SpecialTokenPolicy.IGNORE)
             print(text, end="", flush=True)
 
             if i > 0 and i % 256 == 0:
@@ -145,19 +144,15 @@ def stream_transcribe(
                 continue
 
             if first_cycle and len(pending_audio) >= SAMPLES_PER_TOKEN:
-                left_pad = np.zeros(
-                    N_LEFT_PAD_TOKENS * SAMPLES_PER_TOKEN, dtype=np.float32
-                )
+                left_pad = np.zeros(N_LEFT_PAD_TOKENS * SAMPLES_PER_TOKEN, dtype=np.float32)
                 n_feed = (len(pending_audio) // SAMPLES_PER_TOKEN) * SAMPLES_PER_TOKEN
                 chunk = np.concatenate([left_pad, pending_audio[:n_feed]])
                 pending_audio = pending_audio[n_feed:]
                 n_audio_samples_fed += n_feed
 
                 mel, audio_tail = log_mel_spectrogram_step(chunk, audio_tail)
-                new_embeds, conv1_tail, conv2_tail, encoder_cache, ds_buf = (
-                    model.encode_step(
-                        mel, conv1_tail, conv2_tail, encoder_cache, ds_buf
-                    )
+                new_embeds, conv1_tail, conv2_tail, encoder_cache, ds_buf = model.encode_step(
+                    mel, conv1_tail, conv2_tail, encoder_cache, ds_buf
                 )
                 if new_embeds is not None:
                     mx.eval(new_embeds)
@@ -171,10 +166,8 @@ def stream_transcribe(
                 n_audio_samples_fed += n_feed
 
                 mel, audio_tail = log_mel_spectrogram_step(chunk, audio_tail)
-                new_embeds, conv1_tail, conv2_tail, encoder_cache, ds_buf = (
-                    model.encode_step(
-                        mel, conv1_tail, conv2_tail, encoder_cache, ds_buf
-                    )
+                new_embeds, conv1_tail, conv2_tail, encoder_cache, ds_buf = model.encode_step(
+                    mel, conv1_tail, conv2_tail, encoder_cache, ds_buf
                 )
                 if new_embeds is not None:
                     mx.eval(new_embeds)
@@ -188,12 +181,8 @@ def stream_transcribe(
                 time.sleep(0.02)
                 continue
 
-            safe_total = (
-                N_LEFT_PAD_TOKENS + n_audio_samples_fed // SAMPLES_PER_TOKEN
-            )
-            n_decodable = min(
-                audio_embeds.shape[0], safe_total - n_total_decoded
-            )
+            safe_total = N_LEFT_PAD_TOKENS + n_audio_samples_fed // SAMPLES_PER_TOKEN
+            n_decodable = min(audio_embeds.shape[0], safe_total - n_total_decoded)
 
             if n_decodable <= 0:
                 time.sleep(0.02)
@@ -219,9 +208,7 @@ def stream_transcribe(
                 n_total_decoded = prefix_len
                 prefilled = True
 
-                n_decodable = min(
-                    audio_embeds.shape[0], safe_total - n_total_decoded
-                )
+                n_decodable = min(audio_embeds.shape[0], safe_total - n_total_decoded)
 
             if n_decodable <= 0:
                 time.sleep(0.02)
@@ -252,15 +239,11 @@ def stream_transcribe(
                 audio_buf = np.zeros(0, dtype=np.float32)
 
             pending_audio = np.append(pending_audio, final_audio)
-            right_pad = np.zeros(
-                N_RIGHT_PAD_TOKENS * SAMPLES_PER_TOKEN, dtype=np.float32
-            )
+            right_pad = np.zeros(N_RIGHT_PAD_TOKENS * SAMPLES_PER_TOKEN, dtype=np.float32)
             flush_chunk = np.concatenate([pending_audio, right_pad])
             mel, audio_tail = log_mel_spectrogram_step(flush_chunk, audio_tail)
-            new_embeds, conv1_tail, conv2_tail, encoder_cache, ds_buf = (
-                model.encode_step(
-                    mel, conv1_tail, conv2_tail, encoder_cache, ds_buf
-                )
+            new_embeds, conv1_tail, conv2_tail, encoder_cache, ds_buf = model.encode_step(
+                mel, conv1_tail, conv2_tail, encoder_cache, ds_buf
             )
             if new_embeds is not None:
                 mx.eval(new_embeds)
@@ -275,17 +258,13 @@ def stream_transcribe(
         if y is not None:
             token_id = y.item()
             if token_id != eos_token_id:
-                text = sp.decode(
-                    [token_id], special_token_policy=SpecialTokenPolicy.IGNORE
-                )
+                text = sp.decode([token_id], special_token_policy=SpecialTokenPolicy.IGNORE)
                 print(text, end="", flush=True)
         print()
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Live streaming speech-to-text with Voxtral"
-    )
+    parser = argparse.ArgumentParser(description="Live streaming speech-to-text with Voxtral")
     parser.add_argument(
         "--model",
         default="mlx-community/Voxtral-Mini-4B-Realtime-6bit",

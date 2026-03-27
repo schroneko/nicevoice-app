@@ -47,6 +47,7 @@ def mel_filter_bank(
     f_max: float = 8000.0,
 ) -> np.ndarray:
     """Slaney-style mel filter bank (matching mistral_common/audio.py)."""
+
     def hz_to_mel(f):
         min_log_hz = 1000.0
         min_log_mel = 15.0
@@ -81,7 +82,7 @@ def mel_filter_bank(
     up_slopes = slopes[:, 2:] / filter_diff[1:]
     fb = np.maximum(np.zeros(1), np.minimum(down_slopes, up_slopes))
 
-    enorm = 2.0 / (filter_freqs[2:n_mels + 2] - filter_freqs[:n_mels])
+    enorm = 2.0 / (filter_freqs[2 : n_mels + 2] - filter_freqs[:n_mels])
     fb *= np.expand_dims(enorm, 0)
 
     return fb.T.astype(np.float32)  # [n_mels, n_freqs]
@@ -136,7 +137,7 @@ def log_mel_spectrogram(audio: np.ndarray) -> mx.array:
     spec_real = frames @ dft_real.T
     spec_imag = frames @ dft_imag.T
 
-    magnitudes = (spec_real[:-1] ** 2 + spec_imag[:-1] ** 2)
+    magnitudes = spec_real[:-1] ** 2 + spec_imag[:-1] ** 2
 
     mel_filters = _get_mel_filters()
     mel_spec = magnitudes @ mel_filters.T
@@ -149,9 +150,7 @@ def log_mel_spectrogram(audio: np.ndarray) -> mx.array:
     return log_spec.T
 
 
-def log_mel_spectrogram_step(
-    audio_chunk: np.ndarray, audio_tail: np.ndarray | None
-) -> tuple[mx.array, np.ndarray]:
+def log_mel_spectrogram_step(audio_chunk: np.ndarray, audio_tail: np.ndarray | None) -> tuple[mx.array, np.ndarray]:
     """Incremental mel spectrogram for streaming."""
     tail_len = N_FFT - HOP_LENGTH  # 240
 
@@ -179,7 +178,7 @@ def log_mel_spectrogram_step(
     spec_real = frames @ dft_real.T
     spec_imag = frames @ dft_imag.T
 
-    magnitudes = spec_real ** 2 + spec_imag ** 2
+    magnitudes = spec_real**2 + spec_imag**2
 
     mel_filters = _get_mel_filters()
     mel_spec = magnitudes @ mel_filters.T

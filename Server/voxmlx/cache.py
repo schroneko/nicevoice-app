@@ -4,9 +4,9 @@ import mlx.core as mx
 class RotatingKVCache:
     step = 256
 
-    def __init__(self, max_size):
-        self.keys = None
-        self.values = None
+    def __init__(self, max_size: int):
+        self.keys: mx.array | None = None
+        self.values: mx.array | None = None
         self._offset = 0
         self.max_size = max_size
         self._idx = 0
@@ -30,14 +30,14 @@ class RotatingKVCache:
             return v
         elif self._idx < self._offset:
             return mx.concatenate(
-                [v[..., self._idx:, :], v[..., : self._idx, :]],
+                [v[..., self._idx :, :], v[..., : self._idx, :]],
                 axis=2,
             )
         else:
             return v[..., : self._idx, :]
 
     def _update_concat(self, keys, values):
-        if self.keys is None:
+        if self.keys is None or self.values is None:
             self.keys = keys
             self.values = values
         else:
@@ -48,6 +48,8 @@ class RotatingKVCache:
             trim_size = self._idx - self.max_size + 1
             self.keys = self._trim(trim_size, self.keys, keys)
             self.values = self._trim(trim_size, self.values, values)
+        assert self.keys is not None
+        assert self.values is not None
         self._offset += keys.shape[2]
         self._idx = self.keys.shape[2]
         return self.keys, self.values
@@ -55,21 +57,22 @@ class RotatingKVCache:
     def _update_in_place(self, keys, values):
         B, n_kv_heads, S, k_head_dim = keys.shape
         prev = self._offset
-        if self.keys is None or (
-            prev >= self.keys.shape[2] and self.keys.shape[2] < self.max_size
-        ):
+        if self.keys is None or (prev >= self.keys.shape[2] and self.keys.shape[2] < self.max_size):
             v_head_dim = values.shape[3]
             new_size = min(self.step, self.max_size - prev)
             k_shape = (B, n_kv_heads, new_size, k_head_dim)
             v_shape = (B, n_kv_heads, new_size, v_head_dim)
             new_k = mx.zeros(k_shape, keys.dtype)
             new_v = mx.zeros(v_shape, values.dtype)
-            if self.keys is not None:
+            if self.keys is not None and self.values is not None:
                 self.keys = mx.concatenate([self.keys, new_k], axis=2)
                 self.values = mx.concatenate([self.values, new_v], axis=2)
             else:
                 self.keys, self.values = new_k, new_v
             self._idx = prev
+
+        assert self.keys is not None
+        assert self.values is not None
 
         trim_size = self.keys.shape[2] - self.max_size
         if trim_size > 0:

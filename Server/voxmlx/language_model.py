@@ -17,7 +17,7 @@ class DecoderAttention(nn.Module):
         self.n_heads = n_heads
         self.n_kv_heads = n_kv_heads
         self.head_dim = head_dim
-        self.scale = head_dim ** -0.5
+        self.scale = head_dim**-0.5
         self.q_proj = nn.Linear(dim, n_heads * head_dim, bias=False)
         self.k_proj = nn.Linear(dim, n_kv_heads * head_dim, bias=False)
         self.v_proj = nn.Linear(dim, n_kv_heads * head_dim, bias=False)
@@ -117,8 +117,7 @@ class LanguageModel(nn.Module):
         super().__init__()
         self.embed_tokens = nn.Embedding(vocab_size, dim)
         self.layers = [
-            DecoderLayer(dim, n_heads, n_kv_heads, head_dim, hidden_dim, rope_theta, cond_dim)
-            for _ in range(n_layers)
+            DecoderLayer(dim, n_heads, n_kv_heads, head_dim, hidden_dim, rope_theta, cond_dim) for _ in range(n_layers)
         ]
         self.norm = nn.RMSNorm(dim, eps=1e-5)
         self._dim = dim

@@ -9,28 +9,23 @@ import mlx.core as mx
 import mlx.nn as nn
 from mlx.utils import tree_flatten, tree_reduce
 
-from .model import VoxtralRealtime
-from .weights import download_model, load_model, _remap_name, _is_conv_weight
+from .weights import download_model, load_model
 
 
 def _get_total_parameters(model):
-    leaf_modules = tree_flatten(
-        model.leaf_modules(), is_leaf=lambda m: isinstance(m, nn.Module)
-    )
+    leaf_modules = tree_flatten(model.leaf_modules(), is_leaf=lambda m: isinstance(m, nn.Module))
 
     def nparams(m):
         if hasattr(m, "bits"):
             n = 0 if not hasattr(m, "bias") else m.bias.size
             return n + m.weight.size * 32 // m.bits
-        return sum(v.size for _, v in tree_flatten(m.parameters()))
+        return sum(value.size for _, value in tree_flatten(m.parameters()) if isinstance(value, mx.array))
 
     return sum(nparams(m) for _, m in leaf_modules)
 
 
 def _compute_bits_per_weight(model):
-    model_bytes = tree_reduce(
-        lambda acc, x: acc + x.nbytes if isinstance(x, mx.array) else acc, model, 0
-    )
+    model_bytes = tree_reduce(lambda acc, x: acc + x.nbytes if isinstance(x, mx.array) else acc, model, 0)
     return model_bytes * 8 / _get_total_parameters(model)
 
 
@@ -54,11 +49,7 @@ def _save_model(save_path: Path, model: nn.Module):
     weights = dict(tree_flatten(model.parameters()))
     shards = _make_shards(weights)
     shards_count = len(shards)
-    shard_file_format = (
-        "model-{:05d}-of-{:05d}.safetensors"
-        if shards_count > 1
-        else "model.safetensors"
-    )
+    shard_file_format = "model-{:05d}-of-{:05d}.safetensors" if shards_count > 1 else "model.safetensors"
 
     total_size = sum(v.nbytes for v in weights.values())
     index_data = {
@@ -84,9 +75,7 @@ def _save_model(save_path: Path, model: nn.Module):
             index_data["weight_map"][weight_name] = shard_name
         del shard
 
-    index_data["weight_map"] = {
-        k: index_data["weight_map"][k] for k in sorted(index_data["weight_map"])
-    }
+    index_data["weight_map"] = {k: index_data["weight_map"][k] for k in sorted(index_data["weight_map"])}
 
     with open(save_path / "model.safetensors.index.json", "w") as f:
         json.dump(index_data, f, indent=4)
@@ -165,16 +154,16 @@ print(text)
 
 def convert(
     hf_path: str = "mistralai/Voxtral-Mini-4B-Realtime-2602",
-    mlx_path: str = "mlx_model",
+    mlx_path: str | Path = "mlx_model",
     quantize: bool = False,
     q_group_size: int = 64,
     q_bits: int = 4,
     dtype: str | None = None,
     upload_repo: str | None = None,
 ):
-    mlx_path = Path(mlx_path)
-    if mlx_path.exists():
-        raise ValueError(f"Output path {mlx_path} already exists.")
+    mlx_output_path = Path(mlx_path)
+    if mlx_output_path.exists():
+        raise ValueError(f"Output path {mlx_output_path} already exists.")
 
     print(f"[INFO] Loading {hf_path}")
     src_path = download_model(hf_path)
@@ -183,7 +172,7 @@ def convert(
     if dtype is not None:
         dt = getattr(mx, dtype)
         weights = dict(tree_flatten(model.parameters()))
-        weights = {k: v.astype(dt) if v.dtype in (mx.float32, mx.float16, mx.bfloat16) else v for k, v in weights.items()}
+        weights = {k: (v.astype(dt) if v.dtype in (mx.float32, mx.float16, mx.bfloat16) else v) for k, v in weights.items()}
         model.load_weights(list(weights.items()))
         mx.eval(model.parameters())
 
@@ -191,16 +180,16 @@ def convert(
     if quantize:
         quant_config = _quantize_model(model, q_group_size, q_bits)
 
-    print(f"[INFO] Saving to {mlx_path}")
-    _save_model(mlx_path, model)
+    print(f"[INFO] Saving to {mlx_output_path}")
+    _save_model(mlx_output_path, model)
 
     save_config = dict(config)
     if quant_config is not None:
         save_config["quantization"] = quant_config
-    with open(mlx_path / "config.json", "w") as f:
+    with open(mlx_output_path / "config.json", "w") as f:
         json.dump(dict(sorted(save_config.items())), f, indent=4)
 
-    shutil.copy(src_path / "tekken.json", mlx_path / "tekken.json")
+    shutil.copy(src_path / "tekken.json", mlx_output_path / "tekken.json")
 
     bpw = _compute_bits_per_weight(model)
     total_params = _get_total_parameters(model)
@@ -208,7 +197,7 @@ def convert(
     print(f"[INFO] Bits per weight: {bpw:.3f}")
 
     if upload_repo is not None:
-        _upload_to_hub(str(mlx_path), upload_repo, hf_path)
+        _upload_to_hub(str(mlx_output_path), upload_repo, hf_path)
 
 
 def main():
@@ -224,7 +213,8 @@ def main():
         help="Output directory (default: mlx_model)",
     )
     parser.add_argument(
-        "-q", "--quantize",
+        "-q",
+        "--quantize",
         action="store_true",
         help="Quantize the model",
     )
