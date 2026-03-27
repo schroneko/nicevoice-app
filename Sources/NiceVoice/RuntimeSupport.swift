@@ -27,7 +27,7 @@ enum CommandLineTool: String, CaseIterable {
     var installHint: String {
         switch self {
         case .uvx:
-            return "uvx が見つかりません。`brew install uv` または `curl -LsSf https://astral.sh/uv/install.sh | sh` で uv をインストールしてください"
+            return "uvx が見つかりません。`brew install uv`、`curl -LsSf https://astral.sh/uv/install.sh | sh`、または `mise use -g uv@<version>` で uv を使えるようにしてください"
         case .hf:
             return "hf コマンドが見つかりません。`brew install huggingface-cli` または `uv tool install huggingface_hub` でインストールしてください"
         case .ytDlp:
@@ -57,7 +57,8 @@ enum CommandLineTool: String, CaseIterable {
     ) -> URL? {
         for candidate in candidatePaths(
             additionalAbsolutePaths: additionalAbsolutePaths,
-            environment: environment
+            environment: environment,
+            fileManager: fileManager
         ) {
             if fileManager.isExecutableFile(atPath: candidate) {
                 return URL(fileURLWithPath: candidate)
@@ -68,7 +69,8 @@ enum CommandLineTool: String, CaseIterable {
 
     private func candidatePaths(
         additionalAbsolutePaths: [String],
-        environment: [String: String]
+        environment: [String: String],
+        fileManager: FileManager
     ) -> [String] {
         let pathDirectories = environment["PATH"]?
             .split(separator: ":")
@@ -79,7 +81,84 @@ enum CommandLineTool: String, CaseIterable {
                 .path
         }
 
-        return deduplicated(pathCandidates + additionalAbsolutePaths + bundledSearchPaths)
+        return deduplicated(
+            pathCandidates
+            + additionalAbsolutePaths
+            + miseSearchPaths(environment: environment, fileManager: fileManager)
+            + bundledSearchPaths
+        )
+    }
+
+    private func miseSearchPaths(
+        environment: [String: String],
+        fileManager: FileManager
+    ) -> [String] {
+        let homeDirectory = environment["HOME"] ?? NSHomeDirectory()
+        let dataDirectory = environment["MISE_DATA_DIR"] ?? "\(homeDirectory)/.local/share/mise"
+        let installsRoot = URL(fileURLWithPath: dataDirectory, isDirectory: true)
+            .appendingPathComponent("installs", isDirectory: true)
+        let shimCandidates = [
+            "\(dataDirectory)/shims/\(rawValue)",
+            "\(homeDirectory)/.mise/shims/\(rawValue)"
+        ]
+
+        let installCandidates = miseInstallDirectoryNames.flatMap { installDirectoryName in
+            miseInstalledExecutablePaths(
+                installsRoot: installsRoot,
+                installDirectoryName: installDirectoryName,
+                fileManager: fileManager
+            )
+        }
+
+        return shimCandidates + installCandidates
+    }
+
+    private var miseInstallDirectoryNames: [String] {
+        switch self {
+        case .uvx:
+            return ["uv"]
+        case .hf:
+            return ["hf", "huggingface_hub"]
+        case .ytDlp:
+            return ["yt-dlp"]
+        }
+    }
+
+    private func miseInstalledExecutablePaths(
+        installsRoot: URL,
+        installDirectoryName: String,
+        fileManager: FileManager
+    ) -> [String] {
+        let toolRoot = installsRoot.appendingPathComponent(installDirectoryName, isDirectory: true)
+        guard let versionDirectories = try? fileManager.contentsOfDirectory(
+            at: toolRoot,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else {
+            return []
+        }
+
+        return versionDirectories.flatMap { versionDirectory in
+            var candidates = [
+                versionDirectory.appendingPathComponent(rawValue).path,
+                versionDirectory.appendingPathComponent("bin/\(rawValue)").path
+            ]
+
+            if let nestedDirectories = try? fileManager.contentsOfDirectory(
+                at: versionDirectory,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            ) {
+                candidates += nestedDirectories.flatMap { nestedDirectory in
+                    [
+                        nestedDirectory.appendingPathComponent(rawValue).path,
+                        nestedDirectory.appendingPathComponent("bin/\(rawValue)").path
+                    ]
+                }
+            }
+
+            return candidates
+        }
     }
 
     private func deduplicated(_ values: [String]) -> [String] {

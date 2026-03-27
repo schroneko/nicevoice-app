@@ -177,7 +177,14 @@ if [[ ! -f "${PRODUCTS_DIR}/${PRODUCT}" ]]; then
 fi
 
 echo "==> Bundling app..."
-mint run stackotter/swift-bundler bundle --skip-build --products-directory "${PRODUCTS_DIR}"
+if command -v mint >/dev/null 2>&1; then
+    mint run stackotter/swift-bundler bundle --skip-build --products-directory "${PRODUCTS_DIR}"
+elif command -v swift-bundler >/dev/null 2>&1; then
+    swift-bundler bundle --skip-build --products-directory "${PRODUCTS_DIR}"
+else
+    echo "swift-bundler not found. Install it with 'mint install stackotter/swift-bundler' or ensure 'swift-bundler' is on PATH." >&2
+    exit 1
+fi
 
 if [[ ! -d "${APP_PATH}" ]]; then
     echo "Bundle not created: ${APP_PATH}" >&2
@@ -187,6 +194,7 @@ fi
 echo "==> Copying Server resources..."
 rm -rf "${APP_PATH}/Contents/Resources/Server"
 cp -R Server "${APP_PATH}/Contents/Resources/Server"
+find "${APP_PATH}/Contents/Resources/Server" -name ".venv" -type d -prune -exec rm -rf {} +
 
 if [[ -d "${PRODUCTS_DIR}/Sparkle.framework" ]]; then
     echo "==> Copying Sparkle.framework..."

@@ -25,6 +25,35 @@ struct RuntimeSupportTests {
     }
 
     @Test
+    func commandLineToolResolvesUvxFromMiseInstallDirectory() throws {
+        let homeDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let uvxURL = homeDir
+            .appendingPathComponent(".local/share/mise/installs/uv/0.11.1/uv-aarch64-apple-darwin/uvx")
+
+        try FileManager.default.createDirectory(
+            at: uvxURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: homeDir) }
+
+        try Data("#!/bin/sh\nexit 0\n".utf8).write(to: uvxURL)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: uvxURL.path
+        )
+
+        let resolved = CommandLineTool.uvx.resolvedURL(
+            environment: [
+                "HOME": homeDir.path,
+                "PATH": "/usr/bin:/bin"
+            ]
+        )
+
+        #expect(resolved?.standardizedFileURL.path == uvxURL.standardizedFileURL.path)
+    }
+
+    @Test
     func serverResourceLocatorFindsRepositoryStyleLayoutFromExecutablePath() throws {
         let repoRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

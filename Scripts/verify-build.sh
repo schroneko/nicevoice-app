@@ -11,6 +11,7 @@ echo "Building and bundling..." >&2
 
 echo "Restarting app..." >&2
 killall -9 NiceVoice 2>/dev/null || true
-open "${ROOT_DIR}/.build/bundler/NiceVoice.app"
+sleep 1
+open -n "${ROOT_DIR}/.build/bundler/NiceVoice.app"
 
 echo "Build verified and app restarted." >&2
