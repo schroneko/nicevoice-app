@@ -75,4 +75,41 @@ struct RuntimeSupportTests {
 
         #expect(packageDirectory?.path == serverDir.path)
     }
+
+    @Test
+    func bundledPythonRuntimeLocatorFindsPackagedVoxtralRuntime() throws {
+        let bundleRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let resourceRoot = bundleRoot.appendingPathComponent("Resources", isDirectory: true)
+        let serverRoot = resourceRoot.appendingPathComponent("Server", isDirectory: true)
+        let sitePackages = serverRoot
+            .appendingPathComponent(".venv/lib/python3.13/site-packages", isDirectory: true)
+        let pythonExecutable = resourceRoot
+            .appendingPathComponent("PythonRuntime/cpython-test/bin/python3", isDirectory: false)
+        let moduleRoot = serverRoot.appendingPathComponent("voxmlx", isDirectory: true)
+
+        try FileManager.default.createDirectory(at: sitePackages, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: moduleRoot, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: pythonExecutable.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: bundleRoot) }
+
+        try Data("#!/bin/sh\nexit 0\n".utf8).write(to: pythonExecutable)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: pythonExecutable.path
+        )
+
+        let runtime = BundledPythonRuntimeLocator.runtime(
+            packageRelativePath: "",
+            resourceURL: resourceRoot
+        )
+
+        #expect(runtime?.pythonExecutableURL.standardizedFileURL.path == pythonExecutable.standardizedFileURL.path)
+        #expect(runtime?.serverRootURL.standardizedFileURL.path == serverRoot.standardizedFileURL.path)
+        #expect(runtime?.sitePackagesURL.standardizedFileURL.path == sitePackages.standardizedFileURL.path)
+        #expect(runtime?.pythonPathEntries == [serverRoot.standardizedFileURL.path, sitePackages.standardizedFileURL.path])
+    }
 }

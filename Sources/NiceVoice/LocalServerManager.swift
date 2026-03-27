@@ -8,11 +8,17 @@ enum LocalServerStatus: Equatable {
 }
 
 final class LocalServerManager {
+    private enum LaunchConfiguration {
+        case bundled(runtime: BundledPythonRuntime)
+        case uvx(uvxPath: String, serverPath: String)
+    }
+
     private var process: Process?
     private var healthCheckTask: Task<Void, Never>?
     private let onStatusChange: (LocalServerStatus) -> Void
 
     private let serverCommand: String
+    private let serverModule: String
     private let serverPackagePath: String
     private let modelName: String
     private let port: Int
@@ -28,6 +34,7 @@ final class LocalServerManager {
 
     init(
         serverCommand: String,
+        serverModule: String,
         serverPackagePath: String,
         modelName: String,
         port: Int,
@@ -39,6 +46,7 @@ final class LocalServerManager {
         onStatusChange: @escaping (LocalServerStatus) -> Void
     ) {
         self.serverCommand = serverCommand
+        self.serverModule = serverModule
         self.serverPackagePath = serverPackagePath
         self.modelName = modelName
         self.port = port
@@ -57,17 +65,9 @@ final class LocalServerManager {
     func start() {
         guard !isRunning else { return }
 
-        guard let uvxPath = findUvx() else {
-            let status = LocalServerStatus.error(CommandLineTool.uvx.installHint)
-            debugLog("[\(serverCommand)] uvx not found in search paths")
-            onStatusChange(status)
-            return
-        }
-
-        guard let serverPath = ServerResourceLocator.packageDirectory(relativePath: serverPackagePath)?.path else {
-            let status = LocalServerStatus.error(String(localized: "Server リソースが見つかりません。`Scripts/package-app.sh` でアプリを再バンドルしてください"))
-            debugLog("[\(serverCommand)] Server resource not found in app bundle")
-            onStatusChange(status)
+        guard let launchConfiguration = resolveLaunchConfiguration() else {
+            debugLog("[\(serverCommand)] no launch configuration available")
+            onStatusChange(.error(missingRuntimeMessage()))
             return
         }
 
@@ -79,17 +79,34 @@ final class LocalServerManager {
             return
         }
 
-        debugLog("[\(serverCommand)] found uvx at \(uvxPath), server at \(serverPath)")
-
         let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: uvxPath)
-        proc.arguments = [
-            "--refresh",
-            "--from", "\(serverPath)[server]",
-            serverCommand,
-            "--model", modelName,
-            "--port", String(port)
-        ]
+        proc.environment = ProcessInfo.processInfo.environment
+
+        switch launchConfiguration {
+        case .bundled(let runtime):
+            debugLog("[\(serverCommand)] using bundled python at \(runtime.pythonExecutableURL.path)")
+            proc.executableURL = runtime.pythonExecutableURL
+            proc.currentDirectoryURL = runtime.serverRootURL
+            proc.arguments = [
+                "-m", serverModule,
+                "--model", modelName,
+                "--port", String(port)
+            ]
+            proc.environment?["PYTHONPATH"] = mergedPythonPath(
+                existingValue: proc.environment?["PYTHONPATH"],
+                additionalEntries: runtime.pythonPathEntries
+            )
+        case .uvx(let uvxPath, let serverPath):
+            debugLog("[\(serverCommand)] found uvx at \(uvxPath), server at \(serverPath)")
+            proc.executableURL = URL(fileURLWithPath: uvxPath)
+            proc.arguments = [
+                "--refresh",
+                "--from", "\(serverPath)[server]",
+                serverCommand,
+                "--model", modelName,
+                "--port", String(port)
+            ]
+        }
 
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
@@ -167,6 +184,40 @@ final class LocalServerManager {
 
     private func findUvx() -> String? {
         CommandLineTool.uvx.resolvedURL(additionalAbsolutePaths: uvxSearchPaths)?.path
+    }
+
+    private func resolveLaunchConfiguration() -> LaunchConfiguration? {
+        if let runtime = BundledPythonRuntimeLocator.runtime(packageRelativePath: serverPackagePath) {
+            return .bundled(runtime: runtime)
+        }
+
+        guard
+            let uvxPath = findUvx(),
+            let serverPath = ServerResourceLocator.packageDirectory(relativePath: serverPackagePath)?.path
+        else {
+            return nil
+        }
+
+        return .uvx(uvxPath: uvxPath, serverPath: serverPath)
+    }
+
+    private func mergedPythonPath(existingValue: String?, additionalEntries: [String]) -> String {
+        let existingEntries = existingValue?
+            .split(separator: ":")
+            .map(String.init) ?? []
+        let entries = additionalEntries + existingEntries
+        var seen = Set<String>()
+        return entries.filter { entry in
+            !entry.isEmpty && seen.insert(entry).inserted
+        }.joined(separator: ":")
+    }
+
+    private func missingRuntimeMessage() -> String {
+        if serverCommand == "voxmlx-serve" {
+            return String(localized: "Voxtral ランタイムが見つかりません。アプリを再インストールしてください")
+        }
+
+        return CommandLineTool.uvx.installHint
     }
 
     private func startHealthPolling() {

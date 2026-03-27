@@ -255,6 +255,107 @@ enum ServerResourceLocator {
     }
 }
 
+struct BundledPythonRuntime: Equatable {
+    let pythonExecutableURL: URL
+    let serverRootURL: URL
+    let moduleRootURL: URL
+    let sitePackagesURL: URL
+
+    var pythonPathEntries: [String] {
+        [moduleRootURL.standardizedFileURL.path, sitePackagesURL.standardizedFileURL.path]
+    }
+}
+
+enum BundledPythonRuntimeLocator {
+    static func runtime(
+        packageRelativePath: String,
+        resourceURL: URL? = Bundle.main.resourceURL,
+        fileManager: FileManager = .default
+    ) -> BundledPythonRuntime? {
+        guard let resourceURL else {
+            return nil
+        }
+
+        let serverRootURL = resourceURL.appendingPathComponent("Server", isDirectory: true)
+        guard fileManager.fileExists(atPath: serverRootURL.path) else {
+            return nil
+        }
+
+        let moduleRootURL = packageRelativePath.isEmpty
+            ? serverRootURL
+            : serverRootURL.appendingPathComponent(packageRelativePath, isDirectory: true)
+        let venvRootURL = moduleRootURL.appendingPathComponent(".venv", isDirectory: true)
+
+        guard
+            let sitePackagesURL = sitePackagesDirectory(in: venvRootURL, fileManager: fileManager),
+            let pythonExecutableURL = pythonExecutable(in: resourceURL, fileManager: fileManager)
+        else {
+            return nil
+        }
+
+        return BundledPythonRuntime(
+            pythonExecutableURL: pythonExecutableURL,
+            serverRootURL: serverRootURL,
+            moduleRootURL: moduleRootURL,
+            sitePackagesURL: sitePackagesURL
+        )
+    }
+
+    private static func pythonExecutable(
+        in resourceURL: URL,
+        fileManager: FileManager
+    ) -> URL? {
+        let runtimeContainerURL = resourceURL.appendingPathComponent("PythonRuntime", isDirectory: true)
+        guard
+            let runtimeDirectories = try? fileManager.contentsOfDirectory(
+                at: runtimeContainerURL,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            ).sorted(by: { $0.lastPathComponent < $1.lastPathComponent })
+        else {
+            return nil
+        }
+
+        for runtimeDirectory in runtimeDirectories {
+            let candidates = [
+                runtimeDirectory.appendingPathComponent("bin/python3", isDirectory: false),
+                runtimeDirectory.appendingPathComponent("bin/python", isDirectory: false)
+            ]
+
+            for candidate in candidates where fileManager.isExecutableFile(atPath: candidate.path) {
+                return candidate
+            }
+        }
+
+        return nil
+    }
+
+    private static func sitePackagesDirectory(
+        in venvRootURL: URL,
+        fileManager: FileManager
+    ) -> URL? {
+        let libDirectoryURL = venvRootURL.appendingPathComponent("lib", isDirectory: true)
+        guard
+            let pythonDirectories = try? fileManager.contentsOfDirectory(
+                at: libDirectoryURL,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            ).sorted(by: { $0.lastPathComponent < $1.lastPathComponent })
+        else {
+            return nil
+        }
+
+        for pythonDirectory in pythonDirectories {
+            let candidate = pythonDirectory.appendingPathComponent("site-packages", isDirectory: true)
+            if fileManager.fileExists(atPath: candidate.path) {
+                return candidate
+            }
+        }
+
+        return nil
+    }
+}
+
 struct DependencyDiagnostic: Identifiable, Equatable {
     enum Status: Equatable {
         case available

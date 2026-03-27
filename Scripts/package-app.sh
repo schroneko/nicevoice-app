@@ -79,6 +79,50 @@ sign_nested_code() {
     )
 }
 
+sign_resource_binaries() {
+    local sign_identity="$1"
+    local resources_dir="$2"
+    local -a sign_args=(codesign -fs "${sign_identity}")
+
+    if [[ "${CONFIGURATION}" == "release" && "${sign_identity}" != "-" ]]; then
+        sign_args+=(--options runtime)
+    fi
+
+    if [[ ! -d "${resources_dir}" ]]; then
+        return
+    fi
+
+    while IFS= read -r code_file; do
+        "${sign_args[@]}" "${code_file}"
+    done < <(
+        find "${resources_dir}" -type f \( -path "*/PythonRuntime/*/bin/python" -o -path "*/PythonRuntime/*/bin/python3" -o -path "*/PythonRuntime/*/bin/python3.*" -o -name "*.so" -o -name "*.dylib" \) \
+            | awk '{ print length($0) " " $0 }' \
+            | sort -rn \
+            | cut -d' ' -f2-
+    )
+}
+
+voxtral_python_runtime_source() {
+    local pyvenv_path="${ROOT_DIR}/Server/.venv/pyvenv.cfg"
+    local python_home
+    local runtime_root
+
+    if [[ ! -f "${pyvenv_path}" ]]; then
+        echo "Voxtral virtual environment not found: ${pyvenv_path}" >&2
+        exit 1
+    fi
+
+    python_home="$(sed -n 's/^home = //p' "${pyvenv_path}" | sed -n '1p')"
+    runtime_root="$(dirname "${python_home}")"
+
+    if [[ -z "${python_home}" || ! -d "${runtime_root}" ]]; then
+        echo "Bundled Voxtral Python runtime could not be resolved from ${pyvenv_path}" >&2
+        exit 1
+    fi
+
+    printf '%s\n' "${runtime_root}"
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --configuration)
@@ -206,8 +250,17 @@ fi
 
 echo "==> Copying Server resources..."
 rm -rf "${APP_PATH}/Contents/Resources/Server"
+rm -rf "${APP_PATH}/Contents/Resources/PythonRuntime"
 cp -R Server "${APP_PATH}/Contents/Resources/Server"
-find "${APP_PATH}/Contents/Resources/Server" -name ".venv" -type d -prune -exec rm -rf {} +
+rm -rf "${APP_PATH}/Contents/Resources/Server/qwen3asr/.venv"
+
+echo "==> Copying Voxtral runtime..."
+VOXTRAL_RUNTIME_SOURCE="$(voxtral_python_runtime_source)"
+VOXTRAL_RUNTIME_NAME="$(basename "${VOXTRAL_RUNTIME_SOURCE}")"
+mkdir -p "${APP_PATH}/Contents/Resources/PythonRuntime"
+cp -R "${VOXTRAL_RUNTIME_SOURCE}" "${APP_PATH}/Contents/Resources/PythonRuntime/"
+rm -f "${APP_PATH}/Contents/Resources/Server/.venv/bin/python"
+ln -s "../../../PythonRuntime/${VOXTRAL_RUNTIME_NAME}/bin/python3" "${APP_PATH}/Contents/Resources/Server/.venv/bin/python"
 
 if [[ -d "${PRODUCTS_DIR}/Sparkle.framework" ]]; then
     echo "==> Copying Sparkle.framework..."
@@ -251,6 +304,7 @@ fi
 if [[ -n "${SIGN_IDENTITY}" ]]; then
     echo "==> Signing app..."
     sign_nested_code "${SIGN_IDENTITY}" "${FRAMEWORKS_DIR}"
+    sign_resource_binaries "${SIGN_IDENTITY}" "${APP_PATH}/Contents/Resources"
 
     RESOURCE_SIGN_ARGS=(codesign -fs "${SIGN_IDENTITY}")
     if [[ "${CONFIGURATION}" == "release" && "${SIGN_IDENTITY}" != "-" ]]; then

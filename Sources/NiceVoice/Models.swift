@@ -89,11 +89,13 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
     case qwen3ASR
     case deepgram
 
+    static let defaultEngine: TranscriptionEngine = .voxtralLocal
+
     var isDeveloperOnly: Bool {
         switch self {
-        case .voxtralLocal, .qwen3ASR:
+        case .qwen3ASR:
             return true
-        case .speechAnalyzer, .deepgram:
+        case .speechAnalyzer, .voxtralLocal, .deepgram:
             return false
         }
     }
@@ -101,7 +103,7 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
     var displayName: String {
         switch self {
         case .speechAnalyzer: return "Apple SpeechAnalyzer"
-        case .voxtralLocal: return "Voxtral Local (voxmlx)"
+        case .voxtralLocal: return "Voxtral Local"
         case .qwen3ASR: return "Qwen3 ASR"
         case .deepgram: return "Deepgram Nova-3"
         }
@@ -110,7 +112,7 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
     var engineDescription: String {
         switch self {
         case .speechAnalyzer: return String(localized: "macOS 内蔵の音声認識。オフラインで動作し、遅延が少ない")
-        case .voxtralLocal: return String(localized: "voxmlx-serve によるローカル推論。サーバーの起動が必要")
+        case .voxtralLocal: return String(localized: "高精度な Voxtral のローカル推論。アプリ内ランタイムで動作")
         case .qwen3ASR: return String(localized: "Qwen3-ASR-1.7B (MLX, ローカル推論)")
         case .deepgram: return String(localized: "Deepgram Nova-3 (クラウド API, 高精度)")
         }
@@ -127,6 +129,15 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
         switch self {
         case .deepgram: return true
         case .speechAnalyzer, .voxtralLocal, .qwen3ASR: return false
+        }
+    }
+
+    var requiresExternalModelDownload: Bool {
+        switch self {
+        case .qwen3ASR:
+            return true
+        case .speechAnalyzer, .voxtralLocal, .deepgram:
+            return false
         }
     }
 
@@ -174,9 +185,9 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
         rawValue: String,
         developerToolsEnabled: Bool = AppFeatureFlags.isDeveloperToolsEnabled()
     ) -> TranscriptionEngine {
-        let engine = TranscriptionEngine(rawValue: rawValue) ?? .speechAnalyzer
+        let engine = TranscriptionEngine(rawValue: rawValue) ?? defaultEngine
         guard developerToolsEnabled || !engine.isDeveloperOnly else {
-            return .speechAnalyzer
+            return defaultEngine
         }
         return engine
     }

@@ -262,7 +262,7 @@ final class AppState {
     var fillerSettings: FillerSettings = FillerSettings()
 
     @ObservationIgnored
-    @AppStorage("transcriptionEngine") var transcriptionEngineRaw = TranscriptionEngine.speechAnalyzer.rawValue
+    @AppStorage("transcriptionEngine") var transcriptionEngineRaw = TranscriptionEngine.defaultEngine.rawValue
 
     var transcriptionEngine: TranscriptionEngine {
         get { TranscriptionEngine.normalized(rawValue: transcriptionEngineRaw) }
@@ -395,7 +395,7 @@ final class AppState {
         localServerStatus = .stopped
         for engine in TranscriptionEngine.allCases where engine.requiresLocalServer {
             if modelDownloadStatuses[engine] == nil {
-                modelDownloadStatuses[engine] = .notDownloaded
+                modelDownloadStatuses[engine] = engine.requiresExternalModelDownload ? .notDownloaded : .downloaded
             }
         }
 
@@ -452,6 +452,7 @@ final class AppState {
             let wsEndpoint: String
             let sampleRate: Double
             let serverCommand: String
+            let serverModule: String
             let serverPackagePath: String
             let modelName: String
             let port: Int
@@ -467,6 +468,7 @@ final class AppState {
                 wsEndpoint = Constants.VoxtralLocal.wsEndpoint
                 sampleRate = Constants.VoxtralLocal.sampleRate
                 serverCommand = "voxmlx-serve"
+                serverModule = "voxmlx.server"
                 serverPackagePath = ""
                 modelName = Constants.VoxtralLocal.defaultModel
                 port = 8000
@@ -480,6 +482,7 @@ final class AppState {
                 wsEndpoint = Constants.Qwen3ASR.wsEndpoint
                 sampleRate = Constants.Qwen3ASR.sampleRate
                 serverCommand = "qwen3asr-serve"
+                serverModule = "qwen3asr.server"
                 serverPackagePath = "qwen3asr"
                 modelName = Constants.Qwen3ASR.defaultModel
                 port = 8001
@@ -531,6 +534,7 @@ final class AppState {
             )
             localServerManager = LocalServerManager(
                 serverCommand: serverCommand,
+                serverModule: serverModule,
                 serverPackagePath: serverPackagePath,
                 modelName: modelName,
                 port: port,
@@ -554,19 +558,24 @@ final class AppState {
             )
 
             let currentEngine = transcriptionEngine
-            let manager = ModelDownloadManager(
-                modelName: modelName,
-                hfSearchPaths: Constants.HuggingFace.hfSearchPaths,
-                onStatusChange: { [weak self] status in
-                    guard let self else { return }
-                    self.modelDownloadStatuses[currentEngine] = status
-                    if case .downloaded = status, currentEngine == self.transcriptionEngine {
-                        self.localServerManager?.start()
+            if currentEngine.requiresExternalModelDownload {
+                let manager = ModelDownloadManager(
+                    modelName: modelName,
+                    hfSearchPaths: Constants.HuggingFace.hfSearchPaths,
+                    onStatusChange: { [weak self] status in
+                        guard let self else { return }
+                        self.modelDownloadStatuses[currentEngine] = status
+                        if case .downloaded = status, currentEngine == self.transcriptionEngine {
+                            self.localServerManager?.start()
+                        }
                     }
-                }
-            )
-            modelDownloadManagers[currentEngine] = manager
-            manager.checkAndReport()
+                )
+                modelDownloadManagers[currentEngine] = manager
+                manager.checkAndReport()
+            } else {
+                modelDownloadManagers[currentEngine] = nil
+                modelDownloadStatuses[currentEngine] = .downloaded
+            }
         }
     }
 
@@ -575,6 +584,13 @@ final class AppState {
     }
 
     func downloadModel(for engine: TranscriptionEngine) {
+        if !engine.requiresExternalModelDownload {
+            modelDownloadStatuses[engine] = .downloaded
+            if engine == transcriptionEngine {
+                localServerManager?.start()
+            }
+            return
+        }
         if let manager = modelDownloadManagers[engine] {
             manager.startDownload()
             return
@@ -600,11 +616,13 @@ final class AppState {
     }
 
     func cancelModelDownload(for engine: TranscriptionEngine) {
+        guard engine.requiresExternalModelDownload else { return }
         modelDownloadManagers[engine]?.cancelDownload()
     }
 
     func deleteModel() {
         localServerManager?.stop()
+        guard transcriptionEngine.requiresExternalModelDownload else { return }
         modelDownloadManagers[transcriptionEngine]?.deleteModel()
     }
 
@@ -620,10 +638,12 @@ final class AppState {
     func deleteModelCache(for engine: TranscriptionEngine) {
         if engine == transcriptionEngine {
             localServerManager?.stop()
-            modelDownloadManagers[transcriptionEngine]?.deleteModel()
-            return
+            if engine.requiresExternalModelDownload {
+                modelDownloadManagers[transcriptionEngine]?.deleteModel()
+                return
+            }
         }
-        if let manager = modelDownloadManagers[engine] {
+        if engine.requiresExternalModelDownload, let manager = modelDownloadManagers[engine] {
             manager.deleteModel()
             return
         }
@@ -631,13 +651,13 @@ final class AppState {
         let sanitized = modelName.replacingOccurrences(of: "/", with: "--")
         let cacheDir = NSHomeDirectory() + "/.cache/huggingface/hub/models--" + sanitized
         guard FileManager.default.fileExists(atPath: cacheDir) else {
-            modelDownloadStatuses[engine] = .notDownloaded
+            modelDownloadStatuses[engine] = engine.requiresExternalModelDownload ? .notDownloaded : .downloaded
             return
         }
         do {
             try FileManager.default.removeItem(atPath: cacheDir)
             debugLog("[ModelCache] deleted: \(cacheDir)")
-            modelDownloadStatuses[engine] = .notDownloaded
+            modelDownloadStatuses[engine] = engine.requiresExternalModelDownload ? .notDownloaded : .downloaded
         } catch {
             debugLog("[ModelCache] failed to delete: \(error)")
         }

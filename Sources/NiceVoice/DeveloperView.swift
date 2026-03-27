@@ -2,7 +2,7 @@ import SwiftUI
 
 struct DeveloperView: View {
     var appState: AppState
-    @AppStorage("transcriptionEngine") private var transcriptionEngineRaw = TranscriptionEngine.speechAnalyzer.rawValue
+    @AppStorage("transcriptionEngine") private var transcriptionEngineRaw = TranscriptionEngine.defaultEngine.rawValue
     @State private var sectionAnimations: [Bool] = [false, false, false, false]
     @State private var deepgramApiKeyInput = ""
     @State private var hasDeepgramApiKey = false
@@ -236,30 +236,11 @@ struct DeveloperView: View {
 
     @ViewBuilder
     private func modelControls(for engine: TranscriptionEngine) -> some View {
-        let status = engine == selectedEngine
-            ? appState.modelDownloadStatus
-            : (appState.modelDownloadStatuses[engine] ?? .notDownloaded)
-        switch status {
-        case .downloading(let progress, _):
+        if !engine.requiresExternalModelDownload {
             HStack(spacing: 8) {
-                ProgressView(value: progress)
-                    .progressViewStyle(.linear)
-                    .frame(width: 60)
-                Button {
-                    appState.cancelModelDownload(for: engine)
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .padding(6)
-                }
-                .buttonStyle(.plain)
-            }
-        case .downloaded:
-            HStack(spacing: 8) {
-                Text("ダウンロード済み")
+                Text("初回起動時に自動取得")
                     .font(.caption)
-                    .foregroundStyle(.green)
+                    .foregroundStyle(.secondary)
                 Button {
                     appState.deleteModelCache(for: engine)
                 } label: {
@@ -270,18 +251,77 @@ struct DeveloperView: View {
                 }
                 .buttonStyle(.plain)
             }
-        case .error(let message):
-            HStack(spacing: 8) {
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .lineLimit(1)
+        } else {
+            let status = engine == selectedEngine
+                ? appState.modelDownloadStatus
+                : (appState.modelDownloadStatuses[engine] ?? .notDownloaded)
+            switch status {
+            case .downloading(let progress, _):
+                HStack(spacing: 8) {
+                    ProgressView(value: progress)
+                        .progressViewStyle(.linear)
+                        .frame(width: 60)
+                    Button {
+                        appState.cancelModelDownload(for: engine)
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .padding(6)
+                    }
+                    .buttonStyle(.plain)
+                }
+            case .downloaded:
+                HStack(spacing: 8) {
+                    Text("ダウンロード済み")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                    Button {
+                        appState.deleteModelCache(for: engine)
+                    } label: {
+                        Image(systemName: "trash.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(6)
+                    }
+                    .buttonStyle(.plain)
+                }
+            case .error(let message):
+                HStack(spacing: 8) {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .lineLimit(1)
+                    Button {
+                        appState.downloadModel(for: engine)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.clockwise.circle.fill")
+                            Text("再試行")
+                        }
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(
+                            LinearGradient(
+                                colors: [.blue, .purple],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            case .notDownloaded:
                 Button {
                     appState.downloadModel(for: engine)
                 } label: {
                     HStack(spacing: 4) {
-                        Image(systemName: "arrow.clockwise.circle.fill")
-                        Text("再試行")
+                        Image(systemName: "arrow.down.circle.fill")
+                        Text("ダウンロード")
                     }
                     .font(.caption)
                     .fontWeight(.semibold)
@@ -299,29 +339,6 @@ struct DeveloperView: View {
                 }
                 .buttonStyle(.plain)
             }
-        case .notDownloaded:
-            Button {
-                appState.downloadModel(for: engine)
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.down.circle.fill")
-                    Text("ダウンロード")
-                }
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(.white)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(
-                    LinearGradient(
-                        colors: [.blue, .purple],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .clipShape(Capsule())
-            }
-            .buttonStyle(.plain)
         }
     }
 
