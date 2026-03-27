@@ -24,6 +24,15 @@ Options:
 EOF
 }
 
+default_sign_identity() {
+    if security find-identity -v -p codesigning 2>/dev/null | grep -Fq '"NiceVoice"'; then
+        printf '%s\n' "NiceVoice"
+        return
+    fi
+
+    printf '%s\n' "-"
+}
+
 read_default_version() {
     sed -n "s/^version = '\\(.*\\)'/\\1/p" "${ROOT_DIR}/Bundler.toml" | head -n 1
 }
@@ -115,6 +124,10 @@ fi
 
 if [[ -z "${VERSION}" ]]; then
     VERSION="$(read_default_version)"
+fi
+
+if [[ -z "${SIGN_IDENTITY}" ]]; then
+    SIGN_IDENTITY="$(default_sign_identity)"
 fi
 
 if [[ -z "${VERSION}" ]]; then
