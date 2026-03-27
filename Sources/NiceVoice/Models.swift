@@ -89,6 +89,15 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
     case qwen3ASR
     case deepgram
 
+    var isDeveloperOnly: Bool {
+        switch self {
+        case .voxtralLocal, .qwen3ASR:
+            return true
+        case .speechAnalyzer, .deepgram:
+            return false
+        }
+    }
+
     var displayName: String {
         switch self {
         case .speechAnalyzer: return "Apple SpeechAnalyzer"
@@ -152,6 +161,25 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
         case .speechAnalyzer, .deepgram: return nil
         }
     }
+
+    static func availableEngines(
+        developerToolsEnabled: Bool = AppFeatureFlags.isDeveloperToolsEnabled()
+    ) -> [TranscriptionEngine] {
+        developerToolsEnabled
+            ? allCases
+            : allCases.filter { !$0.isDeveloperOnly }
+    }
+
+    static func normalized(
+        rawValue: String,
+        developerToolsEnabled: Bool = AppFeatureFlags.isDeveloperToolsEnabled()
+    ) -> TranscriptionEngine {
+        let engine = TranscriptionEngine(rawValue: rawValue) ?? .speechAnalyzer
+        guard developerToolsEnabled || !engine.isDeveloperOnly else {
+            return .speechAnalyzer
+        }
+        return engine
+    }
 }
 
 enum AppLanguage: String, CaseIterable {
@@ -208,4 +236,3 @@ struct BenchmarkResult: Identifiable {
     let duration: TimeInterval
     let success: Bool
 }
-

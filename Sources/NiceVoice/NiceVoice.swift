@@ -265,8 +265,10 @@ final class AppState {
     @AppStorage("transcriptionEngine") var transcriptionEngineRaw = TranscriptionEngine.speechAnalyzer.rawValue
 
     var transcriptionEngine: TranscriptionEngine {
-        get { TranscriptionEngine(rawValue: transcriptionEngineRaw) ?? .speechAnalyzer }
-        set { transcriptionEngineRaw = newValue.rawValue }
+        get { TranscriptionEngine.normalized(rawValue: transcriptionEngineRaw) }
+        set {
+            transcriptionEngineRaw = TranscriptionEngine.normalized(rawValue: newValue.rawValue).rawValue
+        }
     }
 
     private var speechAnalyzerService: Any?
@@ -302,8 +304,16 @@ final class AppState {
         loadDictionary()
         loadFillerSettings()
         loadHistory()
+        normalizeTranscriptionEngineSelection()
         setupServices()
         initializeSpeakerVerificationIfNeeded()
+    }
+
+    private func normalizeTranscriptionEngineSelection() {
+        let normalizedEngine = TranscriptionEngine.normalized(rawValue: transcriptionEngineRaw)
+        guard normalizedEngine.rawValue != transcriptionEngineRaw else { return }
+        debugLog("Switching transcription engine from \(transcriptionEngineRaw) to \(normalizedEngine.rawValue)")
+        transcriptionEngineRaw = normalizedEngine.rawValue
     }
 
     private func initializeSpeakerVerificationIfNeeded() {
@@ -319,6 +329,7 @@ final class AppState {
     }
 
     private func setupServices() {
+        normalizeTranscriptionEngineSelection()
         setupTranscriptionService()
 
         if #available(macOS 26.0, *) {
@@ -376,6 +387,7 @@ final class AppState {
     }
 
     func setupTranscriptionService() {
+        normalizeTranscriptionEngineSelection()
         localASRService = nil
         deepgramService = nil
         localServerManager?.stop()
@@ -632,6 +644,7 @@ final class AppState {
     }
 
     func reinitializeAfterEngineChange() async {
+        normalizeTranscriptionEngineSelection()
         isReady = false
         statusMessage = String(localized: "エンジンを切り替え中...")
         await requestPermissions()

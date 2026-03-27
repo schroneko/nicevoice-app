@@ -5,6 +5,15 @@ enum CommandLineTool: String, CaseIterable {
     case hf = "hf"
     case ytDlp = "yt-dlp"
 
+    var isDeveloperOnly: Bool {
+        switch self {
+        case .uvx, .hf:
+            return true
+        case .ytDlp:
+            return false
+        }
+    }
+
     var displayName: String {
         switch self {
         case .uvx: return "uvx"
@@ -271,10 +280,13 @@ struct DependencyDiagnostic: Identifiable, Equatable {
 enum DependencyDiagnostics {
     static func snapshot(
         build: AppBuildChannel = .current,
+        developerToolsEnabled: Bool = AppFeatureFlags.isDeveloperToolsEnabled(),
         environment: [String: String] = ProcessInfo.processInfo.environment,
         fileManager: FileManager = .default
     ) -> [DependencyDiagnostic] {
-        let tools = CommandLineTool.allCases.map { tool -> DependencyDiagnostic in
+        let tools = CommandLineTool.allCases
+            .filter { developerToolsEnabled || !$0.isDeveloperOnly }
+            .map { tool -> DependencyDiagnostic in
             if let path = tool.resolvedURL(environment: environment, fileManager: fileManager)?.path {
                 return DependencyDiagnostic(
                     id: tool.rawValue,
@@ -294,7 +306,11 @@ enum DependencyDiagnostics {
             )
         }
 
-        let serverDiagnostic: DependencyDiagnostic = {
+        let serverDiagnostic: DependencyDiagnostic? = {
+            guard developerToolsEnabled else {
+                return nil
+            }
+
             guard let serverRoot = ServerResourceLocator.serverRoot(fileManager: fileManager) else {
                 return DependencyDiagnostic(
                     id: "server-resources",
@@ -350,6 +366,6 @@ enum DependencyDiagnostics {
             )
         }()
 
-        return tools + [serverDiagnostic, updaterDiagnostic]
+        return tools + [serverDiagnostic, updaterDiagnostic].compactMap { $0 }
     }
 }

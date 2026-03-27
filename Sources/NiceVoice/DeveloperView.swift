@@ -7,8 +7,10 @@ struct DeveloperView: View {
     @State private var deepgramApiKeyInput = ""
     @State private var hasDeepgramApiKey = false
 
+    private let developerEngines = TranscriptionEngine.availableEngines(developerToolsEnabled: true)
+
     private var selectedEngine: TranscriptionEngine {
-        TranscriptionEngine(rawValue: transcriptionEngineRaw) ?? .speechAnalyzer
+        TranscriptionEngine.normalized(rawValue: transcriptionEngineRaw, developerToolsEnabled: true)
     }
 
     var body: some View {
@@ -30,7 +32,7 @@ struct DeveloperView: View {
                     gradientColors: [.red, .orange]
                 ) {
                     VStack(alignment: .leading, spacing: 12) {
-                        ForEach(TranscriptionEngine.allCases, id: \.self) { engine in
+                        ForEach(developerEngines, id: \.self) { engine in
                             DeveloperEngineRow(
                                 engine: engine,
                                 isSelected: selectedEngine == engine,
@@ -54,7 +56,8 @@ struct DeveloperView: View {
                     gradientColors: [.blue, .purple]
                 ) {
                     VStack(alignment: .leading, spacing: 12) {
-                        ForEach(TranscriptionEngine.allCases.filter { $0.requiresLocalServer }, id: \.self) { engine in
+                        let localServerEngines = developerEngines.filter(\.requiresLocalServer)
+                        ForEach(localServerEngines, id: \.self) { engine in
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack(spacing: 12) {
                                     HStack(spacing: 6) {
@@ -83,7 +86,7 @@ struct DeveloperView: View {
                                 }
                             }
 
-                            if engine != TranscriptionEngine.allCases.filter({ $0.requiresLocalServer }).last {
+                            if engine != localServerEngines.last {
                                 SectionDivider()
                             }
                         }

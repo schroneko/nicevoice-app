@@ -54,7 +54,7 @@ final class BatchTranscriptionService: @unchecked Sendable {
         onProgress: @escaping (Double) -> Void,
         onStatusChange: @escaping (String) -> Void
     ) async throws -> String {
-        switch engine {
+        switch TranscriptionEngine.normalized(rawValue: engine.rawValue) {
         case .speechAnalyzer:
             return try await transcribeWithSpeechAnalyzer(
                 at: url,
