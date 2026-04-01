@@ -234,10 +234,10 @@ if [[ ! -f "${PRODUCTS_DIR}/${PRODUCT}" ]]; then
 fi
 
 echo "==> Bundling app..."
-if command -v mint >/dev/null 2>&1; then
-    mint run stackotter/swift-bundler bundle --skip-build --products-directory "${PRODUCTS_DIR}"
-elif command -v swift-bundler >/dev/null 2>&1; then
+if command -v swift-bundler >/dev/null 2>&1; then
     swift-bundler bundle --skip-build --products-directory "${PRODUCTS_DIR}"
+elif command -v mint >/dev/null 2>&1; then
+    mint run stackotter/swift-bundler bundle --skip-build --products-directory "${PRODUCTS_DIR}"
 else
     echo "swift-bundler not found. Install it with 'mint install stackotter/swift-bundler' or ensure 'swift-bundler' is on PATH." >&2
     exit 1
