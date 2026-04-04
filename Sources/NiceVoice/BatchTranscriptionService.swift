@@ -62,7 +62,7 @@ final class BatchTranscriptionService: @unchecked Sendable {
                 onStatusChange: onStatusChange
             )
         case .voxtralLocal:
-            guard let endpoint = TranscriptionEngine.voxtralLocal.persistedLocalServerEndpoint else {
+            guard let endpoint = TranscriptionEngine.voxtralLocal.currentLocalServerEndpoint else {
                 throw BatchTranscriptionError.analyzerInitFailed
             }
             return try await transcribeWithLocalASR(
@@ -73,7 +73,7 @@ final class BatchTranscriptionService: @unchecked Sendable {
                 onStatusChange: onStatusChange
             )
         case .qwen3ASR:
-            guard let endpoint = TranscriptionEngine.qwen3ASR.persistedLocalServerEndpoint else {
+            guard let endpoint = TranscriptionEngine.qwen3ASR.currentLocalServerEndpoint else {
                 throw BatchTranscriptionError.analyzerInitFailed
             }
             return try await transcribeWithLocalASR(

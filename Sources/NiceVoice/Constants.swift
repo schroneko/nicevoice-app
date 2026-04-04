@@ -56,8 +56,6 @@ enum Constants {
 
     enum VoxtralLocal {
         static let host = "127.0.0.1"
-        static let defaultPort = 8000
-        static let fallbackPortRange = 8000...8099
         static let sampleRate: Double = 16000
         static let httpRequestTimeoutSeconds: Double = 3.0
         static let serverStartupTimeoutSeconds: Double = 600.0
@@ -81,8 +79,6 @@ enum Constants {
 
     enum Qwen3ASR {
         static let host = "127.0.0.1"
-        static let defaultPort = 8001
-        static let fallbackPortRange = 8101...8199
         static let sampleRate: Double = 16000
         static let httpRequestTimeoutSeconds: Double = 3.0
         static let serverStartupTimeoutSeconds: Double = 600.0

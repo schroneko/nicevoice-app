@@ -1,4 +1,4 @@
-import Darwin
+import Foundation
 import Testing
 @testable import NiceVoice
 
@@ -13,46 +13,30 @@ struct LocalServerEndpointTests {
     }
 
     @Test
-    func resolvePortFallsBackWhenPreferredPortIsOccupied() throws {
-        let socketDescriptor = socket(AF_INET, SOCK_STREAM, 0)
-        #expect(socketDescriptor >= 0)
-        defer { close(socketDescriptor) }
+    func resolvedPortReadsNiceVoiceMarker() {
+        let resolvedPort = LocalServerManager.resolvedPort(from: "NICEVOICE_PORT=45678")
 
-        var reuseAddress: Int32 = 1
-        setsockopt(
-            socketDescriptor,
-            SOL_SOCKET,
-            SO_REUSEADDR,
-            &reuseAddress,
-            socklen_t(MemoryLayout<Int32>.size)
+        #expect(resolvedPort == 45678)
+    }
+
+    @Test
+    func currentLocalServerEndpointUsesStoredPort() {
+        let key = "localServerPort.voxtralLocal"
+        UserDefaults.standard.set(45678, forKey: key)
+        defer { UserDefaults.standard.removeObject(forKey: key) }
+
+        let endpoint = TranscriptionEngine.voxtralLocal.currentLocalServerEndpoint
+
+        #expect(endpoint?.port == 45678)
+        #expect(endpoint?.wsEndpoint == "ws://127.0.0.1:45678/v1/realtime")
+    }
+
+    @Test
+    func resolvedPortReadsUvicornLogLine() {
+        let resolvedPort = LocalServerManager.resolvedPort(
+            from: "INFO:     Uvicorn running on http://127.0.0.1:53748 (Press CTRL+C to quit)"
         )
 
-        var address = sockaddr_in()
-        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
-        address.sin_family = sa_family_t(AF_INET)
-        address.sin_port = in_port_t(UInt16(38080).bigEndian)
-        address.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
-
-        let bindResult = withUnsafePointer(to: &address) { pointer in
-            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPointer in
-                bind(
-                    socketDescriptor,
-                    sockaddrPointer,
-                    socklen_t(MemoryLayout<sockaddr_in>.size)
-                )
-            }
-        }
-
-        #expect(bindResult == 0)
-        #expect(listen(socketDescriptor, 1) == 0)
-
-        let resolvedPort = LocalServerManager.resolvePort(
-            preferred: 38080,
-            fallbackRange: 38080...38082,
-            serverCommand: "voxmlx-serve",
-            serverPackagePath: ""
-        )
-
-        #expect(resolvedPort == 38081 || resolvedPort == 38082)
+        #expect(resolvedPort == 53748)
     }
 }

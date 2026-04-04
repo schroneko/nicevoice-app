@@ -188,25 +188,6 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
         }
     }
 
-    var defaultLocalServerEndpoint: LocalServerEndpoint? {
-        switch self {
-        case .voxtralLocal:
-            return LocalServerEndpoint(
-                port: Constants.VoxtralLocal.defaultPort,
-                wsEndpoint: Constants.VoxtralLocal.wsEndpoint(port: Constants.VoxtralLocal.defaultPort),
-                healthEndpoint: Constants.VoxtralLocal.healthEndpoint(port: Constants.VoxtralLocal.defaultPort)
-            )
-        case .qwen3ASR:
-            return LocalServerEndpoint(
-                port: Constants.Qwen3ASR.defaultPort,
-                wsEndpoint: Constants.Qwen3ASR.wsEndpoint(port: Constants.Qwen3ASR.defaultPort),
-                healthEndpoint: Constants.Qwen3ASR.healthEndpoint(port: Constants.Qwen3ASR.defaultPort)
-            )
-        case .speechAnalyzer, .deepgram:
-            return nil
-        }
-    }
-
     func makeLocalServerEndpoint(port: Int) -> LocalServerEndpoint? {
         switch self {
         case .voxtralLocal:
@@ -226,10 +207,11 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
         }
     }
 
-    var persistedLocalServerEndpoint: LocalServerEndpoint? {
-        guard let defaultLocalServerEndpoint else { return nil }
-        guard let key = localServerPortStorageKey else { return defaultLocalServerEndpoint }
-        let storedPort = UserDefaults.standard.object(forKey: key) as? Int ?? defaultLocalServerEndpoint.port
+    var currentLocalServerEndpoint: LocalServerEndpoint? {
+        guard let key = localServerPortStorageKey,
+              let storedPort = UserDefaults.standard.object(forKey: key) as? Int else {
+            return nil
+        }
         return makeLocalServerEndpoint(port: storedPort)
     }
 

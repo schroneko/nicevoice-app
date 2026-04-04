@@ -2,11 +2,26 @@ import argparse
 import base64
 import json
 import logging
+import socket
 import time
 
 import numpy as np
 
 logger = logging.getLogger("qwen3asr.server")
+
+
+def _run_with_bound_socket(app, host: str, port: int):
+    import uvicorn
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind((host, port))
+    sock.listen(2048)
+
+    actual_port = sock.getsockname()[1]
+    print(f"NICEVOICE_PORT={actual_port}", flush=True)
+
+    uvicorn.run(app, fd=sock.fileno())
 
 
 def create_app(model_name: str):
@@ -111,8 +126,9 @@ def main():
         default="schroneko/Qwen3-ASR-1.7B-MLX-4bit",
         help="Model path or HF model ID",
     )
-    parser.add_argument("--port", type=int, default=8001, help="Port to listen on")
+    parser.add_argument("--port", type=int, default=0, help="Port to listen on (0 = auto)")
     parser.add_argument("--host", default="127.0.0.1", help="Host to bind to")
+    parser.add_argument("--managed-by", default=None, help=argparse.SUPPRESS)
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -120,10 +136,8 @@ def main():
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
 
-    import uvicorn
-
     app = create_app(args.model)
-    uvicorn.run(app, host=args.host, port=args.port)
+    _run_with_bound_socket(app, args.host, args.port)
 
 
 if __name__ == "__main__":

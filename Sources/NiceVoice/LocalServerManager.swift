@@ -9,6 +9,8 @@ enum LocalServerStatus: Equatable {
 }
 
 final class LocalServerManager {
+    private static let managedProcessOwner = "nicevoice"
+
     private enum LaunchConfiguration {
         case bundled(runtime: BundledPythonRuntime)
         case uvx(uvxPath: String, serverPath: String)
@@ -22,12 +24,14 @@ final class LocalServerManager {
     private let serverModule: String
     private let serverPackagePath: String
     private let modelName: String
-    private let port: Int
-    private let healthEndpoint: String
+    private let requestedPort: Int
+    private let endpointFactory: (Int) -> LocalServerEndpoint
     private let httpRequestTimeout: Double
     private let startupTimeout: Double
     private let healthPollInterval: Double
     private let uvxSearchPaths: [String]
+    private let onEndpointResolved: (LocalServerEndpoint) -> Void
+    private var resolvedEndpoint: LocalServerEndpoint?
 
     var isRunning: Bool {
         process?.isRunning ?? false
@@ -38,53 +42,48 @@ final class LocalServerManager {
         serverModule: String,
         serverPackagePath: String,
         modelName: String,
-        port: Int,
-        healthEndpoint: String,
+        requestedPort: Int,
+        endpointFactory: @escaping (Int) -> LocalServerEndpoint,
         httpRequestTimeout: Double,
         startupTimeout: Double,
         healthPollInterval: Double,
         uvxSearchPaths: [String],
+        onEndpointResolved: @escaping (LocalServerEndpoint) -> Void,
         onStatusChange: @escaping (LocalServerStatus) -> Void
     ) {
         self.serverCommand = serverCommand
         self.serverModule = serverModule
         self.serverPackagePath = serverPackagePath
         self.modelName = modelName
-        self.port = port
-        self.healthEndpoint = healthEndpoint
+        self.requestedPort = requestedPort
+        self.endpointFactory = endpointFactory
         self.httpRequestTimeout = httpRequestTimeout
         self.startupTimeout = startupTimeout
         self.healthPollInterval = healthPollInterval
         self.uvxSearchPaths = uvxSearchPaths
+        self.onEndpointResolved = onEndpointResolved
         self.onStatusChange = onStatusChange
     }
 
-    static func resolvePort(
-        preferred: Int,
-        fallbackRange: ClosedRange<Int>,
-        serverCommand: String,
-        serverPackagePath: String
-    ) -> Int {
-        guard let commandLine = processCommandLine(usingPort: preferred) else {
-            return preferred
-        }
+    static func resolvedPort(from line: String) -> Int? {
+        let patterns = [
+            #"NICEVOICE_PORT=(\d+)"#,
+            #"Uvicorn running on http://[^:]+:(\d+)"#
+        ]
 
-        if isManagedServerProcess(
-            commandLine,
-            serverCommand: serverCommand,
-            serverPackagePath: serverPackagePath
-        ) {
-            return preferred
-        }
-
-        for candidate in fallbackRange where candidate != preferred {
-            if isPortAvailable(candidate) {
-                debugLog("[\(serverCommand)] using fallback port \(candidate) because \(preferred) is occupied by: \(commandLine)")
-                return candidate
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            let range = NSRange(line.startIndex..<line.endIndex, in: line)
+            guard let match = regex.firstMatch(in: line, range: range),
+                  match.numberOfRanges > 1,
+                  let portRange = Range(match.range(at: 1), in: line),
+                  let port = Int(line[portRange]) else {
+                continue
             }
+            return port
         }
 
-        return preferred
+        return nil
     }
 
     deinit {
@@ -93,6 +92,7 @@ final class LocalServerManager {
 
     func start() {
         guard !isRunning else { return }
+        resolvedEndpoint = nil
 
         guard let launchConfiguration = resolveLaunchConfiguration() else {
             debugLog("[\(serverCommand)] no launch configuration available")
@@ -100,12 +100,16 @@ final class LocalServerManager {
             return
         }
 
-        do {
-            try clearConflictingProcessOnPort()
-        } catch {
-            debugLog("[\(serverCommand)] port conflict: \(error.localizedDescription)")
-            onStatusChange(.error(error.localizedDescription))
-            return
+        terminateStaleManagedProcesses()
+
+        if requestedPort > 0 {
+            do {
+                try clearConflictingProcessOnPort()
+            } catch {
+                debugLog("[\(serverCommand)] port conflict: \(error.localizedDescription)")
+                onStatusChange(.error(error.localizedDescription))
+                return
+            }
         }
 
         let proc = Process()
@@ -119,7 +123,8 @@ final class LocalServerManager {
             proc.arguments = [
                 "-m", serverModule,
                 "--model", modelName,
-                "--port", String(port)
+                "--port", String(requestedPort),
+                "--managed-by", Self.managedProcessOwner
             ]
             proc.environment?["PYTHONPATH"] = mergedPythonPath(
                 existingValue: proc.environment?["PYTHONPATH"],
@@ -133,7 +138,8 @@ final class LocalServerManager {
                 "--from", "\(serverPath)[server]",
                 serverCommand,
                 "--model", modelName,
-                "--port", String(port)
+                "--port", String(requestedPort),
+                "--managed-by", Self.managedProcessOwner
             ]
         }
 
@@ -145,15 +151,15 @@ final class LocalServerManager {
         stdoutPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             guard let self, self.process != nil else { return }
             let data = handle.availableData
-            guard !data.isEmpty, let line = String(data: data, encoding: .utf8) else { return }
-            debugLog("[\(self.serverCommand)] \(line.trimmingCharacters(in: .newlines))")
+            guard !data.isEmpty, let output = String(data: data, encoding: .utf8) else { return }
+            self.handleProcessOutput(output)
         }
 
         stderrPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             guard let self, self.process != nil else { return }
             let data = handle.availableData
-            guard !data.isEmpty, let line = String(data: data, encoding: .utf8) else { return }
-            debugLog("[\(self.serverCommand)] \(line.trimmingCharacters(in: .newlines))")
+            guard !data.isEmpty, let output = String(data: data, encoding: .utf8) else { return }
+            self.handleProcessOutput(output)
         }
 
         proc.terminationHandler = { [weak self] terminatedProcess in
@@ -207,8 +213,45 @@ final class LocalServerManager {
         killWorkItem.cancel()
 
         process = nil
+        resolvedEndpoint = nil
         debugLog("[\(serverCommand)] process stopped")
         onStatusChange(.stopped)
+    }
+
+    private func handleProcessOutput(_ output: String) {
+        for rawLine in output.split(whereSeparator: \.isNewline) {
+            let line = String(rawLine).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !line.isEmpty else { continue }
+            debugLog("[\(serverCommand)] \(line)")
+
+            guard resolvedEndpoint == nil, let port = Self.resolvedPort(from: line) else {
+                continue
+            }
+
+            let endpoint = endpointFactory(port)
+            resolvedEndpoint = endpoint
+            debugLog("[\(serverCommand)] resolved listening port \(port)")
+            DispatchQueue.main.async {
+                self.onEndpointResolved(endpoint)
+            }
+        }
+    }
+
+    private func terminateStaleManagedProcesses() {
+        let pids = Self.managedProcessIdentifiers(
+            serverCommand: serverCommand,
+            serverModule: serverModule,
+            serverPackagePath: serverPackagePath
+        )
+
+        guard !pids.isEmpty else { return }
+
+        for pid in pids {
+            debugLog("[\(serverCommand)] killing stale managed process (PID: \(pid))")
+            kill(pid, SIGTERM)
+        }
+
+        usleep(500_000)
     }
 
     private func findUvx() -> String? {
@@ -297,7 +340,7 @@ final class LocalServerManager {
     }
 
     private func clearConflictingProcessOnPort() throws {
-        let pids = Self.processIdentifiers(usingPort: port)
+        let pids = Self.processIdentifiers(usingPort: requestedPort)
         guard !pids.isEmpty else {
             return
         }
@@ -307,22 +350,23 @@ final class LocalServerManager {
                 throw NSError(
                     domain: "NiceVoice.LocalServerManager",
                     code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: String(localized: "ポート \(port) を使用中のプロセス (PID: \(pid)) を確認できませんでした。手動で停止してください")]
+                    userInfo: [NSLocalizedDescriptionKey: String(localized: "ポート \(requestedPort) を使用中のプロセス (PID: \(pid)) を確認できませんでした。手動で停止してください")]
                 )
             }
 
             if Self.isManagedServerProcess(
                 commandLine,
                 serverCommand: serverCommand,
+                serverModule: serverModule,
                 serverPackagePath: serverPackagePath
             ) {
-                debugLog("[\(serverCommand)] killing stale managed process on port \(port) (PID: \(pid))")
+                debugLog("[\(serverCommand)] killing stale managed process on port \(requestedPort) (PID: \(pid))")
                 kill(pid, SIGTERM)
             } else {
                 throw NSError(
                     domain: "NiceVoice.LocalServerManager",
                     code: 2,
-                    userInfo: [NSLocalizedDescriptionKey: String(localized: "ポート \(port) は別のプロセスが使用中です。NiceVoice 以外のプロセスは自動停止しません。該当プロセスを停止してから再試行してください")]
+                    userInfo: [NSLocalizedDescriptionKey: String(localized: "ポート \(requestedPort) は別のプロセスが使用中です。NiceVoice 以外のプロセスは自動停止しません。該当プロセスを停止してから再試行してください")]
                 )
             }
         }
@@ -357,13 +401,76 @@ final class LocalServerManager {
             .filter { $0 > 0 }
     }
 
-    private static func processCommandLine(usingPort port: Int) -> String? {
-        for pid in processIdentifiers(usingPort: port) {
-            if let commandLine = processCommandLine(pid: pid) {
-                return commandLine
-            }
+    private static func managedProcessIdentifiers(
+        serverCommand: String,
+        serverModule: String,
+        serverPackagePath: String
+    ) -> [Int32] {
+        let ps = Process()
+        ps.executableURL = URL(fileURLWithPath: "/bin/ps")
+        ps.arguments = ["-axo", "pid=,command="]
+        let pipe = Pipe()
+        ps.standardOutput = pipe
+        ps.standardError = FileHandle.nullDevice
+        do {
+            try ps.run()
+            ps.waitUntilExit()
+        } catch {
+            return []
         }
-        return nil
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard let output = String(data: data, encoding: .utf8), !output.isEmpty else {
+            return []
+        }
+
+        return output
+            .split(separator: "\n")
+            .compactMap { line in
+                let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+                guard let separatorIndex = trimmedLine.firstIndex(where: \.isWhitespace) else {
+                    return nil
+                }
+
+                let pidString = trimmedLine[..<separatorIndex].trimmingCharacters(in: .whitespaces)
+                let commandLine = trimmedLine[separatorIndex...].trimmingCharacters(in: .whitespaces)
+
+                guard let pid = Int32(pidString),
+                      pid > 0,
+                      pid != Int32(ProcessInfo.processInfo.processIdentifier),
+                      isStaleManagedServerProcess(
+                        commandLine,
+                        serverCommand: serverCommand,
+                        serverModule: serverModule,
+                        serverPackagePath: serverPackagePath
+                      ) else {
+                    return nil
+                }
+
+                return pid
+            }
+    }
+
+    private static func isStaleManagedServerProcess(
+        _ commandLine: String,
+        serverCommand: String,
+        serverModule: String,
+        serverPackagePath: String
+    ) -> Bool {
+        if commandLine.contains("--managed-by \(managedProcessOwner)") &&
+            (commandLine.contains(serverCommand) || commandLine.contains(serverModule)) {
+            return true
+        }
+
+        if commandLine.contains("/NiceVoice.app/") && commandLine.contains(serverModule) {
+            return true
+        }
+
+        if !serverPackagePath.isEmpty && commandLine.contains("/NiceVoice.app/") && commandLine.contains(serverPackagePath) {
+            return true
+        }
+
+        return false
     }
 
     private static func processCommandLine(pid: Int32) -> String? {
@@ -389,8 +496,18 @@ final class LocalServerManager {
     private static func isManagedServerProcess(
         _ commandLine: String,
         serverCommand: String,
+        serverModule: String,
         serverPackagePath: String
     ) -> Bool {
+        if commandLine.contains("--managed-by \(managedProcessOwner)") &&
+            (commandLine.contains(serverCommand) || commandLine.contains(serverModule)) {
+            return true
+        }
+
+        if commandLine.contains("/NiceVoice.app/") && commandLine.contains(serverModule) {
+            return true
+        }
+
         if commandLine.contains(serverCommand) {
             return true
         }
@@ -406,39 +523,11 @@ final class LocalServerManager {
         return false
     }
 
-    private static func isPortAvailable(_ port: Int) -> Bool {
-        let socketDescriptor = socket(AF_INET, SOCK_STREAM, 0)
-        guard socketDescriptor >= 0 else { return false }
-        defer { close(socketDescriptor) }
-
-        var reuseAddress: Int32 = 1
-        setsockopt(
-            socketDescriptor,
-            SOL_SOCKET,
-            SO_REUSEADDR,
-            &reuseAddress,
-            socklen_t(MemoryLayout<Int32>.size)
-        )
-
-        var address = sockaddr_in()
-        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
-        address.sin_family = sa_family_t(AF_INET)
-        address.sin_port = in_port_t(UInt16(port).bigEndian)
-        address.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
-
-        return withUnsafePointer(to: &address) { pointer in
-            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPointer in
-                bind(
-                    socketDescriptor,
-                    sockaddrPointer,
-                    socklen_t(MemoryLayout<sockaddr_in>.size)
-                ) == 0
-            }
-        }
-    }
-
     private func checkHealth() async -> Bool {
-        guard let url = URL(string: healthEndpoint) else { return false }
+        guard let healthEndpoint = resolvedEndpoint?.healthEndpoint,
+              let url = URL(string: healthEndpoint) else {
+            return false
+        }
         var request = URLRequest(url: url)
         request.timeoutInterval = httpRequestTimeout
         do {

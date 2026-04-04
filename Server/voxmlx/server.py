@@ -9,6 +9,7 @@ import argparse
 import base64
 import json
 import logging
+import socket
 import time
 
 import mlx.core as mx
@@ -23,6 +24,20 @@ logger = logging.getLogger("voxmlx.server")
 
 N_LEFT_PAD_TOKENS = 32
 N_RIGHT_PAD_TOKENS = 17
+
+
+def _run_with_bound_socket(app, host: str, port: int):
+    import uvicorn
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind((host, port))
+    sock.listen(2048)
+
+    actual_port = sock.getsockname()[1]
+    print(f"NICEVOICE_PORT={actual_port}", flush=True)
+
+    uvicorn.run(app, fd=sock.fileno())
 
 
 class StreamingSession:
@@ -413,9 +428,10 @@ def main():
         default="mlx-community/Voxtral-Mini-4B-Realtime-6bit",
         help="Model path or HF model ID",
     )
-    parser.add_argument("--port", type=int, default=8000, help="Port to listen on")
+    parser.add_argument("--port", type=int, default=0, help="Port to listen on (0 = auto)")
     parser.add_argument("--host", default="127.0.0.1", help="Host to bind to")
     parser.add_argument("--temp", type=float, default=0.0, help="Sampling temperature")
+    parser.add_argument("--managed-by", default=None, help=argparse.SUPPRESS)
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -423,10 +439,8 @@ def main():
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
 
-    import uvicorn
-
     app = create_app(args.model, args.temp)
-    uvicorn.run(app, host=args.host, port=args.port)
+    _run_with_bound_socket(app, args.host, args.port)
 
 
 if __name__ == "__main__":

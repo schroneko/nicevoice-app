@@ -449,7 +449,6 @@ final class AppState {
         }
 
         if transcriptionEngine == .voxtralLocal || transcriptionEngine == .qwen3ASR {
-            let endpoint: LocalServerEndpoint
             let sampleRate: Double
             let serverCommand: String
             let serverModule: String
@@ -460,8 +459,7 @@ final class AppState {
             let healthPollInterval: Double
             let uvxSearchPaths: [String]
             let engineLabel: String
-            let fallbackPortRange: ClosedRange<Int>
-            let defaultPort: Int
+            let endpointFactory: (Int) -> LocalServerEndpoint
 
             switch transcriptionEngine {
             case .voxtralLocal:
@@ -475,8 +473,13 @@ final class AppState {
                 healthPollInterval = Constants.VoxtralLocal.healthPollIntervalSeconds
                 uvxSearchPaths = Constants.VoxtralLocal.uvxSearchPaths
                 engineLabel = "Voxtral Local"
-                fallbackPortRange = Constants.VoxtralLocal.fallbackPortRange
-                defaultPort = Constants.VoxtralLocal.defaultPort
+                endpointFactory = { port in
+                    LocalServerEndpoint(
+                        port: port,
+                        wsEndpoint: Constants.VoxtralLocal.wsEndpoint(port: port),
+                        healthEndpoint: Constants.VoxtralLocal.healthEndpoint(port: port)
+                    )
+                }
             case .qwen3ASR:
                 sampleRate = Constants.Qwen3ASR.sampleRate
                 serverCommand = "qwen3asr-serve"
@@ -488,83 +491,87 @@ final class AppState {
                 healthPollInterval = Constants.Qwen3ASR.healthPollIntervalSeconds
                 uvxSearchPaths = Constants.Qwen3ASR.uvxSearchPaths
                 engineLabel = "Qwen3 ASR"
-                fallbackPortRange = Constants.Qwen3ASR.fallbackPortRange
-                defaultPort = Constants.Qwen3ASR.defaultPort
+                endpointFactory = { port in
+                    LocalServerEndpoint(
+                        port: port,
+                        wsEndpoint: Constants.Qwen3ASR.wsEndpoint(port: port),
+                        healthEndpoint: Constants.Qwen3ASR.healthEndpoint(port: port)
+                    )
+                }
             default:
                 return
             }
 
-            let resolvedPort = LocalServerManager.resolvePort(
-                preferred: defaultPort,
-                fallbackRange: fallbackPortRange,
-                serverCommand: serverCommand,
-                serverPackagePath: serverPackagePath
-            )
-
-            guard let resolvedEndpoint = transcriptionEngine.makeLocalServerEndpoint(port: resolvedPort) else {
-                statusMessage = String(localized: "\(engineLabel) の接続先を初期化できませんでした")
-                return
-            }
-            endpoint = resolvedEndpoint
-            transcriptionEngine.persistLocalServerPort(resolvedPort)
-            if resolvedPort != defaultPort {
-                debugLog("[\(serverCommand)] using port \(resolvedPort) instead of default \(defaultPort)")
-            }
-
-            localASRService = LocalASRService(
-                wsEndpoint: endpoint.wsEndpoint,
-                healthEndpoint: endpoint.healthEndpoint,
-                sampleRate: sampleRate,
-                onTranscription: { [weak self] text, isFinal in
-                    debugLog("📥 [\(engineLabel)] onTranscription: isFinal=\(isFinal), len=\(text.count)")
-                    DispatchQueue.main.async {
-                        guard let self else { return }
-                        self.currentTranscription = self.addLocalPunctuation(text, isFinal: isFinal)
-                        if self.isEnrolledSpeakerActive {
-                            self.updateInlinePreview(self.currentTranscription)
+            let makeLocalASRService: (LocalServerEndpoint) -> LocalASRService = { endpoint in
+                LocalASRService(
+                    wsEndpoint: endpoint.wsEndpoint,
+                    healthEndpoint: endpoint.healthEndpoint,
+                    sampleRate: sampleRate,
+                    onTranscription: { [weak self] text, isFinal in
+                        debugLog("📥 [\(engineLabel)] onTranscription: isFinal=\(isFinal), len=\(text.count)")
+                        DispatchQueue.main.async {
+                            guard let self else { return }
+                            self.currentTranscription = self.addLocalPunctuation(text, isFinal: isFinal)
+                            if self.isEnrolledSpeakerActive {
+                                self.updateInlinePreview(self.currentTranscription)
+                            }
+                        }
+                    },
+                    onFinalCompletion: { [weak self] text in
+                        debugLog("📥 [\(engineLabel)] onFinalCompletion: len=\(text.count)")
+                        self?.handleFinalResult(text)
+                    },
+                    onError: { [weak self] error in
+                        debugLog("❌ \(engineLabel) error: \(error)")
+                        DispatchQueue.main.async {
+                            self?.statusMessage = error
+                        }
+                    },
+                    onStatusChange: { [weak self] status in
+                        DispatchQueue.main.async {
+                            self?.statusMessage = status
+                        }
+                    },
+                    onAudioLevel: { [weak self] level in
+                        DispatchQueue.main.async {
+                            guard let self else { return }
+                            self.audioLevels.removeFirst()
+                            self.audioLevels.append(level)
                         }
                     }
-                },
-                onFinalCompletion: { [weak self] text in
-                    debugLog("📥 [\(engineLabel)] onFinalCompletion: len=\(text.count)")
-                    self?.handleFinalResult(text)
-                },
-                onError: { [weak self] error in
-                    debugLog("❌ \(engineLabel) error: \(error)")
-                    DispatchQueue.main.async {
-                        self?.statusMessage = error
-                    }
-                },
-                onStatusChange: { [weak self] status in
-                    DispatchQueue.main.async {
-                        self?.statusMessage = status
-                    }
-                },
-                onAudioLevel: { [weak self] level in
-                    DispatchQueue.main.async {
-                        guard let self else { return }
-                        self.audioLevels.removeFirst()
-                        self.audioLevels.append(level)
-                    }
-                }
-            )
+                )
+            }
+
             localServerManager = LocalServerManager(
                 serverCommand: serverCommand,
                 serverModule: serverModule,
                 serverPackagePath: serverPackagePath,
                 modelName: modelName,
-                port: endpoint.port,
-                healthEndpoint: endpoint.healthEndpoint,
+                requestedPort: 0,
+                endpointFactory: endpointFactory,
                 httpRequestTimeout: httpRequestTimeout,
                 startupTimeout: startupTimeout,
                 healthPollInterval: healthPollInterval,
                 uvxSearchPaths: uvxSearchPaths,
+                onEndpointResolved: { [weak self] endpoint in
+                    guard let self else { return }
+                    self.localASRService = makeLocalASRService(endpoint)
+                    self.transcriptionEngine.persistLocalServerPort(endpoint.port)
+                    if case .running = self.localServerStatus {
+                        self.isReady = true
+                        self.statusMessage = String(localized: "準備完了 (\(engineLabel)) - \(self.shortcutKey.usageDescription)")
+                    }
+                },
                 onStatusChange: { [weak self] status in
                     guard let self else { return }
                     self.localServerStatus = status
                     if case .running = status {
-                        self.isReady = true
-                        self.statusMessage = String(localized: "準備完了 (\(engineLabel)) - \(self.shortcutKey.usageDescription)")
+                        if self.localASRService != nil {
+                            self.isReady = true
+                            self.statusMessage = String(localized: "準備完了 (\(engineLabel)) - \(self.shortcutKey.usageDescription)")
+                        } else {
+                            self.statusMessage = String(localized: "\(engineLabel) の接続先を確定中...")
+                        }
                     } else if case .error(let msg) = status {
                         self.statusMessage = msg
                     } else if case .starting(let msg) = status {
