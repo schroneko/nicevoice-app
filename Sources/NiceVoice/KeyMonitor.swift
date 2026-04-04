@@ -1,6 +1,8 @@
 import AppKit
+import ApplicationServices
 
 enum ShortcutKey: String, CaseIterable {
+    case space = "space"
     case fn = "fn"
     case leftShift = "leftShift"
     case rightShift = "rightShift"
@@ -13,6 +15,7 @@ enum ShortcutKey: String, CaseIterable {
 
     var displayName: String {
         switch self {
+        case .space: return "Space"
         case .fn: return "fn"
         case .leftShift: return String(localized: "左 Shift")
         case .rightShift: return String(localized: "右 Shift")
@@ -27,6 +30,7 @@ enum ShortcutKey: String, CaseIterable {
 
     var keyCode: UInt16 {
         switch self {
+        case .space: return 49
         case .fn: return 63
         case .leftShift: return 56
         case .rightShift: return 60
@@ -41,6 +45,7 @@ enum ShortcutKey: String, CaseIterable {
 
     var modifierFlag: NSEvent.ModifierFlags {
         switch self {
+        case .space: return []
         case .fn: return .function
         case .leftShift, .rightShift: return .shift
         case .leftControl, .rightControl: return .control
@@ -51,6 +56,7 @@ enum ShortcutKey: String, CaseIterable {
 
     var deviceDependentFlag: UInt {
         switch self {
+        case .space: return 0
         case .fn: return 0
         case .leftShift: return 0x00000002
         case .rightShift: return 0x00000004
@@ -62,14 +68,34 @@ enum ShortcutKey: String, CaseIterable {
         case .rightCommand: return 0x00000010
         }
     }
+
+    var usesLongPressBehavior: Bool {
+        self == .space
+    }
+
+    var usageDescription: String {
+        switch self {
+        case .space:
+            return String(localized: "Space を長押しして録音")
+        default:
+            return String(localized: "\(displayName) キーを押して録音")
+        }
+    }
 }
 
 final class KeyMonitor {
     private var monitor: Any?
+    private var eventTap: CFMachPort?
+    private var eventTapSource: CFRunLoopSource?
     private var isKeyPressed = false
+    private var pendingLongPressWorkItem: DispatchWorkItem?
+    private var didTriggerLongPress = false
     private let onKeyDown: () -> Void
     private let onKeyUp: () -> Void
     private var shortcutKey: ShortcutKey
+
+    private static let longPressDelay: TimeInterval = 0.25
+    private static let injectedEventMarker: Int64 = 0x4E565350
 
     init(shortcutKey: ShortcutKey = .fn, onKeyDown: @escaping () -> Void, onKeyUp: @escaping () -> Void) {
         self.shortcutKey = shortcutKey
@@ -81,21 +107,41 @@ final class KeyMonitor {
     func updateShortcutKey(_ newKey: ShortcutKey) {
         guard newKey != shortcutKey else { return }
         shortcutKey = newKey
-        isKeyPressed = false
         stopMonitoring()
         startMonitoring()
         debugLog("🔄 Shortcut key changed to: \(newKey.displayName)")
     }
 
     private func stopMonitoring() {
+        pendingLongPressWorkItem?.cancel()
+        pendingLongPressWorkItem = nil
+        isKeyPressed = false
+        didTriggerLongPress = false
+
         if let monitor {
             NSEvent.removeMonitor(monitor)
             self.monitor = nil
+        }
+
+        if let eventTapSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), eventTapSource, .commonModes)
+            self.eventTapSource = nil
+        }
+
+        if let eventTap {
+            CFMachPortInvalidate(eventTap)
+            self.eventTap = nil
         }
     }
 
     private func startMonitoring() {
         debugLog("🔍 [DEBUG] KeyMonitor startMonitoring called for: \(shortcutKey.displayName)")
+
+        if shortcutKey.usesLongPressBehavior {
+            startLongPressMonitoring()
+            return
+        }
+
         monitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
             guard let self else { return }
             let keyPressed = self.isShortcutKeyPressed(event: event)
@@ -122,6 +168,131 @@ final class KeyMonitor {
         } else {
             debugLog("✅ KeyMonitor started successfully for: \(shortcutKey.displayName)")
         }
+    }
+
+    private func startLongPressMonitoring() {
+        let eventMask =
+            (1 << CGEventType.keyDown.rawValue) |
+            (1 << CGEventType.keyUp.rawValue)
+
+        let callback: CGEventTapCallBack = { _, type, event, userInfo in
+            guard let userInfo else {
+                return Unmanaged.passUnretained(event)
+            }
+
+            let monitor = Unmanaged<KeyMonitor>.fromOpaque(userInfo).takeUnretainedValue()
+            return monitor.handleLongPressEvent(type: type, event: event)
+        }
+
+        guard let eventTap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: CGEventMask(eventMask),
+            callback: callback,
+            userInfo: Unmanaged.passUnretained(self).toOpaque()
+        ) else {
+            debugLog("⚠️ Accessibility permission is required for long-press monitoring")
+            return
+        }
+
+        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
+        self.eventTap = eventTap
+        eventTapSource = source
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CGEvent.tapEnable(tap: eventTap, enable: true)
+        debugLog("✅ Long-press monitor started successfully for: \(shortcutKey.displayName)")
+    }
+
+    private func handleLongPressEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            if let eventTap {
+                CGEvent.tapEnable(tap: eventTap, enable: true)
+            }
+            return Unmanaged.passUnretained(event)
+        }
+
+        if event.getIntegerValueField(.eventSourceUserData) == Self.injectedEventMarker {
+            return Unmanaged.passUnretained(event)
+        }
+
+        guard event.getIntegerValueField(.keyboardEventKeycode) == Int64(shortcutKey.keyCode) else {
+            return Unmanaged.passUnretained(event)
+        }
+
+        let flags = NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
+        if shouldBypassLongPressHandling(flags: flags) {
+            return Unmanaged.passUnretained(event)
+        }
+
+        switch type {
+        case .keyDown:
+            return handleLongPressKeyDown(event: event)
+        case .keyUp:
+            return handleLongPressKeyUp(event: event)
+        default:
+            return Unmanaged.passUnretained(event)
+        }
+    }
+
+    private func handleLongPressKeyDown(event: CGEvent) -> Unmanaged<CGEvent>? {
+        let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
+        if isRepeat || isKeyPressed {
+            return nil
+        }
+
+        isKeyPressed = true
+        didTriggerLongPress = false
+
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self, self.isKeyPressed, self.shortcutKey.usesLongPressBehavior else { return }
+            self.didTriggerLongPress = true
+            DispatchQueue.main.async {
+                self.onKeyDown()
+            }
+        }
+
+        pendingLongPressWorkItem?.cancel()
+        pendingLongPressWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.longPressDelay, execute: workItem)
+        return nil
+    }
+
+    private func handleLongPressKeyUp(event: CGEvent) -> Unmanaged<CGEvent>? {
+        guard isKeyPressed else { return nil }
+
+        isKeyPressed = false
+        pendingLongPressWorkItem?.cancel()
+        pendingLongPressWorkItem = nil
+
+        if didTriggerLongPress {
+            didTriggerLongPress = false
+            DispatchQueue.main.async {
+                self.onKeyUp()
+            }
+        } else {
+            injectSpaceKeyPress()
+        }
+
+        return nil
+    }
+
+    private func shouldBypassLongPressHandling(flags: NSEvent.ModifierFlags) -> Bool {
+        let blockedFlags: NSEvent.ModifierFlags = [.command, .control, .option, .shift, .function]
+        return !flags.intersection(blockedFlags).isEmpty
+    }
+
+    private func injectSpaceKeyPress() {
+        guard let source = CGEventSource(stateID: .privateState) else { return }
+        guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(shortcutKey.keyCode), keyDown: true),
+              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(shortcutKey.keyCode), keyDown: false) else {
+            return
+        }
+
+        keyDown.setIntegerValueField(.eventSourceUserData, value: Self.injectedEventMarker)
+        keyUp.setIntegerValueField(.eventSourceUserData, value: Self.injectedEventMarker)
+        keyDown.post(tap: .cgAnnotatedSessionEventTap)
+        keyUp.post(tap: .cgAnnotatedSessionEventTap)
     }
 
     private func isShortcutKeyPressed(event: NSEvent) -> Bool {

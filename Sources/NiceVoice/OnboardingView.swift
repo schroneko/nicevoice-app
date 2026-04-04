@@ -1205,6 +1205,7 @@ struct ModernUsageStep: View {
 extension ShortcutKey {
     var iconName: String {
         switch self {
+        case .space: return "keyboard"
         case .fn: return "fn"
         case .leftShift, .rightShift: return "shift"
         case .leftControl, .rightControl: return "control"

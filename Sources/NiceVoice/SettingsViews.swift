@@ -55,6 +55,7 @@ struct ShortcutKeyButton: View {
 
     private var iconName: String {
         switch key {
+        case .space: return "keyboard"
         case .fn: return "fn"
         case .leftShift, .rightShift: return "shift"
         case .leftControl, .rightControl: return "control"
@@ -163,6 +164,12 @@ struct SettingsContentView: View {
                                 )
                             }
                         }
+
+                        Text(selectedShortcutKey.usesLongPressBehavior
+                             ? "Space は長押しで録音し、短く押すと通常のスペースを入力します"
+                             : "選んだキーを押している間だけ録音します")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
 
                     SectionDivider()

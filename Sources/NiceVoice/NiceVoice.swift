@@ -443,7 +443,7 @@ final class AppState {
                 }
             )
             isReady = true
-            statusMessage = String(localized: "準備完了 (Deepgram) - \(shortcutKey.displayName) キーを押して録音")
+            statusMessage = String(localized: "準備完了 (Deepgram) - \(shortcutKey.usageDescription)")
             debugLog("Using Deepgram Nova-3")
             return
         }
@@ -548,7 +548,7 @@ final class AppState {
                     self.localServerStatus = status
                     if case .running = status {
                         self.isReady = true
-                        self.statusMessage = String(localized: "準備完了 (\(engineLabel)) - \(self.shortcutKey.displayName) キーを押して録音")
+                        self.statusMessage = String(localized: "準備完了 (\(engineLabel)) - \(self.shortcutKey.usageDescription)")
                     } else if case .error(let msg) = status {
                         self.statusMessage = msg
                     } else if case .starting(let msg) = status {
@@ -694,7 +694,7 @@ final class AppState {
             await MainActor.run {
                 if case .running = self.localServerStatus {
                     isReady = true
-                    statusMessage = String(localized: "準備完了 (\(engineLabel)) - \(shortcutKey.displayName) キーを押して録音")
+                    statusMessage = String(localized: "準備完了 (\(engineLabel)) - \(shortcutKey.usageDescription)")
                 } else if case .downloaded = self.modelDownloadStatus {
                     statusMessage = String(localized: "\(engineLabel) サーバーを起動中...")
                     localServerManager?.start()
@@ -722,7 +722,7 @@ final class AppState {
         await service.start()
         await MainActor.run {
             isReady = true
-            statusMessage = String(localized: "準備完了 - \(shortcutKey.displayName) キーを押して録音")
+            statusMessage = String(localized: "準備完了 - \(shortcutKey.usageDescription)")
             debugLog("✅ Using Apple SpeechAnalyzer")
         }
     }
