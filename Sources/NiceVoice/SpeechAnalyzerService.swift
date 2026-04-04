@@ -43,6 +43,7 @@ final class SpeechAnalyzerService {
     private let onStatusChange: ((String) -> Void)?
     private let onAudioLevel: ((Float) -> Void)?
     private let onLanguageDetected: ((SupportedLanguage) -> Void)?
+    private let onCaptureStarted: (() -> Void)?
 
     static var isAvailable: Bool {
         if #available(macOS 26.0, *) {
@@ -57,7 +58,8 @@ final class SpeechAnalyzerService {
         onError: @escaping (String) -> Void,
         onStatusChange: ((String) -> Void)? = nil,
         onAudioLevel: ((Float) -> Void)? = nil,
-        onLanguageDetected: ((SupportedLanguage) -> Void)? = nil
+        onLanguageDetected: ((SupportedLanguage) -> Void)? = nil,
+        onCaptureStarted: (() -> Void)? = nil
     ) {
         self.onTranscription = onTranscription
         self.onFinalCompletion = onFinalCompletion
@@ -65,6 +67,7 @@ final class SpeechAnalyzerService {
         self.onStatusChange = onStatusChange
         self.onAudioLevel = onAudioLevel
         self.onLanguageDetected = onLanguageDetected
+        self.onCaptureStarted = onCaptureStarted
     }
 
     func start() async {
@@ -151,11 +154,12 @@ final class SpeechAnalyzerService {
             }
         }
 
-        usleep(100000)
-
         do {
             try audioEngine.start()
             debugLog("🎙️ SpeechAnalyzer recording started (immediate transcription)")
+            DispatchQueue.main.async {
+                self.onCaptureStarted?()
+            }
         } catch {
             debugLog("❌ Audio engine failed to start: \(error)")
             onError(String(localized: "オーディオエンジンの起動に失敗しました"))
@@ -202,7 +206,16 @@ final class SpeechAnalyzerService {
     }
 
     func stop() {
-        stopRecording()
+        isRunning = false
+        audioEngine?.inputNode.removeTap(onBus: 0)
+        audioEngine?.stop()
+        audioEngine = nil
+        inputContinuation?.finish()
+        inputContinuation = nil
+        transcriptionTask?.cancel()
+        analyzerTask?.cancel()
+        transcriptionTask = nil
+        analyzerTask = nil
         analyzer = nil
         transcriber = nil
         audioConverter = nil

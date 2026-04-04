@@ -21,6 +21,7 @@ final class DeepgramService {
     private let onError: (String) -> Void
     private let onStatusChange: ((String) -> Void)?
     private let onAudioLevel: ((Float) -> Void)?
+    private let onCaptureStarted: (() -> Void)?
 
     private lazy var targetFormat: AVAudioFormat = {
         AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: self.sampleRate, channels: 1, interleaved: true)!
@@ -33,7 +34,8 @@ final class DeepgramService {
         onFinalCompletion: ((String) -> Void)? = nil,
         onError: @escaping (String) -> Void,
         onStatusChange: ((String) -> Void)? = nil,
-        onAudioLevel: ((Float) -> Void)? = nil
+        onAudioLevel: ((Float) -> Void)? = nil,
+        onCaptureStarted: (() -> Void)? = nil
     ) {
         self.apiKey = apiKey
         self.sampleRate = sampleRate
@@ -42,6 +44,7 @@ final class DeepgramService {
         self.onError = onError
         self.onStatusChange = onStatusChange
         self.onAudioLevel = onAudioLevel
+        self.onCaptureStarted = onCaptureStarted
     }
 
     func startRecording() {
@@ -364,11 +367,12 @@ final class DeepgramService {
             }
         }
 
-        usleep(Constants.Audio.engineStartDelayMicroseconds)
-
         do {
             try audioEngine.start()
             debugLog("Deepgram audio capture started")
+            DispatchQueue.main.async {
+                self.onCaptureStarted?()
+            }
         } catch {
             debugLog("Deepgram audio engine failed to start: \(error)")
             onError(String(localized: "オーディオエンジンの起動に失敗しました"))

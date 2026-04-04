@@ -5,10 +5,14 @@ final class LocalASRService {
     private var webSocketTask: URLSessionWebSocketTask?
     private var audioEngine: AVAudioEngine?
     private var audioConverter: AVAudioConverter?
+    private var isAudioCaptureActive = false
+    private var warmCaptureEnabled = false
     private var isRunning = false
     private var receiveTask: Task<Void, Never>?
     private var sessionReady = false
     private var pendingStop = false
+    private var deferStreamingUntilConfirmation = false
+    private var streamingConfirmed = false
 
     private var audioBuffers: [AVAudioPCMBuffer] = []
     private var recordingFormat: AVAudioFormat?
@@ -24,6 +28,7 @@ final class LocalASRService {
     private let onError: (String) -> Void
     private let onStatusChange: ((String) -> Void)?
     private let onAudioLevel: ((Float) -> Void)?
+    private let onCaptureStarted: (() -> Void)?
 
     private lazy var voxtralFormat: AVAudioFormat = {
         AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: self.sampleRate, channels: 1, interleaved: true)!
@@ -37,7 +42,8 @@ final class LocalASRService {
         onFinalCompletion: ((String) -> Void)? = nil,
         onError: @escaping (String) -> Void,
         onStatusChange: ((String) -> Void)? = nil,
-        onAudioLevel: ((Float) -> Void)? = nil
+        onAudioLevel: ((Float) -> Void)? = nil,
+        onCaptureStarted: (() -> Void)? = nil
     ) {
         self.wsEndpoint = wsEndpoint
         self.healthEndpoint = healthEndpoint
@@ -47,19 +53,37 @@ final class LocalASRService {
         self.onError = onError
         self.onStatusChange = onStatusChange
         self.onAudioLevel = onAudioLevel
+        self.onCaptureStarted = onCaptureStarted
     }
 
-    func startRecording() {
+    func startRecording(deferStreamingUntilConfirmation: Bool = false) {
         guard !isRunning else { return }
 
         isRunning = true
         sessionReady = false
         pendingStop = false
+        self.deferStreamingUntilConfirmation = deferStreamingUntilConfirmation
+        streamingConfirmed = !deferStreamingUntilConfirmation
         accumulatedText = ""
         audioBuffers = []
         pendingPCMChunks = []
 
-        startAudioCapture()
+        ensureAudioCaptureRunning(notifyCaptureStarted: true)
+        if streamingConfirmed {
+            connectWebSocket()
+        } else {
+            debugLog("⏳ voxmlx capture started in preflight mode")
+        }
+    }
+
+    func confirmRecordingStart() {
+        guard isRunning else { return }
+        guard deferStreamingUntilConfirmation else { return }
+        guard !streamingConfirmed else { return }
+
+        deferStreamingUntilConfirmation = false
+        streamingConfirmed = true
+        debugLog("✅ voxmlx preflight confirmed, connecting WebSocket")
         connectWebSocket()
     }
 
@@ -67,9 +91,9 @@ final class LocalASRService {
         guard isRunning else { return }
         isRunning = false
 
-        audioEngine?.inputNode.removeTap(onBus: 0)
-        audioEngine?.stop()
-        audioEngine = nil
+        if !warmCaptureEnabled {
+            stopAudioCapture()
+        }
 
         if sessionReady {
             sendEndAudio()
@@ -84,10 +108,34 @@ final class LocalASRService {
     func stop() {
         isRunning = false
         pendingStop = false
-        audioEngine?.inputNode.removeTap(onBus: 0)
-        audioEngine?.stop()
-        audioEngine = nil
+        deferStreamingUntilConfirmation = false
+        streamingConfirmed = false
+        pendingPCMChunks = []
+        audioBuffers = []
+        if !warmCaptureEnabled {
+            stopAudioCapture()
+        }
         disconnectWebSocket()
+    }
+
+    func setWarmCaptureEnabled(_ enabled: Bool) {
+        if warmCaptureEnabled == enabled {
+            if enabled {
+                ensureAudioCaptureRunning(notifyCaptureStarted: false)
+            }
+            return
+        }
+
+        warmCaptureEnabled = enabled
+        if enabled {
+            debugLog("🔥 voxmlx warm capture enabled")
+            ensureAudioCaptureRunning(notifyCaptureStarted: false)
+        } else {
+            debugLog("🧊 voxmlx warm capture disabled")
+            if !isRunning {
+                stopAudioCapture()
+            }
+        }
     }
 
     func getRecordedAudioData(consuming: Bool = true) -> Data? {
@@ -186,6 +234,8 @@ final class LocalASRService {
         webSocketTask?.cancel(with: .normalClosure, reason: nil)
         webSocketTask = nil
         sessionReady = false
+        deferStreamingUntilConfirmation = false
+        streamingConfirmed = false
     }
 
     private func startReceiving() {
@@ -323,7 +373,28 @@ final class LocalASRService {
         }
     }
 
-    private func startAudioCapture() {
+    private func ensureAudioCaptureRunning(notifyCaptureStarted: Bool) {
+        if isAudioCaptureActive {
+            if notifyCaptureStarted {
+                DispatchQueue.main.async {
+                    self.onCaptureStarted?()
+                }
+            }
+            return
+        }
+
+        startAudioCapture(notifyCaptureStarted: notifyCaptureStarted)
+    }
+
+    private func stopAudioCapture() {
+        audioEngine?.inputNode.removeTap(onBus: 0)
+        audioEngine?.stop()
+        audioEngine = nil
+        audioConverter = nil
+        isAudioCaptureActive = false
+    }
+
+    private func startAudioCapture(notifyCaptureStarted: Bool) {
         audioEngine = AVAudioEngine()
         guard let audioEngine else { return }
 
@@ -334,16 +405,15 @@ final class LocalASRService {
 
         audioConverter = AVAudioConverter(from: inputFormat, to: voxtralFormat)
 
-        inputNode.installTap(onBus: 0, bufferSize: Constants.Audio.bufferSize, format: inputFormat) { [weak self] buffer, _ in
+        inputNode.installTap(onBus: 0, bufferSize: Constants.Audio.realtimeBufferSize, format: inputFormat) { [weak self] buffer, _ in
             guard let self else { return }
 
             let stillRecording = self.isRunning
 
-            if let copy = self.copyBuffer(buffer) {
-                self.audioBuffers.append(copy)
-            }
-
             if stillRecording {
+                if let copy = self.copyBuffer(buffer) {
+                    self.audioBuffers.append(copy)
+                }
                 if let converted = self.convertToVoxtralFormat(buffer) {
                     let pcmData = self.extractPCMData(from: converted)
                     self.sendAudioChunk(pcmData)
@@ -365,14 +435,21 @@ final class LocalASRService {
             }
         }
 
-        usleep(Constants.Audio.engineStartDelayMicroseconds)
+        audioEngine.prepare()
 
         do {
             try audioEngine.start()
+            isAudioCaptureActive = true
             debugLog("🎙️ voxmlx audio capture started")
+            if notifyCaptureStarted {
+                DispatchQueue.main.async {
+                    self.onCaptureStarted?()
+                }
+            }
         } catch {
             debugLog("❌ voxmlx audio engine failed to start: \(error)")
             onError(String(localized: "オーディオエンジンの起動に失敗しました"))
+            isAudioCaptureActive = false
             isRunning = false
         }
     }

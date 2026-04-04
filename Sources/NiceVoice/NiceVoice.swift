@@ -254,6 +254,7 @@ final class AppState {
         set {
             shortcutKeyRaw = newValue.rawValue
             keyMonitor?.updateShortcutKey(newValue)
+            updateWarmCaptureConfiguration()
         }
     }
 
@@ -287,6 +288,8 @@ final class AppState {
     private var finalResultTimer: DispatchWorkItem?
     private var speakerCheckTimer: Timer?
     private var isEnrolledSpeakerActive = true
+    private var isAwaitingLongPressConfirmation = false
+    private var hasDeferredLocalCapture = false
     private var capturedTextElement: AXUIElement?
     private var insertionPointLocation: Int = 0
     private var inlinePreviewLength: Int = 0
@@ -369,12 +372,17 @@ final class AppState {
                         debugLog("🌍 Language detected: \(language.displayName)")
                         self?.statusMessage = String(localized: "検出: \(language.displayName)")
                     }
+                },
+                onCaptureStarted: { [weak self] in
+                    self?.handleCaptureStarted()
                 }
             )
         }
 
         keyMonitor = KeyMonitor(
             shortcutKey: shortcutKey,
+            onPressBegan: { [weak self] in self?.beginLongPressRecordingPreflight() },
+            onPressCancelled: { [weak self] in self?.cancelPendingLongPressRecording() },
             onKeyDown: { [weak self] in self?.startRecording() },
             onKeyUp: { [weak self] in self?.stopRecording() }
         )
@@ -389,6 +397,8 @@ final class AppState {
     func setupTranscriptionService() {
         normalizeTranscriptionEngineSelection()
         debugLog("setupTranscriptionService: engine=\(transcriptionEngine.rawValue)")
+        localASRService?.setWarmCaptureEnabled(false)
+        localASRService?.stop()
         localASRService = nil
         deepgramService = nil
         localServerManager?.stop()
@@ -441,6 +451,9 @@ final class AppState {
                         self.audioLevels.removeFirst()
                         self.audioLevels.append(level)
                     }
+                },
+                onCaptureStarted: { [weak self] in
+                    self?.handleCaptureStarted()
                 }
             )
             isReady = true
@@ -539,6 +552,9 @@ final class AppState {
                             self.audioLevels.removeFirst()
                             self.audioLevels.append(level)
                         }
+                    },
+                    onCaptureStarted: { [weak self] in
+                        self?.handleCaptureStarted()
                     }
                 )
             }
@@ -557,6 +573,7 @@ final class AppState {
                 onEndpointResolved: { [weak self] endpoint in
                     guard let self else { return }
                     self.localASRService = makeLocalASRService(endpoint)
+                    self.updateWarmCaptureConfiguration()
                     self.transcriptionEngine.persistLocalServerPort(endpoint.port)
                     if case .running = self.localServerStatus {
                         self.isReady = true
@@ -601,6 +618,13 @@ final class AppState {
                 modelDownloadStatuses[currentEngine] = .downloaded
             }
         }
+    }
+
+    private func updateWarmCaptureConfiguration() {
+        let shouldWarmCapture =
+            shortcutKey.usesLongPressBehavior &&
+            (transcriptionEngine == .voxtralLocal || transcriptionEngine == .qwen3ASR)
+        localASRService?.setWarmCaptureEnabled(shouldWarmCapture)
     }
 
     func downloadModel() {
@@ -786,6 +810,16 @@ final class AppState {
     }
 
     func startRecording() {
+        if isAwaitingLongPressConfirmation {
+            isAwaitingLongPressConfirmation = false
+            if hasDeferredLocalCapture {
+                localASRService?.confirmRecordingStart()
+                activateRecordingUIIfNeeded()
+                startSpeakerVerificationCheck()
+                return
+            }
+        }
+
         guard #available(macOS 26.0, *) else { return }
 
         if isDebuggerAttached() {
@@ -810,14 +844,10 @@ final class AppState {
         }
 
         errorMessage = nil
-        captureForInlinePreview()
         isRecording = true
         currentTranscription = ""
-        recordingStartDate = Date()
+        hasDeferredLocalCapture = false
         debugLog("🎙️ Recording started")
-        NotificationCenter.default.post(name: .recordingStateChanged, object: nil)
-
-        floatingPanel?.show()
 
         switch transcriptionEngine {
         case .deepgram:
@@ -831,7 +861,52 @@ final class AppState {
             debugLog("[DEBUG] speechAnalyzerService.startRecording() called")
         }
 
+        captureForInlinePreview()
         startSpeakerVerificationCheck()
+    }
+
+    private func beginLongPressRecordingPreflight() {
+        guard shortcutKey.usesLongPressBehavior else { return }
+        guard !isRecording else { return }
+        guard transcriptionEngine == .voxtralLocal || transcriptionEngine == .qwen3ASR else { return }
+        guard #available(macOS 26.0, *) else { return }
+        guard !isDebuggerAttached() else { return }
+        guard isReady else { return }
+
+        errorMessage = nil
+        isRecording = true
+        currentTranscription = ""
+        isAwaitingLongPressConfirmation = true
+        hasDeferredLocalCapture = true
+        debugLog("🎙️ Recording preflight started for long-press shortcut")
+        localASRService?.startRecording(deferStreamingUntilConfirmation: true)
+        captureForInlinePreview()
+    }
+
+    private func handleCaptureStarted() {
+        guard isRecording else { return }
+        guard !isAwaitingLongPressConfirmation else {
+            debugLog("🎙️ Capture confirmed - waiting for long-press confirmation")
+            return
+        }
+        activateRecordingUIIfNeeded()
+    }
+
+    private func activateRecordingUIIfNeeded() {
+        guard isRecording else { return }
+        guard !isAwaitingLongPressConfirmation else { return }
+        guard recordingStartDate == nil else { return }
+
+        recordingStartDate = Date()
+        debugLog("🎙️ Capture confirmed - recording UI activated")
+        NotificationCenter.default.post(name: .recordingStateChanged, object: nil)
+        floatingPanel?.show()
+    }
+
+    private func cancelPendingLongPressRecording() {
+        guard isAwaitingLongPressConfirmation else { return }
+        debugLog("🚫 Pending long-press recording cancelled before confirmation")
+        cancelRecording()
     }
 
     private func startSpeakerVerificationCheck() {
@@ -879,6 +954,8 @@ final class AppState {
             return
         }
         isRecording = false
+        isAwaitingLongPressConfirmation = false
+        hasDeferredLocalCapture = false
         recordingStartDate = nil
 
         speakerCheckTimer?.invalidate()
@@ -1524,10 +1601,14 @@ final class AppState {
             localASRService?.stop()
         case .speechAnalyzer:
             if #available(macOS 26.0, *) {
-                (speechAnalyzerService as? SpeechAnalyzerService)?.stopRecording()
+                (speechAnalyzerService as? SpeechAnalyzerService)?.stop()
             }
         }
         isRecording = false
+        isAwaitingLongPressConfirmation = false
+        hasDeferredLocalCapture = false
+        waitingForFinalResult = false
+        finalResultTimer?.cancel()
         recordingStartDate = nil
         currentTranscription = ""
         floatingPanel?.hide()

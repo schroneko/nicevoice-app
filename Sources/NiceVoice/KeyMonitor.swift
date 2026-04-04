@@ -90,6 +90,8 @@ final class KeyMonitor {
     private var isKeyPressed = false
     private var pendingLongPressWorkItem: DispatchWorkItem?
     private var didTriggerLongPress = false
+    private let onPressBegan: (() -> Void)?
+    private let onPressCancelled: (() -> Void)?
     private let onKeyDown: () -> Void
     private let onKeyUp: () -> Void
     private var shortcutKey: ShortcutKey
@@ -97,8 +99,16 @@ final class KeyMonitor {
     private static let longPressDelay: TimeInterval = 0.25
     private static let injectedEventMarker: Int64 = 0x4E565350
 
-    init(shortcutKey: ShortcutKey = .fn, onKeyDown: @escaping () -> Void, onKeyUp: @escaping () -> Void) {
+    init(
+        shortcutKey: ShortcutKey = .fn,
+        onPressBegan: (() -> Void)? = nil,
+        onPressCancelled: (() -> Void)? = nil,
+        onKeyDown: @escaping () -> Void,
+        onKeyUp: @escaping () -> Void
+    ) {
         self.shortcutKey = shortcutKey
+        self.onPressBegan = onPressBegan
+        self.onPressCancelled = onPressCancelled
         self.onKeyDown = onKeyDown
         self.onKeyUp = onKeyUp
         startMonitoring()
@@ -244,6 +254,10 @@ final class KeyMonitor {
         isKeyPressed = true
         didTriggerLongPress = false
 
+        DispatchQueue.main.async {
+            self.onPressBegan?()
+        }
+
         let workItem = DispatchWorkItem { [weak self] in
             guard let self, self.isKeyPressed, self.shortcutKey.usesLongPressBehavior else { return }
             self.didTriggerLongPress = true
@@ -271,6 +285,9 @@ final class KeyMonitor {
                 self.onKeyUp()
             }
         } else {
+            DispatchQueue.main.async {
+                self.onPressCancelled?()
+            }
             injectSpaceKeyPress()
         }
 

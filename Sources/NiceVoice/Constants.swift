@@ -10,8 +10,8 @@ enum Constants {
 
     enum Audio {
         static let bufferSize: UInt32 = 4096
+        static let realtimeBufferSize: UInt32 = 1024
         static let levelMultiplier: Float = 5.0
-        static let engineStartDelayMicroseconds: UInt32 = 100_000
         static let finalizationWaitMilliseconds: UInt64 = 500
     }
 
