@@ -27,7 +27,8 @@ enum Constants {
     enum Timing {
         static let finalResultTimeoutSeconds: Double = 3.0
         static let pastePreDelaySeconds: Double = 0.1
-        static let pastePostDelaySeconds: Double = 0.15
+        static let pastePostDelaySeconds: Double = 1.0
+        static let pastePostDelaySecondsForCodex: Double = 1.5
         static let keyEventDelayMicroseconds: UInt32 = 50_000
         static let deleteKeyDelayMicroseconds: UInt32 = 10_000
         static let accessibilityCheckDelaySeconds: Double = 1.0

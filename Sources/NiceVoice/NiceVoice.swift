@@ -1076,9 +1076,21 @@ final class AppState {
         pasteboard.setString(text, forType: .string)
         debugLog("📋 Set clipboard to: \(text.count) chars")
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.Timing.pastePreDelaySeconds) { [weak self] in
             self?.simulatePaste {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                let frontmostBundleIdentifier = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+                let restoreDelay = Self.clipboardRestoreDelay(for: frontmostBundleIdentifier)
+                DispatchQueue.main.asyncAfter(deadline: .now() + restoreDelay) {
+                    let currentContents = pasteboard.string(forType: .string)
+                    guard Self.shouldRestoreClipboard(
+                        previousContents: previousContents,
+                        currentContents: currentContents,
+                        pastedText: text
+                    ) else {
+                        debugLog("📋 Skipped clipboard restore: current clipboard changed before restore window elapsed")
+                        return
+                    }
+
                     if let prev = previousContents {
                         pasteboard.clearContents()
                         pasteboard.setString(prev, forType: .string)
@@ -1087,6 +1099,24 @@ final class AppState {
                 }
             }
         }
+    }
+
+    static func clipboardRestoreDelay(for bundleIdentifier: String?) -> TimeInterval {
+        switch bundleIdentifier {
+        case "com.openai.codex":
+            return Constants.Timing.pastePostDelaySecondsForCodex
+        default:
+            return Constants.Timing.pastePostDelaySeconds
+        }
+    }
+
+    static func shouldRestoreClipboard(
+        previousContents: String?,
+        currentContents: String?,
+        pastedText: String
+    ) -> Bool {
+        guard previousContents != nil else { return false }
+        return currentContents == pastedText
     }
 
     private func simulatePaste(completion: @escaping () -> Void) {
