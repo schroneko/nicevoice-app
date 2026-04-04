@@ -2,7 +2,6 @@ import SwiftUI
 
 struct DeveloperView: View {
     var appState: AppState
-    @AppStorage("transcriptionEngine") private var transcriptionEngineRaw = TranscriptionEngine.defaultEngine.rawValue
     @State private var sectionAnimations: [Bool] = [false, false, false, false]
     @State private var deepgramApiKeyInput = ""
     @State private var hasDeepgramApiKey = false
@@ -10,7 +9,7 @@ struct DeveloperView: View {
     private let developerEngines = TranscriptionEngine.availableEngines(developerToolsEnabled: true)
 
     private var selectedEngine: TranscriptionEngine {
-        TranscriptionEngine.normalized(rawValue: transcriptionEngineRaw, developerToolsEnabled: true)
+        appState.transcriptionEngine
     }
 
     var body: some View {
@@ -37,7 +36,7 @@ struct DeveloperView: View {
                                 engine: engine,
                                 isSelected: selectedEngine == engine,
                                 action: {
-                                    transcriptionEngineRaw = engine.rawValue
+                                    appState.transcriptionEngine = engine
                                     appState.setupTranscriptionService()
                                     Task {
                                         await appState.reinitializeAfterEngineChange()

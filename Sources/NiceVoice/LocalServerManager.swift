@@ -91,6 +91,7 @@ final class LocalServerManager {
     }
 
     func start() {
+        debugLog("[\(serverCommand)] start requested")
         guard !isRunning else { return }
         resolvedEndpoint = nil
 
@@ -99,6 +100,7 @@ final class LocalServerManager {
             onStatusChange(.error(missingRuntimeMessage()))
             return
         }
+        debugLog("[\(serverCommand)] launch configuration resolved")
 
         terminateStaleManagedProcesses()
 
@@ -383,12 +385,12 @@ final class LocalServerManager {
         lsof.standardError = FileHandle.nullDevice
         do {
             try lsof.run()
-            lsof.waitUntilExit()
         } catch {
             return []
         }
 
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        lsof.waitUntilExit()
         guard let output = String(data: data, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines),
             !output.isEmpty else {
@@ -414,12 +416,12 @@ final class LocalServerManager {
         ps.standardError = FileHandle.nullDevice
         do {
             try ps.run()
-            ps.waitUntilExit()
         } catch {
             return []
         }
 
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        ps.waitUntilExit()
         guard let output = String(data: data, encoding: .utf8), !output.isEmpty else {
             return []
         }
@@ -482,12 +484,12 @@ final class LocalServerManager {
         ps.standardError = FileHandle.nullDevice
         do {
             try ps.run()
-            ps.waitUntilExit()
         } catch {
             return nil
         }
 
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        ps.waitUntilExit()
         let output = String(data: data, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return output?.isEmpty == false ? output : nil

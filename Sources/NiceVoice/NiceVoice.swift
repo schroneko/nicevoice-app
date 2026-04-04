@@ -388,6 +388,7 @@ final class AppState {
 
     func setupTranscriptionService() {
         normalizeTranscriptionEngineSelection()
+        debugLog("setupTranscriptionService: engine=\(transcriptionEngine.rawValue)")
         localASRService = nil
         deepgramService = nil
         localServerManager?.stop()
@@ -694,6 +695,7 @@ final class AppState {
     }
 
     private func requestPermissions() async {
+        debugLog("requestPermissions: begin (engine=\(transcriptionEngine.rawValue))")
         statusMessage = String(localized: "権限を確認中...")
 
         guard #available(macOS 26.0, *) else {
@@ -704,7 +706,20 @@ final class AppState {
             return
         }
 
-        let micStatus = await AVCaptureDevice.requestAccess(for: .audio)
+        let authorizationStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+        debugLog("requestPermissions: microphone authorization status=\(authorizationStatus.rawValue)")
+
+        let micStatus: Bool
+        switch authorizationStatus {
+        case .authorized:
+            micStatus = true
+        case .notDetermined:
+            micStatus = await AVCaptureDevice.requestAccess(for: .audio)
+        case .denied, .restricted:
+            micStatus = false
+        @unknown default:
+            micStatus = false
+        }
         guard micStatus else {
             await MainActor.run {
                 statusMessage = String(localized: "マイクの権限が必要です")
@@ -714,20 +729,40 @@ final class AppState {
 
         if transcriptionEngine == .voxtralLocal || transcriptionEngine == .qwen3ASR {
             let engineLabel = transcriptionEngine == .voxtralLocal ? "Voxtral Local" : "Qwen3 ASR"
+            let modelStatus = modelDownloadStatus
+            let shouldStartServer = !transcriptionEngine.requiresExternalModelDownload || {
+                if case .downloaded = modelStatus {
+                    return true
+                }
+                return false
+            }()
+
+            debugLog("requestPermissions: local engine=\(engineLabel), modelStatus=\(String(describing: modelStatus)), shouldStartServer=\(shouldStartServer)")
+
             await MainActor.run {
                 if case .running = self.localServerStatus {
                     isReady = true
                     statusMessage = String(localized: "準備完了 (\(engineLabel)) - \(shortcutKey.usageDescription)")
-                } else if case .downloaded = self.modelDownloadStatus {
+                } else if shouldStartServer {
                     statusMessage = String(localized: "\(engineLabel) サーバーを起動中...")
-                    localServerManager?.start()
-                } else if case .notDownloaded = self.modelDownloadStatus {
+                } else if case .notDownloaded = modelStatus {
                     statusMessage = String(localized: "モデルのダウンロードが必要です")
-                } else if case .downloading = self.modelDownloadStatus {
+                } else if case .downloading = modelStatus {
                     statusMessage = String(localized: "モデルをダウンロード中...")
+                } else if case .error(let message) = modelStatus {
+                    statusMessage = message
                 }
-                debugLog("Using \(engineLabel)")
             }
+
+            if shouldStartServer {
+                let manager = localServerManager
+                Task.detached(priority: .userInitiated) {
+                    debugLog("requestPermissions: detached server start for \(engineLabel)")
+                    manager?.start()
+                }
+            }
+
+            debugLog("Using \(engineLabel)")
             return
         }
 
