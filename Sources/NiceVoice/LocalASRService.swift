@@ -17,6 +17,7 @@ final class LocalASRService {
     private var accumulatedText = ""
 
     private let wsEndpoint: String
+    private let healthEndpoint: String
     private let sampleRate: Double
     private let onTranscription: (String, Bool) -> Void
     private let onFinalCompletion: ((String) -> Void)?
@@ -30,6 +31,7 @@ final class LocalASRService {
 
     init(
         wsEndpoint: String,
+        healthEndpoint: String,
         sampleRate: Double,
         onTranscription: @escaping (String, Bool) -> Void,
         onFinalCompletion: ((String) -> Void)? = nil,
@@ -38,6 +40,7 @@ final class LocalASRService {
         onAudioLevel: ((Float) -> Void)? = nil
     ) {
         self.wsEndpoint = wsEndpoint
+        self.healthEndpoint = healthEndpoint
         self.sampleRate = sampleRate
         self.onTranscription = onTranscription
         self.onFinalCompletion = onFinalCompletion
@@ -150,7 +153,7 @@ final class LocalASRService {
     }
 
     func checkServerHealth() async -> Bool {
-        guard let url = URL(string: Constants.VoxtralLocal.healthEndpoint) else { return false }
+        guard let url = URL(string: healthEndpoint) else { return false }
         var request = URLRequest(url: url)
         request.timeoutInterval = Constants.VoxtralLocal.httpRequestTimeoutSeconds
         do {

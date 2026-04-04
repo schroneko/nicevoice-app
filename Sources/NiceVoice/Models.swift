@@ -83,6 +83,12 @@ struct FillerSettings: Codable {
     }
 }
 
+struct LocalServerEndpoint: Equatable {
+    let port: Int
+    let wsEndpoint: String
+    let healthEndpoint: String
+}
+
 enum TranscriptionEngine: String, CaseIterable, Codable {
     case speechAnalyzer
     case voxtralLocal
@@ -171,6 +177,65 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
         case .qwen3ASR: return "Qwen3 ASR 1.7B"
         case .speechAnalyzer, .deepgram: return nil
         }
+    }
+
+    private var localServerPortStorageKey: String? {
+        switch self {
+        case .voxtralLocal, .qwen3ASR:
+            return "localServerPort.\(rawValue)"
+        case .speechAnalyzer, .deepgram:
+            return nil
+        }
+    }
+
+    var defaultLocalServerEndpoint: LocalServerEndpoint? {
+        switch self {
+        case .voxtralLocal:
+            return LocalServerEndpoint(
+                port: Constants.VoxtralLocal.defaultPort,
+                wsEndpoint: Constants.VoxtralLocal.wsEndpoint(port: Constants.VoxtralLocal.defaultPort),
+                healthEndpoint: Constants.VoxtralLocal.healthEndpoint(port: Constants.VoxtralLocal.defaultPort)
+            )
+        case .qwen3ASR:
+            return LocalServerEndpoint(
+                port: Constants.Qwen3ASR.defaultPort,
+                wsEndpoint: Constants.Qwen3ASR.wsEndpoint(port: Constants.Qwen3ASR.defaultPort),
+                healthEndpoint: Constants.Qwen3ASR.healthEndpoint(port: Constants.Qwen3ASR.defaultPort)
+            )
+        case .speechAnalyzer, .deepgram:
+            return nil
+        }
+    }
+
+    func makeLocalServerEndpoint(port: Int) -> LocalServerEndpoint? {
+        switch self {
+        case .voxtralLocal:
+            return LocalServerEndpoint(
+                port: port,
+                wsEndpoint: Constants.VoxtralLocal.wsEndpoint(port: port),
+                healthEndpoint: Constants.VoxtralLocal.healthEndpoint(port: port)
+            )
+        case .qwen3ASR:
+            return LocalServerEndpoint(
+                port: port,
+                wsEndpoint: Constants.Qwen3ASR.wsEndpoint(port: port),
+                healthEndpoint: Constants.Qwen3ASR.healthEndpoint(port: port)
+            )
+        case .speechAnalyzer, .deepgram:
+            return nil
+        }
+    }
+
+    var persistedLocalServerEndpoint: LocalServerEndpoint? {
+        guard let defaultLocalServerEndpoint else { return nil }
+        guard let key = localServerPortStorageKey else { return defaultLocalServerEndpoint }
+        let storedPort = UserDefaults.standard.object(forKey: key) as? Int ?? defaultLocalServerEndpoint.port
+        return makeLocalServerEndpoint(port: storedPort)
+    }
+
+    func persistLocalServerPort(_ port: Int) {
+        guard let key = localServerPortStorageKey else { return }
+        UserDefaults.standard.set(port, forKey: key)
     }
 
     static func availableEngines(

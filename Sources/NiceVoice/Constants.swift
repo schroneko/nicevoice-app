@@ -1,5 +1,6 @@
 import Foundation
 import Carbon.HIToolbox
+import CoreGraphics
 
 enum Constants {
     enum Log {
@@ -54,8 +55,9 @@ enum Constants {
     }
 
     enum VoxtralLocal {
-        static let wsEndpoint = "ws://127.0.0.1:8000/v1/realtime"
-        static let healthEndpoint = "http://127.0.0.1:8000/health"
+        static let host = "127.0.0.1"
+        static let defaultPort = 8000
+        static let fallbackPortRange = 8000...8099
         static let sampleRate: Double = 16000
         static let httpRequestTimeoutSeconds: Double = 3.0
         static let serverStartupTimeoutSeconds: Double = 600.0
@@ -67,11 +69,20 @@ enum Constants {
             "\(NSHomeDirectory())/.local/bin/uvx",
             "\(NSHomeDirectory())/.cargo/bin/uvx"
         ]
+
+        static func wsEndpoint(port: Int) -> String {
+            "ws://\(host):\(port)/v1/realtime"
+        }
+
+        static func healthEndpoint(port: Int) -> String {
+            "http://\(host):\(port)/health"
+        }
     }
 
     enum Qwen3ASR {
-        static let wsEndpoint = "ws://127.0.0.1:8001/v1/realtime"
-        static let healthEndpoint = "http://127.0.0.1:8001/health"
+        static let host = "127.0.0.1"
+        static let defaultPort = 8001
+        static let fallbackPortRange = 8101...8199
         static let sampleRate: Double = 16000
         static let httpRequestTimeoutSeconds: Double = 3.0
         static let serverStartupTimeoutSeconds: Double = 600.0
@@ -83,6 +94,14 @@ enum Constants {
             "\(NSHomeDirectory())/.local/bin/uvx",
             "\(NSHomeDirectory())/.cargo/bin/uvx"
         ]
+
+        static func wsEndpoint(port: Int) -> String {
+            "ws://\(host):\(port)/v1/realtime"
+        }
+
+        static func healthEndpoint(port: Int) -> String {
+            "http://\(host):\(port)/health"
+        }
     }
 
     enum HuggingFace {

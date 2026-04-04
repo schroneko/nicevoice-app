@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 enum LocalServerStatus: Equatable {
     case stopped
@@ -56,6 +57,34 @@ final class LocalServerManager {
         self.healthPollInterval = healthPollInterval
         self.uvxSearchPaths = uvxSearchPaths
         self.onStatusChange = onStatusChange
+    }
+
+    static func resolvePort(
+        preferred: Int,
+        fallbackRange: ClosedRange<Int>,
+        serverCommand: String,
+        serverPackagePath: String
+    ) -> Int {
+        guard let commandLine = processCommandLine(usingPort: preferred) else {
+            return preferred
+        }
+
+        if isManagedServerProcess(
+            commandLine,
+            serverCommand: serverCommand,
+            serverPackagePath: serverPackagePath
+        ) {
+            return preferred
+        }
+
+        for candidate in fallbackRange where candidate != preferred {
+            if isPortAvailable(candidate) {
+                debugLog("[\(serverCommand)] using fallback port \(candidate) because \(preferred) is occupied by: \(commandLine)")
+                return candidate
+            }
+        }
+
+        return preferred
     }
 
     deinit {
@@ -268,6 +297,40 @@ final class LocalServerManager {
     }
 
     private func clearConflictingProcessOnPort() throws {
+        let pids = Self.processIdentifiers(usingPort: port)
+        guard !pids.isEmpty else {
+            return
+        }
+
+        for pid in pids {
+            guard let commandLine = Self.processCommandLine(pid: pid) else {
+                throw NSError(
+                    domain: "NiceVoice.LocalServerManager",
+                    code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: String(localized: "ポート \(port) を使用中のプロセス (PID: \(pid)) を確認できませんでした。手動で停止してください")]
+                )
+            }
+
+            if Self.isManagedServerProcess(
+                commandLine,
+                serverCommand: serverCommand,
+                serverPackagePath: serverPackagePath
+            ) {
+                debugLog("[\(serverCommand)] killing stale managed process on port \(port) (PID: \(pid))")
+                kill(pid, SIGTERM)
+            } else {
+                throw NSError(
+                    domain: "NiceVoice.LocalServerManager",
+                    code: 2,
+                    userInfo: [NSLocalizedDescriptionKey: String(localized: "ポート \(port) は別のプロセスが使用中です。NiceVoice 以外のプロセスは自動停止しません。該当プロセスを停止してから再試行してください")]
+                )
+            }
+        }
+
+        usleep(500_000)
+    }
+
+    private static func processIdentifiers(usingPort port: Int) -> [Int32] {
         let lsof = Process()
         lsof.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
         lsof.arguments = ["-ti", ":\(port)"]
@@ -278,42 +341,32 @@ final class LocalServerManager {
             try lsof.run()
             lsof.waitUntilExit()
         } catch {
-            return
+            return []
         }
 
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        guard let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !output.isEmpty else {
-            return
+        guard let output = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !output.isEmpty else {
+            return []
         }
 
-        for pidStr in output.components(separatedBy: "\n") {
-            if let pid = Int32(pidStr.trimmingCharacters(in: .whitespaces)), pid > 0 {
-                guard let commandLine = processCommandLine(pid: pid) else {
-                    throw NSError(
-                        domain: "NiceVoice.LocalServerManager",
-                        code: 1,
-                        userInfo: [NSLocalizedDescriptionKey: String(localized: "ポート \(port) を使用中のプロセス (PID: \(pid)) を確認できませんでした。手動で停止してください")]
-                    )
-                }
-
-                if isManagedServerProcess(commandLine) {
-                    debugLog("[\(serverCommand)] killing stale managed process on port \(port) (PID: \(pid))")
-                    kill(pid, SIGTERM)
-                } else {
-                    throw NSError(
-                        domain: "NiceVoice.LocalServerManager",
-                        code: 2,
-                        userInfo: [NSLocalizedDescriptionKey: String(localized: "ポート \(port) は別のプロセスが使用中です。NiceVoice 以外のプロセスは自動停止しません。該当プロセスを停止してから再試行してください")]
-                    )
-                }
-            }
-        }
-
-        usleep(500_000)
+        return output
+            .components(separatedBy: "\n")
+            .compactMap { Int32($0.trimmingCharacters(in: .whitespaces)) }
+            .filter { $0 > 0 }
     }
 
-    private func processCommandLine(pid: Int32) -> String? {
+    private static func processCommandLine(usingPort port: Int) -> String? {
+        for pid in processIdentifiers(usingPort: port) {
+            if let commandLine = processCommandLine(pid: pid) {
+                return commandLine
+            }
+        }
+        return nil
+    }
+
+    private static func processCommandLine(pid: Int32) -> String? {
         let ps = Process()
         ps.executableURL = URL(fileURLWithPath: "/bin/ps")
         ps.arguments = ["-o", "command=", "-p", String(pid)]
@@ -333,7 +386,11 @@ final class LocalServerManager {
         return output?.isEmpty == false ? output : nil
     }
 
-    private func isManagedServerProcess(_ commandLine: String) -> Bool {
+    private static func isManagedServerProcess(
+        _ commandLine: String,
+        serverCommand: String,
+        serverPackagePath: String
+    ) -> Bool {
         if commandLine.contains(serverCommand) {
             return true
         }
@@ -347,6 +404,37 @@ final class LocalServerManager {
         }
 
         return false
+    }
+
+    private static func isPortAvailable(_ port: Int) -> Bool {
+        let socketDescriptor = socket(AF_INET, SOCK_STREAM, 0)
+        guard socketDescriptor >= 0 else { return false }
+        defer { close(socketDescriptor) }
+
+        var reuseAddress: Int32 = 1
+        setsockopt(
+            socketDescriptor,
+            SOL_SOCKET,
+            SO_REUSEADDR,
+            &reuseAddress,
+            socklen_t(MemoryLayout<Int32>.size)
+        )
+
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = in_port_t(UInt16(port).bigEndian)
+        address.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
+
+        return withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPointer in
+                bind(
+                    socketDescriptor,
+                    sockaddrPointer,
+                    socklen_t(MemoryLayout<sockaddr_in>.size)
+                ) == 0
+            }
+        }
     }
 
     private func checkHealth() async -> Bool {

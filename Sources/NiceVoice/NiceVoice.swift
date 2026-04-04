@@ -449,55 +449,71 @@ final class AppState {
         }
 
         if transcriptionEngine == .voxtralLocal || transcriptionEngine == .qwen3ASR {
-            let wsEndpoint: String
+            let endpoint: LocalServerEndpoint
             let sampleRate: Double
             let serverCommand: String
             let serverModule: String
             let serverPackagePath: String
             let modelName: String
-            let port: Int
-            let healthEndpoint: String
             let httpRequestTimeout: Double
             let startupTimeout: Double
             let healthPollInterval: Double
             let uvxSearchPaths: [String]
             let engineLabel: String
+            let fallbackPortRange: ClosedRange<Int>
+            let defaultPort: Int
 
             switch transcriptionEngine {
             case .voxtralLocal:
-                wsEndpoint = Constants.VoxtralLocal.wsEndpoint
                 sampleRate = Constants.VoxtralLocal.sampleRate
                 serverCommand = "voxmlx-serve"
                 serverModule = "voxmlx.server"
                 serverPackagePath = ""
                 modelName = Constants.VoxtralLocal.defaultModel
-                port = 8000
-                healthEndpoint = Constants.VoxtralLocal.healthEndpoint
                 httpRequestTimeout = Constants.VoxtralLocal.httpRequestTimeoutSeconds
                 startupTimeout = Constants.VoxtralLocal.serverStartupTimeoutSeconds
                 healthPollInterval = Constants.VoxtralLocal.healthPollIntervalSeconds
                 uvxSearchPaths = Constants.VoxtralLocal.uvxSearchPaths
                 engineLabel = "Voxtral Local"
+                fallbackPortRange = Constants.VoxtralLocal.fallbackPortRange
+                defaultPort = Constants.VoxtralLocal.defaultPort
             case .qwen3ASR:
-                wsEndpoint = Constants.Qwen3ASR.wsEndpoint
                 sampleRate = Constants.Qwen3ASR.sampleRate
                 serverCommand = "qwen3asr-serve"
                 serverModule = "qwen3asr.server"
                 serverPackagePath = "qwen3asr"
                 modelName = Constants.Qwen3ASR.defaultModel
-                port = 8001
-                healthEndpoint = Constants.Qwen3ASR.healthEndpoint
                 httpRequestTimeout = Constants.Qwen3ASR.httpRequestTimeoutSeconds
                 startupTimeout = Constants.Qwen3ASR.serverStartupTimeoutSeconds
                 healthPollInterval = Constants.Qwen3ASR.healthPollIntervalSeconds
                 uvxSearchPaths = Constants.Qwen3ASR.uvxSearchPaths
                 engineLabel = "Qwen3 ASR"
+                fallbackPortRange = Constants.Qwen3ASR.fallbackPortRange
+                defaultPort = Constants.Qwen3ASR.defaultPort
             default:
                 return
             }
 
+            let resolvedPort = LocalServerManager.resolvePort(
+                preferred: defaultPort,
+                fallbackRange: fallbackPortRange,
+                serverCommand: serverCommand,
+                serverPackagePath: serverPackagePath
+            )
+
+            guard let resolvedEndpoint = transcriptionEngine.makeLocalServerEndpoint(port: resolvedPort) else {
+                statusMessage = String(localized: "\(engineLabel) の接続先を初期化できませんでした")
+                return
+            }
+            endpoint = resolvedEndpoint
+            transcriptionEngine.persistLocalServerPort(resolvedPort)
+            if resolvedPort != defaultPort {
+                debugLog("[\(serverCommand)] using port \(resolvedPort) instead of default \(defaultPort)")
+            }
+
             localASRService = LocalASRService(
-                wsEndpoint: wsEndpoint,
+                wsEndpoint: endpoint.wsEndpoint,
+                healthEndpoint: endpoint.healthEndpoint,
                 sampleRate: sampleRate,
                 onTranscription: { [weak self] text, isFinal in
                     debugLog("📥 [\(engineLabel)] onTranscription: isFinal=\(isFinal), len=\(text.count)")
@@ -537,8 +553,8 @@ final class AppState {
                 serverModule: serverModule,
                 serverPackagePath: serverPackagePath,
                 modelName: modelName,
-                port: port,
-                healthEndpoint: healthEndpoint,
+                port: endpoint.port,
+                healthEndpoint: endpoint.healthEndpoint,
                 httpRequestTimeout: httpRequestTimeout,
                 startupTimeout: startupTimeout,
                 healthPollInterval: healthPollInterval,
