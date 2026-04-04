@@ -746,7 +746,7 @@ final class AppState {
 
         if !isReady {
             debugLog("🔍 [DEBUG] startRecording - not ready, showing error")
-            errorMessage = String(localized: "音声認識が初期化されていません")
+            errorMessage = unavailableRecordingMessage()
             floatingPanel?.show()
             return
         }
@@ -847,6 +847,14 @@ final class AppState {
             self.resetInlinePreviewState()
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: finalResultTimer!)
+    }
+
+    private func unavailableRecordingMessage() -> String {
+        let trimmed = statusMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != String(localized: "初期化中...") else {
+            return String(localized: "音声認識が初期化されていません")
+        }
+        return trimmed
     }
 
     private func handleFinalResult(_ text: String) {
@@ -1717,17 +1725,15 @@ struct FloatingPanelView: View {
         Group {
             if isError {
                 ErrorIndicatorView(message: appState.errorMessage ?? "")
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             } else {
                 RecordingIndicatorView(
                     currentLevel: { appState.audioLevels.last ?? 0 },
                     startDate: appState.recordingStartDate
                 )
+                .background(.ultraThinMaterial, in: Capsule())
             }
         }
-        .glassEffect(
-            isError ? .regular.tint(.orange.opacity(0.3)) : .regular.tint(.red.opacity(0.15)),
-            in: .capsule
-        )
         .scaleEffect(isVisible ? 1 : 0.6)
         .opacity(isVisible ? 1 : 0)
         .onAppear {
@@ -1834,19 +1840,29 @@ struct ErrorIndicatorView: View {
     @State private var isPulsing = false
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(alignment: .top, spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
-                .font(.system(size: 13))
+                .font(.system(size: 14, weight: .semibold))
                 .scaleEffect(isPulsing ? 1.1 : 1.0)
                 .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: isPulsing)
-            Text(message)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("文字起こしできません")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.primary)
+                Text(message)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(5)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .frame(maxWidth: Constants.UI.floatingPanelExpandedWidth, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
         .onAppear {
             isPulsing = true
         }
