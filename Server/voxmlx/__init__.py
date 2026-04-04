@@ -1,5 +1,9 @@
 __version__ = "0.0.2"
 
+REALTIME_LEFT_PAD_TOKENS = 8
+REALTIME_RIGHT_PAD_TOKENS = 17
+DEFAULT_DELAY_TOKENS = 6
+
 import argparse
 from pathlib import Path
 import socket
@@ -35,7 +39,7 @@ def _load_tokenizer(model_path: Path) -> Tekkenizer:
 def _build_prompt_tokens(
     sp: Tekkenizer,
     n_left_pad_tokens: int = 32,
-    num_delay_tokens: int = 6,
+    num_delay_tokens: int = DEFAULT_DELAY_TOKENS,
 ) -> tuple[list[int], int]:
     streaming_pad = sp.get_special_token("[STREAMING_PAD]")
     prefix_len = n_left_pad_tokens + num_delay_tokens  # 38 STREAMING_PAD tokens

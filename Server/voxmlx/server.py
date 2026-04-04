@@ -16,14 +16,14 @@ import mlx.core as mx
 import numpy as np
 from mistral_common.tokens.tokenizers.base import SpecialTokenPolicy
 
-from . import _build_prompt_tokens, load_model
+from . import DEFAULT_DELAY_TOKENS, REALTIME_LEFT_PAD_TOKENS, REALTIME_RIGHT_PAD_TOKENS, _build_prompt_tokens, load_model
 from .audio import SAMPLES_PER_TOKEN, log_mel_spectrogram_step
 from .cache import RotatingKVCache
 
 logger = logging.getLogger("voxmlx.server")
 
-N_LEFT_PAD_TOKENS = 32
-N_RIGHT_PAD_TOKENS = 17
+N_LEFT_PAD_TOKENS = REALTIME_LEFT_PAD_TOKENS
+N_RIGHT_PAD_TOKENS = REALTIME_RIGHT_PAD_TOKENS
 
 
 def _run_with_bound_socket(app, host: str, port: int):
@@ -48,7 +48,11 @@ class StreamingSession:
         self.sp = sp
         self.temperature = temperature
 
-        prompt_tokens, n_delay_tokens = _build_prompt_tokens(sp)
+        prompt_tokens, n_delay_tokens = _build_prompt_tokens(
+            sp,
+            n_left_pad_tokens=N_LEFT_PAD_TOKENS,
+            num_delay_tokens=DEFAULT_DELAY_TOKENS,
+        )
         self.prefix_len = len(prompt_tokens)
         self.eos_token_id = sp.eos_id
 
