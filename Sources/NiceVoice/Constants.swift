@@ -13,6 +13,8 @@ enum Constants {
         static let realtimeBufferSize: UInt32 = 1024
         static let levelMultiplier: Float = 5.0
         static let finalizationWaitMilliseconds: UInt64 = 500
+        static let captureFreshnessThresholdSeconds: Double = 1.5
+        static let captureStartupTimeoutSeconds: Double = 1.0
     }
 
     enum BrailleMeter {

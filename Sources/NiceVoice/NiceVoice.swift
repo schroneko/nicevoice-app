@@ -3,6 +3,7 @@ import AVFoundation
 import AppKit
 import Carbon.HIToolbox
 import ApplicationServices
+import Speech
 import os.log
 
 private let logger = Logger(subsystem: "com.nicevoice.app", category: "general")
@@ -353,7 +354,9 @@ final class AppState {
                 },
                 onError: { [weak self] error in
                     debugLog("❌ SpeechAnalyzer error: \(error)")
-                    self?.statusMessage = error
+                    DispatchQueue.main.async {
+                        self?.handleServiceError(error)
+                    }
                 },
                 onStatusChange: { [weak self] status in
                     DispatchQueue.main.async {
@@ -437,7 +440,7 @@ final class AppState {
                 onError: { [weak self] error in
                     debugLog("Deepgram error: \(error)")
                     DispatchQueue.main.async {
-                        self?.statusMessage = error
+                        self?.handleServiceError(error)
                     }
                 },
                 onStatusChange: { [weak self] status in
@@ -538,7 +541,7 @@ final class AppState {
                     onError: { [weak self] error in
                         debugLog("❌ \(engineLabel) error: \(error)")
                         DispatchQueue.main.async {
-                            self?.statusMessage = error
+                            self?.handleServiceError(error)
                         }
                     },
                     onStatusChange: { [weak self] status in
@@ -746,6 +749,7 @@ final class AppState {
         }
         guard micStatus else {
             await MainActor.run {
+                isReady = false
                 statusMessage = String(localized: "マイクの権限が必要です")
             }
             return
@@ -790,8 +794,18 @@ final class AppState {
             return
         }
 
+        let speechRecognitionAuthorized = await requestSpeechRecognitionAuthorization()
+        guard speechRecognitionAuthorized else {
+            await MainActor.run {
+                isReady = false
+                statusMessage = String(localized: "音声認識の権限が必要です")
+            }
+            return
+        }
+
         guard let service = speechAnalyzerService as? SpeechAnalyzerService else {
             await MainActor.run {
+                isReady = false
                 statusMessage = String(localized: "SpeechAnalyzer の初期化に失敗しました")
                 debugLog("❌ SpeechAnalyzer not initialized")
             }
@@ -806,6 +820,23 @@ final class AppState {
             isReady = true
             statusMessage = String(localized: "準備完了 - \(shortcutKey.usageDescription)")
             debugLog("✅ Using Apple SpeechAnalyzer")
+        }
+    }
+
+    private func requestSpeechRecognitionAuthorization() async -> Bool {
+        switch SFSpeechRecognizer.authorizationStatus() {
+        case .authorized:
+            return true
+        case .notDetermined:
+            return await withCheckedContinuation { continuation in
+                SFSpeechRecognizer.requestAuthorization { status in
+                    continuation.resume(returning: status == .authorized)
+                }
+            }
+        case .denied, .restricted:
+            return false
+        @unknown default:
+            return false
         }
     }
 
@@ -978,8 +1009,7 @@ final class AppState {
         finalResultTimer = DispatchWorkItem { [weak self] in
             guard let self, self.waitingForFinalResult else { return }
             debugLog("⚠️ SpeechAnalyzer timeout - no final result received")
-            self.waitingForFinalResult = false
-            self.resetInlinePreviewState()
+            self.handleServiceError(String(localized: "音声認識がタイムアウトしました。もう一度試してください"))
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: finalResultTimer!)
     }
@@ -992,20 +1022,39 @@ final class AppState {
         return trimmed
     }
 
+    private func handleServiceError(_ message: String) {
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        statusMessage = trimmed
+        if isRecording || isAwaitingLongPressConfirmation || waitingForFinalResult {
+            cancelRecording()
+        } else {
+            cancelInlinePreview()
+            currentTranscription = ""
+        }
+        errorMessage = trimmed
+        floatingPanel?.show()
+    }
+
     private func handleFinalResult(_ text: String) {
         guard waitingForFinalResult else { return }
         debugLog("✅ Final result received: \(text.count) chars")
         finalResultTimer?.cancel()
         waitingForFinalResult = false
 
+        let audioData = getRecordedAudioDataFromActiveService(consuming: true)
         let processedText = addLocalPunctuation(text)
         if processedText.isEmpty {
-            debugLog("⚠️ Final result empty after processing, skipping")
-            floatingPanel?.hide()
+            if audioData == nil {
+                debugLog("⚠️ Final result empty because no recorded audio was available")
+                handleServiceError(String(localized: "マイク入力を取得できませんでした。マイク権限と入力デバイスを確認してから、もう一度試してください"))
+            } else {
+                debugLog("⚠️ Final result empty after processing")
+                handleServiceError(String(localized: "音声を認識できませんでした。もう一度はっきり話して試してください"))
+            }
             return
         }
-
-        let audioData = getRecordedAudioDataFromActiveService(consuming: true)
 
         if SpeakerVerificationService.shared.isEnrolled && SpeakerVerificationService.shared.isReady,
            let audioData {

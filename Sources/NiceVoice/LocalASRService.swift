@@ -13,6 +13,9 @@ final class LocalASRService {
     private var pendingStop = false
     private var deferStreamingUntilConfirmation = false
     private var streamingConfirmed = false
+    private var captureWatchdogTask: Task<Void, Never>?
+    private var lastAudioCaptureAt: Date?
+    private var hasCapturedAudioForCurrentRecording = false
 
     private var audioBuffers: [AVAudioPCMBuffer] = []
     private var recordingFormat: AVAudioFormat?
@@ -67,8 +70,10 @@ final class LocalASRService {
         accumulatedText = ""
         audioBuffers = []
         pendingPCMChunks = []
+        hasCapturedAudioForCurrentRecording = false
 
         ensureAudioCaptureRunning(notifyCaptureStarted: true)
+        startCaptureWatchdog()
         if streamingConfirmed {
             connectWebSocket()
         } else {
@@ -90,6 +95,7 @@ final class LocalASRService {
     func stopRecording() {
         guard isRunning else { return }
         isRunning = false
+        cancelCaptureWatchdog()
 
         if !warmCaptureEnabled {
             stopAudioCapture()
@@ -110,8 +116,10 @@ final class LocalASRService {
         pendingStop = false
         deferStreamingUntilConfirmation = false
         streamingConfirmed = false
+        cancelCaptureWatchdog()
         pendingPCMChunks = []
         audioBuffers = []
+        hasCapturedAudioForCurrentRecording = false
         if !warmCaptureEnabled {
             stopAudioCapture()
         }
@@ -374,7 +382,7 @@ final class LocalASRService {
     }
 
     private func ensureAudioCaptureRunning(notifyCaptureStarted: Bool) {
-        if isAudioCaptureActive {
+        if isAudioCaptureHealthy {
             if notifyCaptureStarted {
                 DispatchQueue.main.async {
                     self.onCaptureStarted?()
@@ -383,6 +391,7 @@ final class LocalASRService {
             return
         }
 
+        stopAudioCapture()
         startAudioCapture(notifyCaptureStarted: notifyCaptureStarted)
     }
 
@@ -392,6 +401,7 @@ final class LocalASRService {
         audioEngine = nil
         audioConverter = nil
         isAudioCaptureActive = false
+        lastAudioCaptureAt = nil
     }
 
     private func startAudioCapture(notifyCaptureStarted: Bool) {
@@ -408,9 +418,11 @@ final class LocalASRService {
         inputNode.installTap(onBus: 0, bufferSize: Constants.Audio.realtimeBufferSize, format: inputFormat) { [weak self] buffer, _ in
             guard let self else { return }
 
+            self.lastAudioCaptureAt = Date()
             let stillRecording = self.isRunning
 
             if stillRecording {
+                self.hasCapturedAudioForCurrentRecording = true
                 if let copy = self.copyBuffer(buffer) {
                     self.audioBuffers.append(copy)
                 }
@@ -440,6 +452,7 @@ final class LocalASRService {
         do {
             try audioEngine.start()
             isAudioCaptureActive = true
+            lastAudioCaptureAt = nil
             debugLog("🎙️ voxmlx audio capture started")
             if notifyCaptureStarted {
                 DispatchQueue.main.async {
@@ -451,6 +464,51 @@ final class LocalASRService {
             onError(String(localized: "オーディオエンジンの起動に失敗しました"))
             isAudioCaptureActive = false
             isRunning = false
+        }
+    }
+
+    private var isAudioCaptureHealthy: Bool {
+        guard isAudioCaptureActive else { return false }
+        guard audioEngine?.isRunning == true else { return false }
+        guard let lastAudioCaptureAt else { return false }
+        return Date().timeIntervalSince(lastAudioCaptureAt) <= Constants.Audio.captureFreshnessThresholdSeconds
+    }
+
+    private func startCaptureWatchdog() {
+        cancelCaptureWatchdog()
+        captureWatchdogTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Constants.Audio.captureStartupTimeoutSeconds))
+            guard let self else { return }
+            guard !Task.isCancelled else { return }
+            guard self.isRunning else { return }
+            guard !self.hasCapturedAudioForCurrentRecording else { return }
+            self.handleMissingAudioCapture()
+        }
+    }
+
+    private func cancelCaptureWatchdog() {
+        captureWatchdogTask?.cancel()
+        captureWatchdogTask = nil
+    }
+
+    private func handleMissingAudioCapture() {
+        debugLog("❌ voxmlx audio capture stalled before receiving microphone input")
+        let shouldResumeWarmCapture = warmCaptureEnabled
+        isRunning = false
+        pendingStop = false
+        deferStreamingUntilConfirmation = false
+        streamingConfirmed = false
+        pendingPCMChunks = []
+        audioBuffers = []
+        hasCapturedAudioForCurrentRecording = false
+        cancelCaptureWatchdog()
+        disconnectWebSocket()
+        stopAudioCapture()
+        if shouldResumeWarmCapture {
+            ensureAudioCaptureRunning(notifyCaptureStarted: false)
+        }
+        DispatchQueue.main.async {
+            self.onError(String(localized: "マイク入力を取得できませんでした。マイク権限と入力デバイスを確認してから、もう一度試してください"))
         }
     }
 
