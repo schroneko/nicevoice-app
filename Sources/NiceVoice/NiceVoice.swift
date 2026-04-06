@@ -240,6 +240,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 final class AppState {
     var isRecording = false
     var currentTranscription = ""
+    private var latestRawTranscription = ""
     var isReady = false
     var statusMessage = String(localized: "初期化中...")
     var errorMessage: String?
@@ -287,10 +288,12 @@ final class AppState {
     private var floatingPanel: FloatingPanel?
     private var waitingForFinalResult = false
     private var finalResultTimer: DispatchWorkItem?
+    private var provisionalFinalizationTimer: DispatchWorkItem?
     private var speakerCheckTimer: Timer?
     private var isEnrolledSpeakerActive = true
     private var isAwaitingLongPressConfirmation = false
     private var hasDeferredLocalCapture = false
+    private var shouldShowFloatingPanelForCurrentRecording = false
     private var capturedTextElement: AXUIElement?
     private var insertionPointLocation: Int = 0
     private var inlinePreviewLength: Int = 0
@@ -342,7 +345,8 @@ final class AppState {
                     debugLog("📥 onTranscription called: isFinal=\(isFinal), len=\(text.count), text='\(text.prefix(50))'")
                     DispatchQueue.main.async {
                         guard let self else { return }
-                        self.currentTranscription = self.addLocalPunctuation(text, isFinal: isFinal)
+                        self.latestRawTranscription = text
+                        self.currentTranscription = self.displayTextForPreview(text, isFinal: isFinal)
                         if self.isEnrolledSpeakerActive {
                             self.updateInlinePreview(self.currentTranscription)
                         }
@@ -427,7 +431,8 @@ final class AppState {
                     debugLog("[Deepgram] onTranscription: isFinal=\(isFinal), len=\(text.count)")
                     DispatchQueue.main.async {
                         guard let self else { return }
-                        self.currentTranscription = self.addLocalPunctuation(text, isFinal: isFinal)
+                        self.latestRawTranscription = text
+                        self.currentTranscription = self.displayTextForPreview(text, isFinal: isFinal)
                         if self.isEnrolledSpeakerActive {
                             self.updateInlinePreview(self.currentTranscription)
                         }
@@ -528,7 +533,8 @@ final class AppState {
                         debugLog("📥 [\(engineLabel)] onTranscription: isFinal=\(isFinal), len=\(text.count)")
                         DispatchQueue.main.async {
                             guard let self else { return }
-                            self.currentTranscription = self.addLocalPunctuation(text, isFinal: isFinal)
+                            self.latestRawTranscription = text
+                            self.currentTranscription = self.displayTextForPreview(text, isFinal: isFinal)
                             if self.isEnrolledSpeakerActive {
                                 self.updateInlinePreview(self.currentTranscription)
                             }
@@ -877,6 +883,7 @@ final class AppState {
         errorMessage = nil
         isRecording = true
         currentTranscription = ""
+        latestRawTranscription = ""
         hasDeferredLocalCapture = false
         debugLog("🎙️ Recording started")
 
@@ -892,7 +899,7 @@ final class AppState {
             debugLog("[DEBUG] speechAnalyzerService.startRecording() called")
         }
 
-        captureForInlinePreview()
+        shouldShowFloatingPanelForCurrentRecording = captureForInlinePreview()
         startSpeakerVerificationCheck()
     }
 
@@ -907,11 +914,12 @@ final class AppState {
         errorMessage = nil
         isRecording = true
         currentTranscription = ""
+        latestRawTranscription = ""
         isAwaitingLongPressConfirmation = true
         hasDeferredLocalCapture = true
         debugLog("🎙️ Recording preflight started for long-press shortcut")
         localASRService?.startRecording(deferStreamingUntilConfirmation: true)
-        captureForInlinePreview()
+        shouldShowFloatingPanelForCurrentRecording = captureForInlinePreview()
     }
 
     private func handleCaptureStarted() {
@@ -929,8 +937,12 @@ final class AppState {
         guard recordingStartDate == nil else { return }
 
         recordingStartDate = Date()
-        debugLog("🎙️ Capture confirmed - recording UI activated")
         NotificationCenter.default.post(name: .recordingStateChanged, object: nil)
+        guard shouldShowFloatingPanelForCurrentRecording else {
+            debugLog("🎙️ Capture confirmed - recording UI suppressed (no text input target)")
+            return
+        }
+        debugLog("🎙️ Capture confirmed - recording UI activated")
         floatingPanel?.show()
     }
 
@@ -993,8 +1005,9 @@ final class AppState {
         speakerCheckTimer = nil
 
         finalResultTimer?.cancel()
+        provisionalFinalizationTimer?.cancel()
         waitingForFinalResult = true
-        debugLog("🎙️ Recording stopped - waiting for SpeechAnalyzer final result")
+        debugLog("🎙️ Recording stopped - waiting for final result (\(transcriptionEngine.displayName))")
         floatingPanel?.hide()
         switch transcriptionEngine {
         case .deepgram:
@@ -1005,6 +1018,8 @@ final class AppState {
             (speechAnalyzerService as? SpeechAnalyzerService)?.stopRecording()
         }
         NotificationCenter.default.post(name: .recordingStateChanged, object: nil)
+
+        scheduleProvisionalFinalizationIfNeeded()
 
         finalResultTimer = DispatchWorkItem { [weak self] in
             guard let self, self.waitingForFinalResult else { return }
@@ -1026,21 +1041,32 @@ final class AppState {
         let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
+        let isActiveRecordingContext = isRecording || isAwaitingLongPressConfirmation || waitingForFinalResult
+        let shouldPresentErrorPanel = Self.shouldPresentErrorPanelForRecordingContext(
+            isActiveRecordingContext: isActiveRecordingContext,
+            hasVisibleInputTarget: shouldShowFloatingPanelForCurrentRecording
+        )
+
         statusMessage = trimmed
-        if isRecording || isAwaitingLongPressConfirmation || waitingForFinalResult {
+        if isActiveRecordingContext {
             cancelRecording()
         } else {
             cancelInlinePreview()
             currentTranscription = ""
         }
         errorMessage = trimmed
-        floatingPanel?.show()
+        if shouldPresentErrorPanel {
+            floatingPanel?.show()
+        } else {
+            debugLog("🔕 Suppressed error panel without visible input target: \(trimmed)")
+        }
     }
 
     private func handleFinalResult(_ text: String) {
         guard waitingForFinalResult else { return }
         debugLog("✅ Final result received: \(text.count) chars")
         finalResultTimer?.cancel()
+        provisionalFinalizationTimer?.cancel()
         waitingForFinalResult = false
 
         let audioData = getRecordedAudioDataFromActiveService(consuming: true)
@@ -1181,6 +1207,30 @@ final class AppState {
         return processor.process(text, isFinal: isFinal)
     }
 
+    private func displayTextForPreview(_ text: String, isFinal: Bool) -> String {
+        guard isFinal else {
+            return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return addLocalPunctuation(text, isFinal: true)
+    }
+
+    private func scheduleProvisionalFinalizationIfNeeded() {
+        guard transcriptionEngine == .voxtralLocal || transcriptionEngine == .qwen3ASR else { return }
+        guard !(SpeakerVerificationService.shared.isEnrolled && SpeakerVerificationService.shared.isReady) else { return }
+
+        let fallbackText = latestRawTranscription.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !fallbackText.isEmpty else { return }
+
+        let delay = DispatchTimeInterval.milliseconds(Int(Constants.Audio.finalizationWaitMilliseconds))
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self, self.waitingForFinalResult else { return }
+            debugLog("⏱️ Using provisional finalization for \(self.transcriptionEngine.displayName)")
+            self.handleFinalResult(fallbackText)
+        }
+        provisionalFinalizationTimer = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+    }
+
     private func performPaste(_ text: String) {
         waitingForFinalResult = false
         floatingPanel?.hide()
@@ -1243,6 +1293,18 @@ final class AppState {
     ) -> Bool {
         guard previousContents != nil else { return false }
         return currentContents == pastedText
+    }
+
+    static func shouldShowFloatingPanelForRecording(hasTextInputTarget: Bool, spotlightOpen: Bool) -> Bool {
+        hasTextInputTarget || spotlightOpen
+    }
+
+    static func shouldPresentErrorPanelForRecordingContext(
+        isActiveRecordingContext: Bool,
+        hasVisibleInputTarget: Bool
+    ) -> Bool {
+        guard isActiveRecordingContext else { return true }
+        return hasVisibleInputTarget
     }
 
     private func simulatePaste(completion: @escaping () -> Void) {
@@ -1378,17 +1440,19 @@ final class AppState {
         debugLog("✅ Paste sent to Spotlight PID \(pid) via postToPid")
     }
 
-    private func captureForInlinePreview() {
+    @discardableResult
+    private func captureForInlinePreview() -> Bool {
         capturedTextElement = nil
         inlinePreviewLength = 0
         inlinePreviewActive = false
+        let spotlightOpen = isSpotlightOpen()
 
         let systemWide = AXUIElementCreateSystemWide()
         var focusedElement: CFTypeRef?
         let result = AXUIElementCopyAttributeValue(systemWide, kAXFocusedUIElementAttribute as CFString, &focusedElement)
         guard result == .success, let element = focusedElement else {
             debugLog("🔍 [InlinePreview] No focused element found (AX result: \(result.rawValue))")
-            return
+            return Self.shouldShowFloatingPanelForRecording(hasTextInputTarget: false, spotlightOpen: spotlightOpen)
         }
 
         let axElement = element as! AXUIElement
@@ -1398,14 +1462,14 @@ final class AppState {
         guard let roleStr = role as? String,
               roleStr == "AXTextField" || roleStr == "AXTextArea" || roleStr == "AXSearchField" else {
             debugLog("🔍 [InlinePreview] Focused element is not a text field (role: \(role as? String ?? "unknown"))")
-            return
+            return Self.shouldShowFloatingPanelForRecording(hasTextInputTarget: false, spotlightOpen: spotlightOpen)
         }
 
         var rangeValue: CFTypeRef?
         let rangeResult = AXUIElementCopyAttributeValue(axElement, kAXSelectedTextRangeAttribute as CFString, &rangeValue)
         guard rangeResult == .success, let rangeRef = rangeValue else {
             debugLog("🔍 [InlinePreview] Could not get selected text range")
-            return
+            return Self.shouldShowFloatingPanelForRecording(hasTextInputTarget: false, spotlightOpen: spotlightOpen)
         }
 
         var range = CFRange(location: 0, length: 0)
@@ -1415,6 +1479,7 @@ final class AppState {
         insertionPointLocation = range.location + range.length
         inlinePreviewActive = true
         debugLog("🔍 [InlinePreview] Captured text element (role: \(roleStr), cursor: \(insertionPointLocation))")
+        return Self.shouldShowFloatingPanelForRecording(hasTextInputTarget: true, spotlightOpen: spotlightOpen)
     }
 
     private var inlinePreviewVerified = false
@@ -1518,11 +1583,17 @@ final class AppState {
 
     private func switchToKeyboardPreview(_ text: String) {
         inlinePreviewActive = false
-        capturedTextElement = nil
         useKeyboardPreview = true
         keyboardPreviewText = ""
         updateKeyboardPreview(text)
         debugLog("🔍 [InlinePreview] Keyboard preview mode activated")
+    }
+
+    private func selectPreviewRange(length: Int) -> Bool {
+        guard length > 0, let element = capturedTextElement else { return false }
+        var range = CFRange(location: insertionPointLocation, length: length)
+        guard let rangeValue = AXValueCreate(.cfRange, &range) else { return false }
+        return AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, rangeValue) == .success
     }
 
     private func updateKeyboardPreview(_ text: String) {
@@ -1530,8 +1601,23 @@ final class AppState {
         let commonPrefix = oldText.commonPrefix(with: text)
         let charsToDelete = oldText.count - commonPrefix.count
         let newSuffix = String(text.dropFirst(commonPrefix.count))
+        let oldLength = (oldText as NSString).length
 
         let source = CGEventSource(stateID: .privateState)
+
+        if charsToDelete > 0, selectPreviewRange(length: oldLength) {
+            if text.isEmpty {
+                if let keyDown = CGEvent(keyboardEventSource: source, virtualKey: UInt16(kVK_Delete), keyDown: true),
+                   let keyUp = CGEvent(keyboardEventSource: source, virtualKey: UInt16(kVK_Delete), keyDown: false) {
+                    keyDown.post(tap: .cgAnnotatedSessionEventTap)
+                    keyUp.post(tap: .cgAnnotatedSessionEventTap)
+                }
+            } else {
+                typeUnicodeString(text, source: source)
+            }
+            keyboardPreviewText = text
+            return
+        }
 
         for _ in 0..<charsToDelete {
             if let keyDown = CGEvent(keyboardEventSource: source, virtualKey: UInt16(kVK_Delete), keyDown: true),
@@ -1580,21 +1666,34 @@ final class AppState {
         }
 
         if useKeyboardPreview {
-            let source = CGEventSource(stateID: .privateState)
-            for _ in 0..<keyboardPreviewText.count {
-                if let keyDown = CGEvent(keyboardEventSource: source, virtualKey: UInt16(kVK_Delete), keyDown: true),
-                   let keyUp = CGEvent(keyboardEventSource: source, virtualKey: UInt16(kVK_Delete), keyDown: false) {
-                    keyDown.post(tap: .cgAnnotatedSessionEventTap)
-                    keyUp.post(tap: .cgAnnotatedSessionEventTap)
-                }
+            if keyboardPreviewText != text {
+                updateKeyboardPreview(text)
             }
             resetInlinePreviewState()
-            debugLog("✅ [InlinePreview] Finalized via clipboard paste after keyboard preview cleanup")
-            performPaste(text)
+            debugLog("✅ [InlinePreview] Finalized in place via keyboard preview")
             return
         }
 
         if inlinePreviewActive, let element = capturedTextElement {
+            if currentAXPreviewText != text {
+                _ = updateInlinePreview(text)
+            }
+
+            if useKeyboardPreview {
+                if keyboardPreviewText != text {
+                    updateKeyboardPreview(text)
+                }
+                resetInlinePreviewState()
+                debugLog("✅ [InlinePreview] Finalized in place after keyboard fallback")
+                return
+            }
+
+            if currentAXPreviewText == text {
+                debugLog("✅ [InlinePreview] Finalized in place via AX: \(text.count) chars")
+                resetInlinePreviewState()
+                return
+            }
+
             var range = CFRange(location: insertionPointLocation, length: inlinePreviewLength)
             if let rangeValue = AXValueCreate(.cfRange, &range) {
                 let setRangeResult = AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, rangeValue)
@@ -1656,10 +1755,13 @@ final class AppState {
         isRecording = false
         isAwaitingLongPressConfirmation = false
         hasDeferredLocalCapture = false
+        shouldShowFloatingPanelForCurrentRecording = false
         waitingForFinalResult = false
         finalResultTimer?.cancel()
+        provisionalFinalizationTimer?.cancel()
         recordingStartDate = nil
         currentTranscription = ""
+        latestRawTranscription = ""
         floatingPanel?.hide()
         debugLog("🚫 Recording cancelled")
     }

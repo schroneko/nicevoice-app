@@ -37,4 +37,52 @@ struct PasteBehaviorTests {
             ) == false
         )
     }
+
+    @Test
+    func floatingPanelShowsOnlyWhenInputTargetExists() {
+        #expect(
+            AppState.shouldShowFloatingPanelForRecording(
+                hasTextInputTarget: true,
+                spotlightOpen: false
+            )
+        )
+
+        #expect(
+            AppState.shouldShowFloatingPanelForRecording(
+                hasTextInputTarget: false,
+                spotlightOpen: true
+            )
+        )
+
+        #expect(
+            AppState.shouldShowFloatingPanelForRecording(
+                hasTextInputTarget: false,
+                spotlightOpen: false
+            ) == false
+        )
+    }
+
+    @Test
+    func recordingErrorsStaySilentWithoutVisibleInputTarget() {
+        #expect(
+            AppState.shouldPresentErrorPanelForRecordingContext(
+                isActiveRecordingContext: true,
+                hasVisibleInputTarget: true
+            )
+        )
+
+        #expect(
+            AppState.shouldPresentErrorPanelForRecordingContext(
+                isActiveRecordingContext: true,
+                hasVisibleInputTarget: false
+            ) == false
+        )
+
+        #expect(
+            AppState.shouldPresentErrorPanelForRecordingContext(
+                isActiveRecordingContext: false,
+                hasVisibleInputTarget: false
+            )
+        )
+    }
 }

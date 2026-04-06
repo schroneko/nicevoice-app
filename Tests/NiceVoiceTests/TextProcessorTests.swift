@@ -39,4 +39,28 @@ struct TextProcessorTests {
 
         #expect(result == "NiceVoiceを起動します")
     }
+
+    @Test
+    func repeatedGreetingPhrasesRemainIntact() {
+        let processor = TextProcessor(
+            fillerSettings: FillerSettings(),
+            dictionaryEntries: []
+        )
+
+        let result = processor.process("こんにちはこんにちはこんにちはこんにちは")
+
+        #expect(result == "こんにちは。こんにちは。こんにちは。こんにちは")
+    }
+
+    @Test
+    func trailingPartialRepeatIsStillTrimmed() {
+        let processor = TextProcessor(
+            fillerSettings: FillerSettings(),
+            dictionaryEntries: []
+        )
+
+        let result = processor.process("こんにちはこんに")
+
+        #expect(result == "こんにちは")
+    }
 }

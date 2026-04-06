@@ -202,6 +202,7 @@ struct TextProcessor {
         let containsLatin = lastChars.unicodeScalars.contains { $0.isASCII && $0.properties.isAlphabetic }
 
         guard !containsLatin else { return result }
+        guard !isExactRepeatedSequence(result) else { return result }
 
         for suffixLen in (2...4).reversed() {
             guard result.count > suffixLen * 2 else { continue }
@@ -219,6 +220,24 @@ struct TextProcessor {
             }
         }
         return result
+    }
+
+    private func isExactRepeatedSequence(_ text: String) -> Bool {
+        guard text.count >= 2 else { return false }
+
+        for unitLength in 1...(text.count / 2) {
+            guard text.count.isMultiple(of: unitLength) else { continue }
+
+            let unit = String(text.prefix(unitLength))
+            let repeatCount = text.count / unitLength
+            guard repeatCount >= 2 else { continue }
+
+            if String(repeating: unit, count: repeatCount) == text {
+                return true
+            }
+        }
+
+        return false
     }
 
     private func insertSentenceEndPunctuation(in text: String) -> String {
