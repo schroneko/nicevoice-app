@@ -84,12 +84,19 @@ enum ShortcutKey: String, CaseIterable {
 }
 
 final class KeyMonitor {
+    private enum LongPressRoutingState {
+        case idle
+        case passthrough
+        case handling
+    }
+
     private var monitor: Any?
     private var eventTap: CFMachPort?
     private var eventTapSource: CFRunLoopSource?
     private var isKeyPressed = false
     private var pendingLongPressWorkItem: DispatchWorkItem?
     private var didTriggerLongPress = false
+    private var longPressRoutingState: LongPressRoutingState = .idle
     private let onPressBegan: (() -> Void)?
     private let onPressCancelled: (() -> Void)?
     private let onKeyDown: () -> Void
@@ -127,6 +134,7 @@ final class KeyMonitor {
         pendingLongPressWorkItem = nil
         isKeyPressed = false
         didTriggerLongPress = false
+        longPressRoutingState = .idle
 
         if let monitor {
             NSEvent.removeMonitor(monitor)
@@ -237,10 +245,37 @@ final class KeyMonitor {
 
         switch type {
         case .keyDown:
-            return handleLongPressKeyDown(event: event)
+            return routeLongPressKeyDown(event: event)
         case .keyUp:
-            return handleLongPressKeyUp(event: event)
+            return routeLongPressKeyUp(event: event)
         default:
+            return Unmanaged.passUnretained(event)
+        }
+    }
+
+    private func routeLongPressKeyDown(event: CGEvent) -> Unmanaged<CGEvent>? {
+        switch longPressRoutingState {
+        case .passthrough:
+            return Unmanaged.passUnretained(event)
+        case .handling:
+            return handleLongPressKeyDown(event: event)
+        case .idle:
+            guard FocusedElementInspector.focusedElementAcceptsTextInput() else {
+                longPressRoutingState = .passthrough
+                return Unmanaged.passUnretained(event)
+            }
+            return handleLongPressKeyDown(event: event)
+        }
+    }
+
+    private func routeLongPressKeyUp(event: CGEvent) -> Unmanaged<CGEvent>? {
+        switch longPressRoutingState {
+        case .passthrough:
+            longPressRoutingState = .idle
+            return Unmanaged.passUnretained(event)
+        case .handling:
+            return handleLongPressKeyUp(event: event)
+        case .idle:
             return Unmanaged.passUnretained(event)
         }
     }
@@ -251,6 +286,7 @@ final class KeyMonitor {
             return nil
         }
 
+        longPressRoutingState = .handling
         isKeyPressed = true
         didTriggerLongPress = false
 
@@ -273,11 +309,15 @@ final class KeyMonitor {
     }
 
     private func handleLongPressKeyUp(event: CGEvent) -> Unmanaged<CGEvent>? {
-        guard isKeyPressed else { return nil }
+        guard isKeyPressed else {
+            longPressRoutingState = .idle
+            return Unmanaged.passUnretained(event)
+        }
 
         isKeyPressed = false
         pendingLongPressWorkItem?.cancel()
         pendingLongPressWorkItem = nil
+        longPressRoutingState = .idle
 
         if didTriggerLongPress {
             didTriggerLongPress = false

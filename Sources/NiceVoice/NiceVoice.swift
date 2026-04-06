@@ -1447,38 +1447,23 @@ final class AppState {
         inlinePreviewActive = false
         let spotlightOpen = isSpotlightOpen()
 
-        let systemWide = AXUIElementCreateSystemWide()
-        var focusedElement: CFTypeRef?
-        let result = AXUIElementCopyAttributeValue(systemWide, kAXFocusedUIElementAttribute as CFString, &focusedElement)
-        guard result == .success, let element = focusedElement else {
-            debugLog("🔍 [InlinePreview] No focused element found (AX result: \(result.rawValue))")
+        guard let context = FocusedElementInspector.focusedTextInputContext() else {
+            debugLog("🔍 [InlinePreview] Focused element does not accept text input")
             return Self.shouldShowFloatingPanelForRecording(hasTextInputTarget: false, spotlightOpen: spotlightOpen)
         }
 
-        let axElement = element as! AXUIElement
-
-        var role: CFTypeRef?
-        AXUIElementCopyAttributeValue(axElement, kAXRoleAttribute as CFString, &role)
-        guard let roleStr = role as? String,
-              roleStr == "AXTextField" || roleStr == "AXTextArea" || roleStr == "AXSearchField" else {
-            debugLog("🔍 [InlinePreview] Focused element is not a text field (role: \(role as? String ?? "unknown"))")
-            return Self.shouldShowFloatingPanelForRecording(hasTextInputTarget: false, spotlightOpen: spotlightOpen)
-        }
-
-        var rangeValue: CFTypeRef?
-        let rangeResult = AXUIElementCopyAttributeValue(axElement, kAXSelectedTextRangeAttribute as CFString, &rangeValue)
-        guard rangeResult == .success, let rangeRef = rangeValue else {
+        guard let rangeRef = context.selectedTextRange else {
             debugLog("🔍 [InlinePreview] Could not get selected text range")
             return Self.shouldShowFloatingPanelForRecording(hasTextInputTarget: false, spotlightOpen: spotlightOpen)
         }
 
         var range = CFRange(location: 0, length: 0)
-        AXValueGetValue(rangeRef as! AXValue, .cfRange, &range)
+        AXValueGetValue(rangeRef, .cfRange, &range)
 
-        capturedTextElement = axElement
+        capturedTextElement = context.element
         insertionPointLocation = range.location + range.length
         inlinePreviewActive = true
-        debugLog("🔍 [InlinePreview] Captured text element (role: \(roleStr), cursor: \(insertionPointLocation))")
+        debugLog("🔍 [InlinePreview] Captured text element (role: \(context.snapshot.role ?? "unknown"), cursor: \(insertionPointLocation))")
         return Self.shouldShowFloatingPanelForRecording(hasTextInputTarget: true, spotlightOpen: spotlightOpen)
     }
 
