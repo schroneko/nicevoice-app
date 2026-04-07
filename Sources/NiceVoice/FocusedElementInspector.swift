@@ -1,3 +1,4 @@
+import AppKit
 import ApplicationServices
 
 struct FocusedElementSnapshot: Equatable {
@@ -44,6 +45,13 @@ enum FocusedElementInspector {
         focusedTextInputContext() != nil
     }
 
+    static func focusedElementAllowsLongPressShortcut() -> Bool {
+        allowsLongPressShortcut(
+            hasTextInputTarget: focusedTextInputContext() != nil,
+            frontmostBundleIdentifier: NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        )
+    }
+
     static func focusedTextInputContext() -> FocusedTextInputContext? {
         guard let focusedElement = focusedElement() else { return nil }
 
@@ -64,6 +72,25 @@ enum FocusedElementInspector {
         }
 
         return nil
+    }
+
+    static func allowsLongPressShortcut(_ snapshot: FocusedElementSnapshot) -> Bool {
+        acceptsTextInput(snapshot)
+    }
+
+    static func allowsLongPressShortcut(
+        hasTextInputTarget: Bool,
+        frontmostBundleIdentifier: String?
+    ) -> Bool {
+        if hasTextInputTarget {
+            return true
+        }
+        switch frontmostBundleIdentifier {
+        case "com.openai.codex":
+            return true
+        default:
+            return false
+        }
     }
 
     private static func focusedElement() -> AXUIElement? {

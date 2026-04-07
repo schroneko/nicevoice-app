@@ -30,6 +30,52 @@ struct FocusedElementInspectorTests {
     }
 
     @Test
+    func acceptsEditableWebAreasForLongPressShortcut() {
+        let snapshot = FocusedElementSnapshot(
+            role: "AXWebArea",
+            editable: true,
+            enabled: true,
+            hasSelectedTextRange: false,
+            size: CGSize(width: 800, height: 600)
+        )
+
+        #expect(FocusedElementInspector.allowsLongPressShortcut(snapshot) == true)
+    }
+
+    @Test
+    func acceptsNativeTextInputsForLongPressShortcut() {
+        let snapshot = FocusedElementSnapshot(
+            role: "AXTextArea",
+            editable: true,
+            enabled: true,
+            hasSelectedTextRange: true,
+            size: CGSize(width: 640, height: 400)
+        )
+
+        #expect(FocusedElementInspector.allowsLongPressShortcut(snapshot) == true)
+    }
+
+    @Test
+    func allowsCodexWindowWithoutAXTextTarget() {
+        #expect(
+            FocusedElementInspector.allowsLongPressShortcut(
+                hasTextInputTarget: false,
+                frontmostBundleIdentifier: "com.openai.codex"
+            ) == true
+        )
+    }
+
+    @Test
+    func rejectsNonTextNonCodexWindowForLongPressShortcut() {
+        #expect(
+            FocusedElementInspector.allowsLongPressShortcut(
+                hasTextInputTarget: false,
+                frontmostBundleIdentifier: "com.apple.finder"
+            ) == false
+        )
+    }
+
+    @Test
     func rejectsNonEditablePageElements() {
         let snapshot = FocusedElementSnapshot(
             role: "AXWebArea",

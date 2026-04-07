@@ -260,7 +260,7 @@ final class KeyMonitor {
         case .handling:
             return handleLongPressKeyDown(event: event)
         case .idle:
-            guard FocusedElementInspector.focusedElementAcceptsTextInput() else {
+            guard FocusedElementInspector.focusedElementAllowsLongPressShortcut() else {
                 longPressRoutingState = .passthrough
                 return Unmanaged.passUnretained(event)
             }
@@ -282,7 +282,18 @@ final class KeyMonitor {
 
     private func handleLongPressKeyDown(event: CGEvent) -> Unmanaged<CGEvent>? {
         let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
-        if isRepeat || isKeyPressed {
+        if isRepeat {
+            guard isKeyPressed, !didTriggerLongPress else { return nil }
+            pendingLongPressWorkItem?.cancel()
+            pendingLongPressWorkItem = nil
+            didTriggerLongPress = true
+            DispatchQueue.main.async {
+                self.onKeyDown()
+            }
+            return nil
+        }
+
+        if isKeyPressed {
             return nil
         }
 
@@ -328,7 +339,7 @@ final class KeyMonitor {
             DispatchQueue.main.async {
                 self.onPressCancelled?()
             }
-            injectSpaceKeyPress()
+            restoreShortPressSpace()
         }
 
         return nil
@@ -337,6 +348,37 @@ final class KeyMonitor {
     private func shouldBypassLongPressHandling(flags: NSEvent.ModifierFlags) -> Bool {
         let blockedFlags: NSEvent.ModifierFlags = [.command, .control, .option, .shift, .function]
         return !flags.intersection(blockedFlags).isEmpty
+    }
+
+    private func restoreShortPressSpace() {
+        if insertTextViaAccessibility(" ") {
+            return
+        }
+        if insertTextViaUnicode(" ") {
+            return
+        }
+        injectSpaceKeyPress()
+    }
+
+    private func insertTextViaAccessibility(_ text: String) -> Bool {
+        guard let context = FocusedElementInspector.focusedTextInputContext() else { return false }
+        return AXUIElementSetAttributeValue(context.element, kAXSelectedTextAttribute as CFString, text as CFTypeRef) == .success
+    }
+
+    private func insertTextViaUnicode(_ text: String) -> Bool {
+        guard let source = CGEventSource(stateID: .privateState) else { return false }
+        var utf16 = Array(text.utf16)
+        guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
+              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) else {
+            return false
+        }
+
+        keyDown.keyboardSetUnicodeString(stringLength: utf16.count, unicodeString: &utf16)
+        keyDown.setIntegerValueField(.eventSourceUserData, value: Self.injectedEventMarker)
+        keyUp.setIntegerValueField(.eventSourceUserData, value: Self.injectedEventMarker)
+        keyDown.post(tap: .cgAnnotatedSessionEventTap)
+        keyUp.post(tap: .cgAnnotatedSessionEventTap)
+        return true
     }
 
     private func injectSpaceKeyPress() {

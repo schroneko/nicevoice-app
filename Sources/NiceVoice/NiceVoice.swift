@@ -1296,7 +1296,36 @@ final class AppState {
     }
 
     static func shouldShowFloatingPanelForRecording(hasTextInputTarget: Bool, spotlightOpen: Bool) -> Bool {
-        hasTextInputTarget || spotlightOpen
+        shouldShowFloatingPanelForRecording(
+            hasTextInputTarget: hasTextInputTarget,
+            spotlightOpen: spotlightOpen,
+            frontmostBundleIdentifier: NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        )
+    }
+
+    static func shouldShowFloatingPanelForRecording(
+        hasTextInputTarget: Bool,
+        spotlightOpen: Bool,
+        frontmostBundleIdentifier: String?
+    ) -> Bool {
+        if hasTextInputTarget || spotlightOpen {
+            return true
+        }
+        switch frontmostBundleIdentifier {
+        case "com.openai.codex":
+            return true
+        default:
+            return false
+        }
+    }
+
+    static func shouldUseKeyboardPreviewFallback(frontmostBundleIdentifier: String?) -> Bool {
+        switch frontmostBundleIdentifier {
+        case "com.openai.codex":
+            return true
+        default:
+            return false
+        }
     }
 
     static func shouldPresentErrorPanelForRecordingContext(
@@ -1446,15 +1475,29 @@ final class AppState {
         inlinePreviewLength = 0
         inlinePreviewActive = false
         let spotlightOpen = isSpotlightOpen()
+        let frontmostBundleIdentifier = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
 
         guard let context = FocusedElementInspector.focusedTextInputContext() else {
-            debugLog("🔍 [InlinePreview] Focused element does not accept text input")
-            return Self.shouldShowFloatingPanelForRecording(hasTextInputTarget: false, spotlightOpen: spotlightOpen)
+            if Self.shouldUseKeyboardPreviewFallback(frontmostBundleIdentifier: frontmostBundleIdentifier) {
+                switchToKeyboardPreview("")
+                debugLog("🔍 [InlinePreview] Using keyboard preview fallback")
+            } else {
+                debugLog("🔍 [InlinePreview] Focused element does not accept text input")
+            }
+            return Self.shouldShowFloatingPanelForRecording(
+                hasTextInputTarget: useKeyboardPreview,
+                spotlightOpen: spotlightOpen,
+                frontmostBundleIdentifier: frontmostBundleIdentifier
+            )
         }
 
         guard let rangeRef = context.selectedTextRange else {
             debugLog("🔍 [InlinePreview] Could not get selected text range")
-            return Self.shouldShowFloatingPanelForRecording(hasTextInputTarget: false, spotlightOpen: spotlightOpen)
+            return Self.shouldShowFloatingPanelForRecording(
+                hasTextInputTarget: false,
+                spotlightOpen: spotlightOpen,
+                frontmostBundleIdentifier: frontmostBundleIdentifier
+            )
         }
 
         var range = CFRange(location: 0, length: 0)
@@ -1464,7 +1507,11 @@ final class AppState {
         insertionPointLocation = range.location + range.length
         inlinePreviewActive = true
         debugLog("🔍 [InlinePreview] Captured text element (role: \(context.snapshot.role ?? "unknown"), cursor: \(insertionPointLocation))")
-        return Self.shouldShowFloatingPanelForRecording(hasTextInputTarget: true, spotlightOpen: spotlightOpen)
+        return Self.shouldShowFloatingPanelForRecording(
+            hasTextInputTarget: true,
+            spotlightOpen: spotlightOpen,
+            frontmostBundleIdentifier: frontmostBundleIdentifier
+        )
     }
 
     private var inlinePreviewVerified = false

@@ -43,22 +43,47 @@ struct PasteBehaviorTests {
         #expect(
             AppState.shouldShowFloatingPanelForRecording(
                 hasTextInputTarget: true,
-                spotlightOpen: false
+                spotlightOpen: false,
+                frontmostBundleIdentifier: "com.apple.TextEdit"
             )
         )
 
         #expect(
             AppState.shouldShowFloatingPanelForRecording(
                 hasTextInputTarget: false,
-                spotlightOpen: true
+                spotlightOpen: true,
+                frontmostBundleIdentifier: "com.apple.TextEdit"
             )
         )
 
         #expect(
             AppState.shouldShowFloatingPanelForRecording(
                 hasTextInputTarget: false,
-                spotlightOpen: false
+                spotlightOpen: false,
+                frontmostBundleIdentifier: "com.apple.TextEdit"
             ) == false
+        )
+    }
+
+    @Test
+    func floatingPanelShowsForCodexWithoutAXTextTarget() {
+        #expect(
+            AppState.shouldShowFloatingPanelForRecording(
+                hasTextInputTarget: false,
+                spotlightOpen: false,
+                frontmostBundleIdentifier: "com.openai.codex"
+            )
+        )
+    }
+
+    @Test
+    func keyboardPreviewFallbackIsEnabledForCodex() {
+        #expect(
+            AppState.shouldUseKeyboardPreviewFallback(frontmostBundleIdentifier: "com.openai.codex")
+        )
+
+        #expect(
+            AppState.shouldUseKeyboardPreviewFallback(frontmostBundleIdentifier: "com.apple.TextEdit") == false
         )
     }
 
