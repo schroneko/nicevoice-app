@@ -247,6 +247,19 @@ final class AppState {
     var history: [TranscriptionRecord] = []
     var audioLevels: [Float] = Array(repeating: 0, count: 20)
     var recordingStartDate: Date?
+    var isShowingFinalizationPanel: Bool {
+        waitingForFinalResult && errorMessage == nil && shouldShowFloatingPanelForCurrentRecording
+    }
+    var floatingPanelPreviewText: String {
+        let preview = currentTranscription.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !preview.isEmpty {
+            return preview
+        }
+        return latestRawTranscription.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    var usesExpandedFloatingPanel: Bool {
+        errorMessage != nil || isShowingFinalizationPanel
+    }
 
     @ObservationIgnored
     @AppStorage("shortcutKey") var shortcutKeyRaw = ShortcutKey.fn.rawValue
@@ -1008,7 +1021,11 @@ final class AppState {
         provisionalFinalizationTimer?.cancel()
         waitingForFinalResult = true
         debugLog("🎙️ Recording stopped - waiting for final result (\(transcriptionEngine.displayName))")
-        floatingPanel?.hide()
+        if shouldShowFloatingPanelForCurrentRecording {
+            floatingPanel?.show()
+        } else {
+            floatingPanel?.hide()
+        }
         switch transcriptionEngine {
         case .deepgram:
             deepgramService?.stopRecording()
@@ -1081,6 +1098,7 @@ final class AppState {
             }
             return
         }
+        currentTranscription = processedText
 
         if SpeakerVerificationService.shared.isEnrolled && SpeakerVerificationService.shared.isReady,
            let audioData {
@@ -2030,6 +2048,9 @@ struct FloatingPanelView: View {
             if isError {
                 ErrorIndicatorView(message: appState.errorMessage ?? "")
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            } else if appState.isShowingFinalizationPanel {
+                FinalizingIndicatorView(previewText: appState.floatingPanelPreviewText)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
             } else {
                 RecordingIndicatorView(
                     currentLevel: { appState.audioLevels.last ?? 0 },
@@ -2043,6 +2064,70 @@ struct FloatingPanelView: View {
         .onAppear {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
                 isVisible = true
+            }
+        }
+    }
+}
+
+struct FinalizingIndicatorView: View {
+    let previewText: String
+    @State private var animateHighlight = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [.blue.opacity(0.18), .cyan.opacity(0.08)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 30, height: 30)
+                        .scaleEffect(animateHighlight ? 1.08 : 0.92)
+
+                    Image(systemName: "wand.and.stars")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.blue)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("文章を整え中")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("句読点と話し言葉をなめらかに整えています")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(.blue)
+            }
+
+            if !previewText.isEmpty {
+                Text(previewText)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.primary.opacity(0.9))
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Color.white.opacity(0.08))
+                    )
+            }
+        }
+        .frame(maxWidth: Constants.UI.floatingPanelExpandedWidth, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
+                animateHighlight = true
             }
         }
     }

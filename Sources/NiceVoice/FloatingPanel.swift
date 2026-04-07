@@ -53,12 +53,12 @@ final class FloatingPanel {
         hostingView.rootView = FloatingPanelView(appState: appState)
         hostingView.layoutSubtreeIfNeeded()
         let fittingSize = hostingView.fittingSize
-        let minWidth = appState.errorMessage == nil
-            ? Constants.UI.floatingPanelWidth
-            : Constants.UI.floatingPanelExpandedWidth
-        let minHeight = appState.errorMessage == nil
-            ? Constants.UI.floatingPanelHeight
-            : Constants.UI.floatingPanelExpandedHeight
+        let minWidth = appState.usesExpandedFloatingPanel
+            ? Constants.UI.floatingPanelExpandedWidth
+            : Constants.UI.floatingPanelWidth
+        let minHeight = appState.usesExpandedFloatingPanel
+            ? Constants.UI.floatingPanelExpandedHeight
+            : Constants.UI.floatingPanelHeight
 
         return NSSize(
             width: min(max(fittingSize.width, minWidth), Constants.UI.floatingPanelMaxWidth),

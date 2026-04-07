@@ -36,6 +36,18 @@ struct TextProcessor {
     ]
 
     private static let sentenceEndings = ["ました", "ません", "でした"]
+    private static let plainSentenceEndings = ["です", "ます"]
+    private static let plainSentenceContinuationPrefixes = [
+        "か", "ね", "よ", "が", "け", "し",
+        "けど", "けれど", "けれども", "けども",
+        "から", "ので",
+        "ですが", "ですけど", "ですし", "ですから", "ですよ", "ですね", "でしょ", "でしょう",
+        "ますが", "ますけど", "ますし", "ますから", "ますよ", "ますね", "ましょう"
+    ]
+    private static let plainSentenceStarterPrefixes = [
+        "今", "これ", "それ", "あれ", "ここ", "そこ",
+        "で", "また", "もう", "なんか", "お願い", "本当", "やっぱり"
+    ]
     private static let transitionWords = ["とりあえず", "ただ", "でも", "しかし", "ちなみに", "あと", "それから", "それで"]
     private static let transitionSentenceEndPatterns = ["ました", "ません", "です", "ます", "だった", "でした", "ない"]
     private static let transitionTimeRelatedCharacters: Set<Character> = [
@@ -67,6 +79,10 @@ struct TextProcessor {
 
     private static let punctuationCharacters: Set<Character> = ["。", "、", "？", "！", "?", "!", ".", ","]
     private static let particleCharacters: Set<Character> = ["か", "が", "け", "ね", "よ"]
+    private static let sentenceLeadInFollowers = [
+        "あの", "えっと", "えーと", "その", "なんか", "ちょっと",
+        "今", "これ", "それ", "お願い", "変換", "切り替え"
+    ]
 
     func process(_ text: String, isFinal: Bool = true) -> String {
         let originalText = text
@@ -84,12 +100,14 @@ struct TextProcessor {
         result = removeTrailingRepetitions(from: result)
         if fillerSettings.addPunctuation {
             result = insertSentenceEndPunctuation(in: result)
+            result = insertPlainSentenceEndPunctuation(in: result)
             result = insertTransitionPunctuation(in: result)
             result = insertGreetingPunctuation(in: result)
             result = insertPoliteEndingPunctuation(in: result)
             result = insertQuestionMarks(in: result)
             result = insertConjunctionCommas(in: result)
             result = insertStarterPunctuation(in: result)
+            result = insertSentenceLeadInCommas(in: result)
             result = removePunctuationBeforeFinalParticles(from: result)
         }
         result = removeLeadingFillers(from: result)
@@ -121,6 +139,15 @@ struct TextProcessor {
 
     private func removeLeadingFillers(from text: String) -> String {
         var result = text
+        let preservedLeadIns = [
+            ("で、あの", "___KEEP_DE_ANO___"),
+            ("で、えっと", "___KEEP_DE_ETTO___"),
+            ("で、えーと", "___KEEP_DE_EETO___")
+        ]
+
+        for (source, placeholder) in preservedLeadIns {
+            result = result.replacingOccurrences(of: source, with: placeholder)
+        }
 
         for filler in Self.leadingFillers {
             if result.hasPrefix(filler) {
@@ -138,6 +165,10 @@ struct TextProcessor {
             for pronoun in Self.fillerPronouns {
                 result = result.replacingOccurrences(of: prefix + pronoun, with: pronoun)
             }
+        }
+
+        for (source, placeholder) in preservedLeadIns {
+            result = result.replacingOccurrences(of: placeholder, with: source)
         }
 
         return result
@@ -294,6 +325,31 @@ struct TextProcessor {
         return result
     }
 
+    private func insertPlainSentenceEndPunctuation(in text: String) -> String {
+        var result = text
+
+        for ending in Self.plainSentenceEndings {
+            var searchStart = result.startIndex
+            while let range = result.range(of: ending, range: searchStart..<result.endIndex) {
+                let afterEnd = range.upperBound
+                if afterEnd < result.endIndex {
+                    let nextChar = result[afterEnd]
+                    let suffixAfter = String(result[afterEnd...])
+                    let shouldContinue = Self.plainSentenceContinuationPrefixes.contains { suffixAfter.hasPrefix($0) }
+                    let shouldStartNewSentence = Self.plainSentenceStarterPrefixes.contains { suffixAfter.hasPrefix($0) }
+
+                    if !isPunctuation(nextChar) && !isParticle(nextChar) && !shouldContinue && shouldStartNewSentence {
+                        result.insert("。", at: afterEnd)
+                    }
+                }
+                searchStart = result.index(after: range.lowerBound)
+                if searchStart >= result.endIndex { break }
+            }
+        }
+
+        return result
+    }
+
     private func shouldSkipTransitionWord(_ word: String, prevChar: Character, in text: String, at range: Range<String.Index>) -> Bool {
         if word == "ただ" && ["い", "わ", "ま"].contains(String(prevChar)) {
             return true
@@ -398,6 +454,11 @@ struct TextProcessor {
                 let afterEnd = range.upperBound
                 if afterEnd < result.endIndex {
                     let nextChar = result[afterEnd]
+                    let suffixAfter = String(result[afterEnd...])
+                    if (ending == "ですか" || ending == "ますか") && suffixAfter.hasPrefix("ら") {
+                        offset = result.distance(from: result.startIndex, to: range.lowerBound) + ending.count
+                        continue
+                    }
                     if (ending == "ですか" || ending == "ますか") && (nextChar == "ね" || nextChar == "よ") {
                         offset = result.distance(from: result.startIndex, to: range.lowerBound) + ending.count
                         continue
@@ -449,6 +510,21 @@ struct TextProcessor {
                 }
             }
         }
+        return result
+    }
+
+    private func insertSentenceLeadInCommas(in text: String) -> String {
+        var result = text
+
+        for follower in Self.sentenceLeadInFollowers {
+            for separator in ["。", "？", "！"] {
+                result = result.replacingOccurrences(of: "\(separator)で\(follower)", with: "\(separator)で、\(follower)")
+            }
+            if result.hasPrefix("で\(follower)") {
+                result = result.replacingOccurrences(of: "で\(follower)", with: "で、\(follower)", options: [], range: result.startIndex..<result.endIndex)
+            }
+        }
+
         return result
     }
 

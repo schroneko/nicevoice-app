@@ -63,4 +63,28 @@ struct TextProcessorTests {
 
         #expect(result == "こんにちは")
     }
+
+    @Test
+    func spokenFollowupClausesAreSplitMoreNaturally() {
+        let processor = TextProcessor(
+            fillerSettings: FillerSettings(),
+            dictionaryEntries: []
+        )
+
+        let result = processor.process("ありがとうございますめちゃくちゃいい感じです今動いていますであの変換した時に切り替えた時になんかいい感じのUIをつけたいんですけれどお願いしてもいいですか")
+
+        #expect(result == "ありがとうございます。めちゃくちゃいい感じです。今動いています。で、あの変換した時に切り替えた時になんかいい感じのUIをつけたいんですけれど、お願いしてもいいですか？")
+    }
+
+    @Test
+    func plainSentenceEndingDoesNotBreakReasonClauses() {
+        let processor = TextProcessor(
+            fillerSettings: FillerSettings(),
+            dictionaryEntries: []
+        )
+
+        let result = processor.process("この形で大丈夫ですからそのまま進めてください")
+
+        #expect(result == "この形で大丈夫ですからそのまま進めてください")
+    }
 }
