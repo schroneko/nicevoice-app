@@ -1,4 +1,3 @@
-import AppKit
 import ApplicationServices
 
 struct FocusedElementSnapshot: Equatable {
@@ -15,6 +14,12 @@ struct FocusedTextInputContext {
     let selectedTextRange: AXValue?
 }
 
+private enum FocusedInputTarget {
+    case direct(FocusedTextInputContext)
+    case keyboardFallback
+    case none
+}
+
 enum FocusedElementInspector {
     private static let singleLineTextInputRoles: Set<String> = [
         "AXTextField",
@@ -22,6 +27,13 @@ enum FocusedElementInspector {
         "AXComboBox"
     ]
     private static let multiLineTextInputRoles: Set<String> = [
+        "AXTextArea",
+        "AXWebArea"
+    ]
+    private static let keyboardFallbackRoles: Set<String> = [
+        "AXTextField",
+        "AXSearchField",
+        "AXComboBox",
         "AXTextArea",
         "AXWebArea"
     ]
@@ -46,14 +58,41 @@ enum FocusedElementInspector {
     }
 
     static func focusedElementAllowsLongPressShortcut() -> Bool {
-        allowsLongPressShortcut(
-            hasTextInputTarget: focusedTextInputContext() != nil,
-            frontmostBundleIdentifier: NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-        )
+        switch focusedInputTarget() {
+        case .direct, .keyboardFallback:
+            return true
+        case .none:
+            return false
+        }
+    }
+
+    static func focusedElementUsesKeyboardPreviewFallback() -> Bool {
+        if case .keyboardFallback = focusedInputTarget() {
+            return true
+        }
+        return false
     }
 
     static func focusedTextInputContext() -> FocusedTextInputContext? {
-        guard let focusedElement = focusedElement() else { return nil }
+        if case let .direct(context) = focusedInputTarget() {
+            return context
+        }
+        return nil
+    }
+
+    static func allowsLongPressShortcut(_ snapshot: FocusedElementSnapshot) -> Bool {
+        acceptsTextInput(snapshot) || allowsKeyboardPreviewFallback(snapshot)
+    }
+
+    static func allowsKeyboardPreviewFallback(_ snapshot: FocusedElementSnapshot) -> Bool {
+        guard snapshot.enabled != false else { return false }
+        guard isVisible(snapshot) else { return false }
+        guard let role = snapshot.role else { return false }
+        return keyboardFallbackRoles.contains(role)
+    }
+
+    private static func focusedInputTarget() -> FocusedInputTarget {
+        guard let focusedElement = focusedElement() else { return .none }
 
         var currentElement: AXUIElement? = focusedElement
         var depth = 0
@@ -61,36 +100,22 @@ enum FocusedElementInspector {
         while let element = currentElement, depth <= Constants.UI.maxAXTreeSearchDepth {
             let snapshot = snapshot(for: element)
             if acceptsTextInput(snapshot) {
-                return FocusedTextInputContext(
-                    element: element,
-                    snapshot: snapshot,
-                    selectedTextRange: selectedTextRange(for: element)
+                return .direct(
+                    FocusedTextInputContext(
+                        element: element,
+                        snapshot: snapshot,
+                        selectedTextRange: selectedTextRange(for: element)
+                    )
                 )
+            }
+            if allowsKeyboardPreviewFallback(snapshot) {
+                return .keyboardFallback
             }
             currentElement = parent(of: element)
             depth += 1
         }
 
-        return nil
-    }
-
-    static func allowsLongPressShortcut(_ snapshot: FocusedElementSnapshot) -> Bool {
-        acceptsTextInput(snapshot)
-    }
-
-    static func allowsLongPressShortcut(
-        hasTextInputTarget: Bool,
-        frontmostBundleIdentifier: String?
-    ) -> Bool {
-        if hasTextInputTarget {
-            return true
-        }
-        switch frontmostBundleIdentifier {
-        case "com.openai.codex":
-            return true
-        default:
-            return false
-        }
+        return .none
     }
 
     private static func focusedElement() -> AXUIElement? {

@@ -56,23 +56,29 @@ struct FocusedElementInspectorTests {
     }
 
     @Test
-    func allowsCodexWindowWithoutAXTextTarget() {
-        #expect(
-            FocusedElementInspector.allowsLongPressShortcut(
-                hasTextInputTarget: false,
-                frontmostBundleIdentifier: "com.openai.codex"
-            ) == true
+    func allowsKeyboardPreviewFallbackForVisibleWebAreas() {
+        let snapshot = FocusedElementSnapshot(
+            role: "AXWebArea",
+            editable: false,
+            enabled: true,
+            hasSelectedTextRange: false,
+            size: CGSize(width: 800, height: 600)
         )
+
+        #expect(FocusedElementInspector.allowsKeyboardPreviewFallback(snapshot) == true)
     }
 
     @Test
-    func rejectsNonTextNonCodexWindowForLongPressShortcut() {
-        #expect(
-            FocusedElementInspector.allowsLongPressShortcut(
-                hasTextInputTarget: false,
-                frontmostBundleIdentifier: "com.apple.finder"
-            ) == false
+    func rejectsKeyboardPreviewFallbackForNonTextRoles() {
+        let snapshot = FocusedElementSnapshot(
+            role: "AXHeading",
+            editable: nil,
+            enabled: true,
+            hasSelectedTextRange: false,
+            size: CGSize(width: 640, height: 28)
         )
+
+        #expect(FocusedElementInspector.allowsKeyboardPreviewFallback(snapshot) == false)
     }
 
     @Test

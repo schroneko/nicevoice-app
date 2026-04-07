@@ -3,12 +3,8 @@ import Testing
 
 struct PasteBehaviorTests {
     @Test
-    func codexClipboardRestoreUsesLongerDelay() {
-        let codexDelay = AppState.clipboardRestoreDelay(for: "com.openai.codex")
-        let defaultDelay = AppState.clipboardRestoreDelay(for: "com.apple.TextEdit")
-
-        #expect(codexDelay == Constants.Timing.pastePostDelaySecondsForCodex)
-        #expect(codexDelay > defaultDelay)
+    func clipboardRestoreUsesConfiguredDelay() {
+        #expect(AppState.clipboardRestoreDelay() == Constants.Timing.pastePostDelaySeconds)
     }
 
     @Test
@@ -43,47 +39,22 @@ struct PasteBehaviorTests {
         #expect(
             AppState.shouldShowFloatingPanelForRecording(
                 hasTextInputTarget: true,
-                spotlightOpen: false,
-                frontmostBundleIdentifier: "com.apple.TextEdit"
+                spotlightOpen: false
             )
         )
 
         #expect(
             AppState.shouldShowFloatingPanelForRecording(
                 hasTextInputTarget: false,
-                spotlightOpen: true,
-                frontmostBundleIdentifier: "com.apple.TextEdit"
+                spotlightOpen: true
             )
         )
 
         #expect(
             AppState.shouldShowFloatingPanelForRecording(
                 hasTextInputTarget: false,
-                spotlightOpen: false,
-                frontmostBundleIdentifier: "com.apple.TextEdit"
+                spotlightOpen: false
             ) == false
-        )
-    }
-
-    @Test
-    func floatingPanelShowsForCodexWithoutAXTextTarget() {
-        #expect(
-            AppState.shouldShowFloatingPanelForRecording(
-                hasTextInputTarget: false,
-                spotlightOpen: false,
-                frontmostBundleIdentifier: "com.openai.codex"
-            )
-        )
-    }
-
-    @Test
-    func keyboardPreviewFallbackIsEnabledForCodex() {
-        #expect(
-            AppState.shouldUseKeyboardPreviewFallback(frontmostBundleIdentifier: "com.openai.codex")
-        )
-
-        #expect(
-            AppState.shouldUseKeyboardPreviewFallback(frontmostBundleIdentifier: "com.apple.TextEdit") == false
         )
     }
 
