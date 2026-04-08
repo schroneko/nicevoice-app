@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import Carbon
 
 enum ShortcutKey: String, CaseIterable {
     case space = "space"
@@ -73,6 +74,15 @@ enum ShortcutKey: String, CaseIterable {
         self == .space
     }
 
+    var longPressDelay: TimeInterval? {
+        switch self {
+        case .space:
+            return 0.45
+        default:
+            return nil
+        }
+    }
+
     var usageDescription: String {
         switch self {
         case .space:
@@ -103,7 +113,6 @@ final class KeyMonitor {
     private let onKeyUp: () -> Void
     private var shortcutKey: ShortcutKey
 
-    private static let longPressDelay: TimeInterval = 0.25
     private static let injectedEventMarker: Int64 = 0x4E565350
 
     init(
@@ -315,7 +324,8 @@ final class KeyMonitor {
 
         pendingLongPressWorkItem?.cancel()
         pendingLongPressWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.longPressDelay, execute: workItem)
+        let delay = shortcutKey.longPressDelay ?? 0
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
         return nil
     }
 
@@ -350,7 +360,29 @@ final class KeyMonitor {
         return !flags.intersection(blockedFlags).isEmpty
     }
 
+    static func currentInputSourceUsesJapanese() -> Bool {
+        guard let source = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue() else {
+            return false
+        }
+        guard let languages = TISGetInputSourceProperty(source, kTISPropertyInputSourceLanguages) else {
+            return false
+        }
+        let array = unsafeBitCast(languages, to: NSArray.self)
+        let codes = array.compactMap { $0 as? String }
+        return inputSourceLanguagesUseJapanese(codes)
+    }
+
+    static func inputSourceLanguagesUseJapanese(_ languages: [String]) -> Bool {
+        languages.contains { language in
+            language == "ja" || language.hasPrefix("ja-")
+        }
+    }
+
     private func restoreShortPressSpace() {
+        if Self.currentInputSourceUsesJapanese() {
+            injectSpaceKeyPress()
+            return
+        }
         if insertTextViaAccessibility(" ") {
             return
         }

@@ -5,7 +5,24 @@ struct FocusedElementSnapshot: Equatable {
     let editable: Bool?
     let enabled: Bool?
     let hasSelectedTextRange: Bool
+    let selectedTextRangeLength: Int?
     let size: CGSize?
+
+    init(
+        role: String?,
+        editable: Bool?,
+        enabled: Bool?,
+        hasSelectedTextRange: Bool,
+        selectedTextRangeLength: Int? = nil,
+        size: CGSize?
+    ) {
+        self.role = role
+        self.editable = editable
+        self.enabled = enabled
+        self.hasSelectedTextRange = hasSelectedTextRange
+        self.selectedTextRangeLength = selectedTextRangeLength
+        self.size = size
+    }
 }
 
 struct FocusedTextInputContext {
@@ -81,7 +98,8 @@ enum FocusedElementInspector {
     }
 
     static func allowsLongPressShortcut(_ snapshot: FocusedElementSnapshot) -> Bool {
-        acceptsTextInput(snapshot) || allowsKeyboardPreviewFallback(snapshot)
+        guard snapshot.selectedTextRangeLength ?? 0 == 0 else { return false }
+        return acceptsTextInput(snapshot) || allowsKeyboardPreviewFallback(snapshot)
     }
 
     static func allowsKeyboardPreviewFallback(_ snapshot: FocusedElementSnapshot) -> Bool {
@@ -134,11 +152,13 @@ enum FocusedElementInspector {
     }
 
     private static func snapshot(for element: AXUIElement) -> FocusedElementSnapshot {
-        FocusedElementSnapshot(
+        let range = selectedTextRange(for: element)
+        return FocusedElementSnapshot(
             role: stringAttribute(kAXRoleAttribute, on: element),
             editable: boolAttribute(editableAttribute, on: element),
             enabled: boolAttribute(kAXEnabledAttribute, on: element),
-            hasSelectedTextRange: selectedTextRange(for: element) != nil,
+            hasSelectedTextRange: range != nil,
+            selectedTextRangeLength: selectedTextRangeLength(range),
             size: sizeAttribute(on: element)
         )
     }
@@ -167,6 +187,14 @@ enum FocusedElementInspector {
         let result = AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &value)
         guard result == .success, let value else { return nil }
         return (value as! AXValue)
+    }
+
+    private static func selectedTextRangeLength(_ value: AXValue?) -> Int? {
+        guard let value else { return nil }
+        guard AXValueGetType(value) == .cfRange else { return nil }
+        var range = CFRange()
+        guard AXValueGetValue(value, .cfRange, &range) else { return nil }
+        return range.length
     }
 
     private static func sizeAttribute(on element: AXUIElement) -> CGSize? {

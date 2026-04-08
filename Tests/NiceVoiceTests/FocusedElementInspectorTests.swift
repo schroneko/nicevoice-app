@@ -10,6 +10,7 @@ struct FocusedElementInspectorTests {
             editable: nil,
             enabled: true,
             hasSelectedTextRange: true,
+            selectedTextRangeLength: 0,
             size: CGSize(width: 320, height: 24)
         )
 
@@ -49,6 +50,7 @@ struct FocusedElementInspectorTests {
             editable: true,
             enabled: true,
             hasSelectedTextRange: true,
+            selectedTextRangeLength: 0,
             size: CGSize(width: 640, height: 400)
         )
 
@@ -114,6 +116,7 @@ struct FocusedElementInspectorTests {
             editable: nil,
             enabled: true,
             hasSelectedTextRange: true,
+            selectedTextRangeLength: 0,
             size: CGSize(width: 640, height: 28)
         )
 
@@ -127,10 +130,25 @@ struct FocusedElementInspectorTests {
             editable: nil,
             enabled: true,
             hasSelectedTextRange: true,
+            selectedTextRangeLength: 0,
             size: CGSize(width: 640, height: 400)
         )
 
         #expect(FocusedElementInspector.acceptsTextInput(snapshot) == false)
+    }
+
+    @Test
+    func rejectsLongPressShortcutDuringSelectionOrComposition() {
+        let snapshot = FocusedElementSnapshot(
+            role: "AXTextField",
+            editable: true,
+            enabled: true,
+            hasSelectedTextRange: true,
+            selectedTextRangeLength: 1,
+            size: CGSize(width: 320, height: 24)
+        )
+
+        #expect(FocusedElementInspector.allowsLongPressShortcut(snapshot) == false)
     }
 
     @Test
