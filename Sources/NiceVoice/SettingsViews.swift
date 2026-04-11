@@ -1,6 +1,7 @@
 import SwiftUI
 import AVFoundation
 import AppKit
+import Carbon
 
 struct ShortcutKeyButton: View {
     let key: ShortcutKey
@@ -57,6 +58,7 @@ struct ShortcutKeyButton: View {
         switch key {
         case .space: return "keyboard"
         case .fn: return "fn"
+        case .custom: return "keyboard"
         case .leftShift, .rightShift: return "shift"
         case .leftControl, .rightControl: return "control"
         case .leftOption, .rightOption: return "option"
@@ -69,12 +71,19 @@ struct SettingsContentView: View {
     var appState: AppState
     @AppStorage("showInMenuBar") private var showInMenuBar = true
     @AppStorage("shortcutKey") private var shortcutKeyRaw = ShortcutKey.fn.rawValue
+    @AppStorage("customShortcut") private var customShortcutRaw = CustomShortcut.defaultValue.rawValue
     @AppStorage("appLanguage") private var appLanguageRaw = AppLanguage.system.rawValue
     @State private var fillerSettings: FillerSettings
     @State private var sectionAnimations: [Bool] = Array(repeating: false, count: 8)
+    @State private var isCapturingCustomShortcut = false
+    @State private var captureMonitor: Any?
 
     private var selectedShortcutKey: ShortcutKey {
         ShortcutKey(rawValue: shortcutKeyRaw) ?? .fn
+    }
+
+    private var selectedCustomShortcut: CustomShortcut {
+        CustomShortcut(rawValue: customShortcutRaw) ?? .defaultValue
     }
 
     init(appState: AppState) {
@@ -159,7 +168,7 @@ struct SettingsContentView: View {
                                     isSelected: selectedShortcutKey == key,
                                     action: {
                                         shortcutKeyRaw = key.rawValue
-                                        appState.keyMonitor?.updateShortcutKey(key)
+                                        appState.updateShortcutSelection(key)
                                     }
                                 )
                             }
@@ -167,9 +176,43 @@ struct SettingsContentView: View {
 
                         Text(selectedShortcutKey.usesLongPressBehavior
                              ? "Space は長押しで録音し、短く押すと通常のスペースを入力します"
-                             : "選んだキーを押している間だけ録音します")
+                             : selectedShortcutKey.usesCustomKeyCombinationBehavior
+                             ? "\(selectedCustomShortcut.displayName) を押している間だけ録音します。このショートカットだけが有効です"
+                             : "選んだキーを押している間だけ録音します。このショートカットだけが有効です")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+
+                        if selectedShortcutKey == .custom {
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack {
+                                    Text("現在の組み合わせ")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                    Text(selectedCustomShortcut.displayName)
+                                        .font(.callout)
+                                        .fontWeight(.medium)
+                                }
+
+                                Button(isCapturingCustomShortcut ? "キー入力待ち..." : "ショートカットを記録") {
+                                    if isCapturingCustomShortcut {
+                                        stopShortcutCapture()
+                                    } else {
+                                        startShortcutCapture()
+                                    }
+                                }
+                                .buttonStyle(.borderedProminent)
+
+                                Text("modifier + key を押してください。Esc でキャンセルします")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(14)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(Color.secondary.opacity(0.08))
+                            )
+                        }
                     }
 
                     SectionDivider()
@@ -268,12 +311,45 @@ struct SettingsContentView: View {
             }
             .padding(32)
         }
+        .onDisappear {
+            stopShortcutCapture()
+        }
         .onAppear {
             for index in 0..<sectionAnimations.count {
                 withAnimation(.spring(response: 0.5, dampingFraction: 0.8).delay(Double(index) * 0.1 + 0.1)) {
                     sectionAnimations[index] = true
                 }
             }
+        }
+    }
+
+    private func startShortcutCapture() {
+        stopShortcutCapture()
+        isCapturingCustomShortcut = true
+        captureMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            if event.keyCode == UInt16(kVK_Escape) {
+                stopShortcutCapture()
+                return nil
+            }
+
+            guard let shortcut = CustomShortcut.capture(from: event) else {
+                return nil
+            }
+
+            customShortcutRaw = shortcut.rawValue
+            shortcutKeyRaw = ShortcutKey.custom.rawValue
+            appState.updateCustomShortcut(shortcut)
+            appState.updateShortcutSelection(.custom)
+            stopShortcutCapture()
+            return nil
+        }
+    }
+
+    private func stopShortcutCapture() {
+        isCapturingCustomShortcut = false
+        if let captureMonitor {
+            NSEvent.removeMonitor(captureMonitor)
+            self.captureMonitor = nil
         }
     }
 }

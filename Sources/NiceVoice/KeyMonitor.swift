@@ -5,6 +5,7 @@ import Carbon
 enum ShortcutKey: String, CaseIterable {
     case space = "space"
     case fn = "fn"
+    case custom = "custom"
     case leftShift = "leftShift"
     case rightShift = "rightShift"
     case leftControl = "leftControl"
@@ -18,6 +19,7 @@ enum ShortcutKey: String, CaseIterable {
         switch self {
         case .space: return "Space"
         case .fn: return "fn"
+        case .custom: return String(localized: "カスタム")
         case .leftShift: return String(localized: "左 Shift")
         case .rightShift: return String(localized: "右 Shift")
         case .leftControl: return String(localized: "左 Control")
@@ -33,6 +35,7 @@ enum ShortcutKey: String, CaseIterable {
         switch self {
         case .space: return 49
         case .fn: return 63
+        case .custom: return 0
         case .leftShift: return 56
         case .rightShift: return 60
         case .leftControl: return 59
@@ -44,21 +47,11 @@ enum ShortcutKey: String, CaseIterable {
         }
     }
 
-    var modifierFlag: NSEvent.ModifierFlags {
-        switch self {
-        case .space: return []
-        case .fn: return .function
-        case .leftShift, .rightShift: return .shift
-        case .leftControl, .rightControl: return .control
-        case .leftOption, .rightOption: return .option
-        case .leftCommand, .rightCommand: return .command
-        }
-    }
-
     var deviceDependentFlag: UInt {
         switch self {
         case .space: return 0
         case .fn: return 0
+        case .custom: return 0
         case .leftShift: return 0x00000002
         case .rightShift: return 0x00000004
         case .leftControl: return 0x00000001
@@ -74,6 +67,10 @@ enum ShortcutKey: String, CaseIterable {
         self == .space
     }
 
+    var usesCustomKeyCombinationBehavior: Bool {
+        self == .custom
+    }
+
     var longPressDelay: TimeInterval? {
         switch self {
         case .space:
@@ -83,12 +80,204 @@ enum ShortcutKey: String, CaseIterable {
         }
     }
 
-    var usageDescription: String {
+    func usageDescription(customShortcut: CustomShortcut) -> String {
         switch self {
         case .space:
             return String(localized: "Space を長押しして録音")
+        case .custom:
+            return String(localized: "\(customShortcut.displayName) を押して録音")
         default:
             return String(localized: "\(displayName) キーを押して録音")
+        }
+    }
+}
+
+struct CustomShortcut: RawRepresentable, Equatable {
+    let keyCode: UInt16
+    let modifierFlagsRawValue: UInt
+    let keyDisplayName: String
+
+    init(keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags, keyDisplayName: String) {
+        self.keyCode = keyCode
+        self.modifierFlagsRawValue = Self.normalizedModifierFlags(modifierFlags).rawValue
+        self.keyDisplayName = keyDisplayName
+    }
+
+    init?(rawValue: String) {
+        let parts = rawValue.split(separator: "|", maxSplits: 2, omittingEmptySubsequences: false)
+        guard parts.count == 3,
+              let keyCode = UInt16(parts[0]),
+              let modifierRawValue = UInt(parts[1]) else {
+            return nil
+        }
+
+        self.keyCode = keyCode
+        modifierFlagsRawValue = modifierRawValue
+        keyDisplayName = String(parts[2]).removingPercentEncoding ?? String(parts[2])
+    }
+
+    var rawValue: String {
+        let encodedDisplayName = keyDisplayName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? keyDisplayName
+        return "\(keyCode)|\(modifierFlags.rawValue)|\(encodedDisplayName)"
+    }
+
+    var modifierFlags: NSEvent.ModifierFlags {
+        Self.normalizedModifierFlags(NSEvent.ModifierFlags(rawValue: modifierFlagsRawValue))
+    }
+
+    var displayName: String {
+        let modifierNames = Self.modifierDisplayNames(for: modifierFlags)
+        if modifierNames.isEmpty {
+            return keyDisplayName
+        }
+        return (modifierNames + [keyDisplayName]).joined(separator: " + ")
+    }
+
+    func matches(keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags) -> Bool {
+        keyCode == self.keyCode && Self.normalizedModifierFlags(modifierFlags) == self.modifierFlags
+    }
+
+    func hasRequiredModifiers(_ modifierFlags: NSEvent.ModifierFlags) -> Bool {
+        let normalized = Self.normalizedModifierFlags(modifierFlags)
+        return normalized.intersection(self.modifierFlags) == self.modifierFlags
+    }
+
+    func usesModifierKeyCode(_ keyCode: UInt16) -> Bool {
+        Self.modifierKeyCodes(for: modifierFlags).contains(keyCode)
+    }
+
+    static let defaultValue = CustomShortcut(
+        keyCode: UInt16(kVK_ANSI_M),
+        modifierFlags: [.control],
+        keyDisplayName: "M"
+    )
+
+    static func capture(from event: NSEvent) -> CustomShortcut? {
+        let modifiers = normalizedModifierFlags(event.modifierFlags)
+        guard !modifiers.isEmpty else { return nil }
+        guard !isModifierOnlyKeyCode(event.keyCode) else { return nil }
+
+        let keyDisplayName = displayName(for: event)
+        guard !keyDisplayName.isEmpty else { return nil }
+
+        return CustomShortcut(
+            keyCode: event.keyCode,
+            modifierFlags: modifiers,
+            keyDisplayName: keyDisplayName
+        )
+    }
+
+    static func normalizedModifierFlags(_ modifierFlags: NSEvent.ModifierFlags) -> NSEvent.ModifierFlags {
+        modifierFlags.intersection([.command, .option, .control, .shift, .function])
+    }
+
+    static func modifierDisplayNames(for modifierFlags: NSEvent.ModifierFlags) -> [String] {
+        var names: [String] = []
+        if modifierFlags.contains(.control) {
+            names.append("Ctrl")
+        }
+        if modifierFlags.contains(.option) {
+            names.append("Option")
+        }
+        if modifierFlags.contains(.shift) {
+            names.append("Shift")
+        }
+        if modifierFlags.contains(.command) {
+            names.append("Command")
+        }
+        if modifierFlags.contains(.function) {
+            names.append("Fn")
+        }
+        return names
+    }
+
+    static func modifierKeyCodes(for modifierFlags: NSEvent.ModifierFlags) -> Set<UInt16> {
+        var keyCodes: Set<UInt16> = []
+        if modifierFlags.contains(.control) {
+            keyCodes.formUnion([UInt16(kVK_Control), UInt16(kVK_RightControl)])
+        }
+        if modifierFlags.contains(.option) {
+            keyCodes.formUnion([UInt16(kVK_Option), UInt16(kVK_RightOption)])
+        }
+        if modifierFlags.contains(.shift) {
+            keyCodes.formUnion([UInt16(kVK_Shift), UInt16(kVK_RightShift)])
+        }
+        if modifierFlags.contains(.command) {
+            keyCodes.formUnion([UInt16(kVK_Command), UInt16(kVK_RightCommand)])
+        }
+        if modifierFlags.contains(.function) {
+            keyCodes.insert(63)
+        }
+        return keyCodes
+    }
+
+    static func isModifierOnlyKeyCode(_ keyCode: UInt16) -> Bool {
+        modifierOnlyKeyCodes.contains(keyCode)
+    }
+
+    private static let modifierOnlyKeyCodes: Set<UInt16> = [
+        UInt16(kVK_Shift),
+        UInt16(kVK_RightShift),
+        UInt16(kVK_Control),
+        UInt16(kVK_RightControl),
+        UInt16(kVK_Option),
+        UInt16(kVK_RightOption),
+        UInt16(kVK_Command),
+        UInt16(kVK_RightCommand),
+        UInt16(kVK_CapsLock),
+        63
+    ]
+
+    private static func displayName(for event: NSEvent) -> String {
+        if let specialName = specialKeyDisplayName(for: event.keyCode) {
+            return specialName
+        }
+
+        if let characters = event.charactersIgnoringModifiers?
+            .trimmingCharacters(in: .controlCharacters),
+           !characters.isEmpty {
+            return characters.uppercased()
+        }
+
+        return "Key \(event.keyCode)"
+    }
+
+    private static func specialKeyDisplayName(for keyCode: UInt16) -> String? {
+        switch keyCode {
+        case 36: return "Return"
+        case 48: return "Tab"
+        case 49: return "Space"
+        case 51: return "Delete"
+        case 53: return "Escape"
+        case 71: return "Clear"
+        case 76: return "Enter"
+        case 96: return "F5"
+        case 97: return "F6"
+        case 98: return "F7"
+        case 99: return "F3"
+        case 100: return "F8"
+        case 101: return "F9"
+        case 103: return "F11"
+        case 105: return "F13"
+        case 106: return "F16"
+        case 107: return "F14"
+        case 109: return "F10"
+        case 111: return "F12"
+        case 113: return "F15"
+        case 114: return "Help"
+        case 115: return "Home"
+        case 116: return "Page Up"
+        case 117: return "Forward Delete"
+        case 118: return "F4"
+        case 119: return "End"
+        case 120: return "F2"
+        case 121: return "Page Down"
+        case 122: return "F1"
+        case 123: return "Left Arrow"
+        case 124: return "Right Arrow"
+        case 125: return "Down Arrow"
+        case 126: return "Up Arrow"
+        default: return nil
         }
     }
 }
@@ -103,7 +292,11 @@ final class KeyMonitor {
     private var monitor: Any?
     private var eventTap: CFMachPort?
     private var eventTapSource: CFRunLoopSource?
+    private var customShortcutEventTap: CFMachPort?
+    private var customShortcutEventTapSource: CFRunLoopSource?
     private var isKeyPressed = false
+    private var isCustomShortcutPressed = false
+    private var didConsumeCustomShortcutKeyPress = false
     private var pendingLongPressWorkItem: DispatchWorkItem?
     private var didTriggerLongPress = false
     private var longPressRoutingState: LongPressRoutingState = .idle
@@ -112,17 +305,20 @@ final class KeyMonitor {
     private let onKeyDown: () -> Void
     private let onKeyUp: () -> Void
     private var shortcutKey: ShortcutKey
+    private var customShortcut: CustomShortcut
 
     private static let injectedEventMarker: Int64 = 0x4E565350
 
     init(
         shortcutKey: ShortcutKey = .fn,
+        customShortcut: CustomShortcut = .defaultValue,
         onPressBegan: (() -> Void)? = nil,
         onPressCancelled: (() -> Void)? = nil,
         onKeyDown: @escaping () -> Void,
         onKeyUp: @escaping () -> Void
     ) {
         self.shortcutKey = shortcutKey
+        self.customShortcut = customShortcut
         self.onPressBegan = onPressBegan
         self.onPressCancelled = onPressCancelled
         self.onKeyDown = onKeyDown
@@ -130,18 +326,25 @@ final class KeyMonitor {
         startMonitoring()
     }
 
-    func updateShortcutKey(_ newKey: ShortcutKey) {
-        guard newKey != shortcutKey else { return }
+    func updateShortcut(shortcutKey newKey: ShortcutKey, customShortcut newCustomShortcut: CustomShortcut) {
+        guard newKey != shortcutKey || newCustomShortcut != customShortcut else { return }
         shortcutKey = newKey
+        customShortcut = newCustomShortcut
         stopMonitoring()
         startMonitoring()
-        debugLog("🔄 Shortcut key changed to: \(newKey.displayName)")
+        debugLog("🔄 Shortcut changed to: \(resolvedDisplayName)")
+    }
+
+    private var resolvedDisplayName: String {
+        shortcutKey == .custom ? customShortcut.displayName : shortcutKey.displayName
     }
 
     private func stopMonitoring() {
         pendingLongPressWorkItem?.cancel()
         pendingLongPressWorkItem = nil
         isKeyPressed = false
+        isCustomShortcutPressed = false
+        didConsumeCustomShortcutKeyPress = false
         didTriggerLongPress = false
         longPressRoutingState = .idle
 
@@ -159,13 +362,28 @@ final class KeyMonitor {
             CFMachPortInvalidate(eventTap)
             self.eventTap = nil
         }
+
+        if let customShortcutEventTapSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), customShortcutEventTapSource, .commonModes)
+            self.customShortcutEventTapSource = nil
+        }
+
+        if let customShortcutEventTap {
+            CFMachPortInvalidate(customShortcutEventTap)
+            self.customShortcutEventTap = nil
+        }
     }
 
     private func startMonitoring() {
-        debugLog("🔍 [DEBUG] KeyMonitor startMonitoring called for: \(shortcutKey.displayName)")
+        debugLog("🔍 [DEBUG] KeyMonitor startMonitoring called for: \(resolvedDisplayName)")
 
         if shortcutKey.usesLongPressBehavior {
             startLongPressMonitoring()
+            return
+        }
+
+        if shortcutKey.usesCustomKeyCombinationBehavior {
+            startCustomShortcutMonitoring()
             return
         }
 
@@ -174,27 +392,60 @@ final class KeyMonitor {
             let keyPressed = self.isShortcutKeyPressed(event: event)
 
             if keyPressed && !self.isKeyPressed {
-                debugLog("🔍 [DEBUG] \(self.shortcutKey.displayName) key DOWN detected")
+                debugLog("🔍 [DEBUG] \(self.resolvedDisplayName) key DOWN detected")
                 self.isKeyPressed = true
                 DispatchQueue.main.async {
-                    debugLog("🔍 [DEBUG] Calling onKeyDown callback")
                     self.onKeyDown()
                 }
             } else if !keyPressed && self.isKeyPressed {
-                debugLog("🔍 [DEBUG] \(self.shortcutKey.displayName) key UP detected")
+                debugLog("🔍 [DEBUG] \(self.resolvedDisplayName) key UP detected")
                 self.isKeyPressed = false
                 DispatchQueue.main.async {
-                    debugLog("🔍 [DEBUG] Calling onKeyUp callback")
                     self.onKeyUp()
                 }
             }
         }
 
         if monitor == nil {
-            debugLog("⚠️ アクセシビリティ権限が必要です - monitor is nil")
+            debugLog("⚠️ Accessibility permission is required - monitor is nil")
         } else {
-            debugLog("✅ KeyMonitor started successfully for: \(shortcutKey.displayName)")
+            debugLog("✅ KeyMonitor started successfully for: \(resolvedDisplayName)")
         }
+    }
+
+    private func startCustomShortcutMonitoring() {
+        let eventMask =
+            (1 << CGEventType.keyDown.rawValue) |
+            (1 << CGEventType.keyUp.rawValue) |
+            (1 << CGEventType.flagsChanged.rawValue)
+
+        let callback: CGEventTapCallBack = { _, type, event, userInfo in
+            guard let userInfo else {
+                return Unmanaged.passUnretained(event)
+            }
+
+            let monitor = Unmanaged<KeyMonitor>.fromOpaque(userInfo).takeUnretainedValue()
+            return monitor.handleCustomShortcutEvent(type: type, event: event)
+        }
+
+        guard let eventTap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: CGEventMask(eventMask),
+            callback: callback,
+            userInfo: Unmanaged.passUnretained(self).toOpaque()
+        ) else {
+            debugLog("⚠️ Accessibility permission is required for custom shortcut monitoring")
+            return
+        }
+
+        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
+        customShortcutEventTap = eventTap
+        customShortcutEventTapSource = source
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CGEvent.tapEnable(tap: eventTap, enable: true)
+        debugLog("✅ Custom shortcut monitor started successfully for: \(resolvedDisplayName)")
     }
 
     private func startLongPressMonitoring() {
@@ -228,7 +479,7 @@ final class KeyMonitor {
         eventTapSource = source
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: eventTap, enable: true)
-        debugLog("✅ Long-press monitor started successfully for: \(shortcutKey.displayName)")
+        debugLog("✅ Long-press monitor started successfully for: \(resolvedDisplayName)")
     }
 
     private func handleLongPressEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
@@ -257,6 +508,77 @@ final class KeyMonitor {
             return routeLongPressKeyDown(event: event)
         case .keyUp:
             return routeLongPressKeyUp(event: event)
+        default:
+            return Unmanaged.passUnretained(event)
+        }
+    }
+
+    private func handleCustomShortcutEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        guard shortcutKey.usesCustomKeyCombinationBehavior else {
+            return Unmanaged.passUnretained(event)
+        }
+
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            if let customShortcutEventTap {
+                CGEvent.tapEnable(tap: customShortcutEventTap, enable: true)
+            }
+            return Unmanaged.passUnretained(event)
+        }
+
+        if event.getIntegerValueField(.eventSourceUserData) == Self.injectedEventMarker {
+            return Unmanaged.passUnretained(event)
+        }
+
+        let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
+        let modifierFlags = CustomShortcut.normalizedModifierFlags(
+            NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
+        )
+
+        switch type {
+        case .keyDown:
+            guard customShortcut.matches(keyCode: keyCode, modifierFlags: modifierFlags) else {
+                return Unmanaged.passUnretained(event)
+            }
+            let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
+            guard !isRepeat else { return nil }
+            guard !isCustomShortcutPressed else { return nil }
+            isCustomShortcutPressed = true
+            didConsumeCustomShortcutKeyPress = true
+            DispatchQueue.main.async {
+                self.onKeyDown()
+            }
+            return nil
+        case .keyUp:
+            guard keyCode == customShortcut.keyCode else {
+                return Unmanaged.passUnretained(event)
+            }
+            guard didConsumeCustomShortcutKeyPress else {
+                return Unmanaged.passUnretained(event)
+            }
+            if isCustomShortcutPressed {
+                isCustomShortcutPressed = false
+                DispatchQueue.main.async {
+                    self.onKeyUp()
+                }
+            }
+            didConsumeCustomShortcutKeyPress = false
+            return nil
+        case .flagsChanged:
+            guard customShortcut.usesModifierKeyCode(keyCode) else {
+                return Unmanaged.passUnretained(event)
+            }
+            guard isCustomShortcutPressed else {
+                return Unmanaged.passUnretained(event)
+            }
+            guard customShortcut.hasRequiredModifiers(modifierFlags) == false else {
+                return Unmanaged.passUnretained(event)
+            }
+            isCustomShortcutPressed = false
+            didConsumeCustomShortcutKeyPress = false
+            DispatchQueue.main.async {
+                self.onKeyUp()
+            }
+            return Unmanaged.passUnretained(event)
         default:
             return Unmanaged.passUnretained(event)
         }

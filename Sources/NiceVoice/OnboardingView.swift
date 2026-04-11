@@ -1207,6 +1207,7 @@ extension ShortcutKey {
         switch self {
         case .space: return "keyboard"
         case .fn: return "fn"
+        case .custom: return "keyboard"
         case .leftShift, .rightShift: return "shift"
         case .leftControl, .rightControl: return "control"
         case .leftOption, .rightOption: return "option"

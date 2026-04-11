@@ -264,13 +264,30 @@ final class AppState {
     @ObservationIgnored
     @AppStorage("shortcutKey") var shortcutKeyRaw = ShortcutKey.fn.rawValue
 
+    @ObservationIgnored
+    @AppStorage("customShortcut") var customShortcutRaw = CustomShortcut.defaultValue.rawValue
+
     var shortcutKey: ShortcutKey {
         get { ShortcutKey(rawValue: shortcutKeyRaw) ?? .fn }
         set {
-            shortcutKeyRaw = newValue.rawValue
-            keyMonitor?.updateShortcutKey(newValue)
-            updateWarmCaptureConfiguration()
+            updateShortcutSelection(newValue)
         }
+    }
+
+    var customShortcut: CustomShortcut {
+        get { CustomShortcut(rawValue: customShortcutRaw) ?? .defaultValue }
+        set {
+            customShortcutRaw = newValue.rawValue
+            keyMonitor?.updateShortcut(shortcutKey: shortcutKey, customShortcut: newValue)
+        }
+    }
+
+    var shortcutDisplayName: String {
+        shortcutKey == .custom ? customShortcut.displayName : shortcutKey.displayName
+    }
+
+    var shortcutUsageDescription: String {
+        shortcutKey.usageDescription(customShortcut: customShortcut)
     }
 
     var usageStats: UsageStats = UsageStats()
@@ -401,6 +418,7 @@ final class AppState {
 
         keyMonitor = KeyMonitor(
             shortcutKey: shortcutKey,
+            customShortcut: customShortcut,
             onPressBegan: { [weak self] in self?.beginLongPressRecordingPreflight() },
             onPressCancelled: { [weak self] in self?.cancelPendingLongPressRecording() },
             onKeyDown: { [weak self] in self?.startRecording() },
@@ -478,7 +496,7 @@ final class AppState {
                 }
             )
             isReady = true
-            statusMessage = String(localized: "準備完了 (Deepgram) - \(shortcutKey.usageDescription)")
+            statusMessage = String(localized: "準備完了 (Deepgram) - \(shortcutUsageDescription)")
             debugLog("Using Deepgram Nova-3")
             return
         }
@@ -599,7 +617,7 @@ final class AppState {
                     self.transcriptionEngine.persistLocalServerPort(endpoint.port)
                     if case .running = self.localServerStatus {
                         self.isReady = true
-                        self.statusMessage = String(localized: "準備完了 (\(engineLabel)) - \(self.shortcutKey.usageDescription)")
+                        self.statusMessage = String(localized: "準備完了 (\(engineLabel)) - \(self.shortcutUsageDescription)")
                     }
                 },
                 onStatusChange: { [weak self] status in
@@ -608,7 +626,7 @@ final class AppState {
                     if case .running = status {
                         if self.localASRService != nil {
                             self.isReady = true
-                            self.statusMessage = String(localized: "準備完了 (\(engineLabel)) - \(self.shortcutKey.usageDescription)")
+                            self.statusMessage = String(localized: "準備完了 (\(engineLabel)) - \(self.shortcutUsageDescription)")
                         } else {
                             self.statusMessage = String(localized: "\(engineLabel) の接続先を確定中...")
                         }
@@ -789,7 +807,7 @@ final class AppState {
             await MainActor.run {
                 if case .running = self.localServerStatus {
                     isReady = true
-                    statusMessage = String(localized: "準備完了 (\(engineLabel)) - \(shortcutKey.usageDescription)")
+                    statusMessage = String(localized: "準備完了 (\(engineLabel)) - \(shortcutUsageDescription)")
                 } else if shouldStartServer {
                     statusMessage = String(localized: "\(engineLabel) サーバーを起動中...")
                 } else if case .notDownloaded = modelStatus {
@@ -837,9 +855,20 @@ final class AppState {
         await service.start()
         await MainActor.run {
             isReady = true
-            statusMessage = String(localized: "準備完了 - \(shortcutKey.usageDescription)")
+            statusMessage = String(localized: "準備完了 - \(shortcutUsageDescription)")
             debugLog("✅ Using Apple SpeechAnalyzer")
         }
+    }
+
+    func updateShortcutSelection(_ newValue: ShortcutKey) {
+        shortcutKeyRaw = newValue.rawValue
+        keyMonitor?.updateShortcut(shortcutKey: newValue, customShortcut: customShortcut)
+        updateWarmCaptureConfiguration()
+    }
+
+    func updateCustomShortcut(_ newValue: CustomShortcut) {
+        customShortcutRaw = newValue.rawValue
+        keyMonitor?.updateShortcut(shortcutKey: shortcutKey, customShortcut: newValue)
     }
 
     private func requestSpeechRecognitionAuthorization() async -> Bool {
