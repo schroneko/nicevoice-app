@@ -9,6 +9,15 @@ SIGN_IDENTITY="${NICEVOICE_SIGN_IDENTITY:-}"
 ENTITLEMENTS=""
 COPY_DEST=""
 LAUNCH_AFTER_BUILD=0
+TEMP_BUNDLER_CONFIG=""
+
+cleanup_temp_files() {
+    if [[ -n "${TEMP_BUNDLER_CONFIG}" ]]; then
+        rm -f "${TEMP_BUNDLER_CONFIG}"
+    fi
+}
+
+trap cleanup_temp_files EXIT
 
 usage() {
     cat <<'EOF'
@@ -35,6 +44,23 @@ default_sign_identity() {
 
 read_default_version() {
     sed -n "s/^version = '\\(.*\\)'/\\1/p" "${ROOT_DIR}/Bundler.toml" | head -n 1
+}
+
+bundler_config_file_for() {
+    local version_output="$1"
+    local major_version
+
+    major_version="${version_output#v}"
+    major_version="${major_version%%.*}"
+
+    if [[ "${major_version}" =~ ^[0-9]+$ ]] && [[ "${major_version}" -ge 3 ]]; then
+        TEMP_BUNDLER_CONFIG="$(mktemp -t nicevoice-bundler.XXXXXX.toml)"
+        sed "/^[[:space:]]*minimum_macos_version[[:space:]]*=/d" "${ROOT_DIR}/Bundler.toml" > "${TEMP_BUNDLER_CONFIG}"
+        printf '%s\n' "${TEMP_BUNDLER_CONFIG}"
+        return
+    fi
+
+    printf '%s\n' "${ROOT_DIR}/Bundler.toml"
 }
 
 set_plist_value() {
@@ -235,7 +261,8 @@ fi
 
 echo "==> Bundling app..."
 if command -v swift-bundler >/dev/null 2>&1; then
-    swift-bundler bundle --skip-build --products-directory "${PRODUCTS_DIR}"
+    BUNDLER_CONFIG_FILE="$(bundler_config_file_for "$(swift-bundler --version 2>/dev/null || true)")"
+    swift-bundler bundle --config-file "${BUNDLER_CONFIG_FILE}" --skip-build --products-directory "${PRODUCTS_DIR}"
 elif command -v mint >/dev/null 2>&1; then
     mint run stackotter/swift-bundler bundle --skip-build --products-directory "${PRODUCTS_DIR}"
 else
