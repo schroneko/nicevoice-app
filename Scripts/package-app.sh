@@ -34,6 +34,11 @@ EOF
 }
 
 default_sign_identity() {
+    if [[ -n "${SSH_CONNECTION:-}" || -n "${SSH_CLIENT:-}" ]]; then
+        printf '%s\n' "-"
+        return
+    fi
+
     if security find-identity -v -p codesigning 2>/dev/null | grep -Fq '"NiceVoice"'; then
         printf '%s\n' "NiceVoice"
         return
