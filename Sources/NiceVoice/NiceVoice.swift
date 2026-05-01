@@ -430,6 +430,7 @@ final class AppState {
         floatingPanel = FloatingPanel(appState: self)
 
         Task {
+            try? await Task.sleep(for: .seconds(1))
             await requestPermissions()
         }
     }
@@ -787,16 +788,19 @@ final class AppState {
             return
         }
 
-        let authorizationStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+        let authorizationStatus = AVAudioApplication.shared.recordPermission
         debugLog("requestPermissions: microphone authorization status=\(authorizationStatus.rawValue)")
 
         let micStatus: Bool
         switch authorizationStatus {
-        case .authorized:
+        case .granted:
             micStatus = true
-        case .notDetermined:
-            micStatus = await AVCaptureDevice.requestAccess(for: .audio)
-        case .denied, .restricted:
+        case .undetermined:
+            await MainActor.run {
+                statusMessage = String(localized: "録音開始時にマイク権限を確認します")
+            }
+            micStatus = true
+        case .denied:
             micStatus = false
         @unknown default:
             micStatus = false
@@ -891,7 +895,10 @@ final class AppState {
     private func handleShortcutMonitoringIssue(_ issue: ShortcutMonitoringIssue?) {
         shortcutMonitoringIssue = issue
         if let issue {
-            statusMessage = issue.title
+            let microphoneAuthorized = MicrophonePermission.isGranted
+            if microphoneAuthorized || isReady {
+                statusMessage = issue.title
+            }
         }
     }
 
@@ -936,6 +943,18 @@ final class AppState {
 
         guard !isRecording else {
             debugLog("🔍 [DEBUG] startRecording guard failed - already recording")
+            return
+        }
+
+        guard !MicrophonePermission.isDenied else {
+            debugLog("🔍 [DEBUG] startRecording blocked: microphone permission is not authorized")
+            isReady = false
+            statusMessage = String(localized: "マイクの権限が必要です")
+            errorMessage = statusMessage
+            floatingPanel?.show()
+            Task {
+                await requestPermissions()
+            }
             return
         }
 

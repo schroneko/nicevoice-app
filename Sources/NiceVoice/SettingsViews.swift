@@ -993,7 +993,7 @@ struct PermissionStatusView: View {
     }
 
     private func checkPermissions() {
-        microphoneStatus = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+        microphoneStatus = MicrophonePermission.isGranted
         accessibilityStatus = AXIsProcessTrusted()
     }
 

@@ -887,8 +887,8 @@ struct OnboardingView: View {
     }
 
     private func checkMicrophonePermission() async -> Bool {
-        switch AVCaptureDevice.authorizationStatus(for: .audio) {
-        case .authorized:
+        switch AVAudioApplication.shared.recordPermission {
+        case .granted:
             return true
         default:
             return false
@@ -897,7 +897,7 @@ struct OnboardingView: View {
 
     private func requestMicrophonePermission() {
         Task {
-            let granted = await AVCaptureDevice.requestAccess(for: .audio)
+            let granted = await MicrophonePermission.request()
             await MainActor.run {
                 microphoneGranted = granted
             }

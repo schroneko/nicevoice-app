@@ -11,6 +11,7 @@ final class LocalASRService {
     private var receiveTask: Task<Void, Never>?
     private var sessionReady = false
     private var pendingStop = false
+    private var pendingStopAfterAudioCapture = false
     private var deferStreamingUntilConfirmation = false
     private var streamingConfirmed = false
     private var captureWatchdogTask: Task<Void, Never>?
@@ -65,6 +66,7 @@ final class LocalASRService {
         isRunning = true
         sessionReady = false
         pendingStop = false
+        pendingStopAfterAudioCapture = false
         self.deferStreamingUntilConfirmation = deferStreamingUntilConfirmation
         streamingConfirmed = !deferStreamingUntilConfirmation
         accumulatedText = ""
@@ -94,7 +96,30 @@ final class LocalASRService {
 
     func stopRecording() {
         guard isRunning else { return }
+        guard !waitForFirstAudioBufferBeforeStopping() else { return }
+        finishStopRecording()
+    }
+
+    private func waitForFirstAudioBufferBeforeStopping() -> Bool {
+        guard isAudioCaptureActive else { return false }
+        guard !hasCapturedAudioForCurrentRecording else { return false }
+        guard !pendingStopAfterAudioCapture else { return true }
+
+        pendingStopAfterAudioCapture = true
+        debugLog("⏳ voxmlx: waiting for first microphone buffer before stopping")
+        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.Audio.stopDelayUntilFirstBufferSeconds) { [weak self] in
+            guard let self else { return }
+            guard self.pendingStopAfterAudioCapture else { return }
+            self.pendingStopAfterAudioCapture = false
+            self.finishStopRecording()
+        }
+        return true
+    }
+
+    private func finishStopRecording() {
+        guard isRunning else { return }
         isRunning = false
+        pendingStopAfterAudioCapture = false
         cancelCaptureWatchdog()
 
         if !warmCaptureEnabled {
@@ -114,6 +139,7 @@ final class LocalASRService {
     func stop() {
         isRunning = false
         pendingStop = false
+        pendingStopAfterAudioCapture = false
         deferStreamingUntilConfirmation = false
         streamingConfirmed = false
         cancelCaptureWatchdog()
@@ -430,6 +456,12 @@ final class LocalASRService {
                     let pcmData = self.extractPCMData(from: converted)
                     self.sendAudioChunk(pcmData)
                 }
+                if self.pendingStopAfterAudioCapture {
+                    self.pendingStopAfterAudioCapture = false
+                    DispatchQueue.main.async {
+                        self.finishStopRecording()
+                    }
+                }
             }
 
             if let channelData = buffer.floatChannelData {
@@ -496,6 +528,7 @@ final class LocalASRService {
         let shouldResumeWarmCapture = warmCaptureEnabled
         isRunning = false
         pendingStop = false
+        pendingStopAfterAudioCapture = false
         deferStreamingUntilConfirmation = false
         streamingConfirmed = false
         pendingPCMChunks = []

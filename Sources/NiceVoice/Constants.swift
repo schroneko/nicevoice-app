@@ -15,6 +15,7 @@ enum Constants {
         static let finalizationWaitMilliseconds: UInt64 = 500
         static let captureFreshnessThresholdSeconds: Double = 1.5
         static let captureStartupTimeoutSeconds: Double = 1.0
+        static let stopDelayUntilFirstBufferSeconds: Double = 0.35
     }
 
     enum BrailleMeter {
