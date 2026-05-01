@@ -437,6 +437,7 @@ final class AppState {
     func setupTranscriptionService() {
         normalizeTranscriptionEngineSelection()
         debugLog("setupTranscriptionService: engine=\(transcriptionEngine.rawValue)")
+        isReady = false
         localASRService?.setWarmCaptureEnabled(false)
         localASRService?.stop()
         localASRService = nil
@@ -630,12 +631,26 @@ final class AppState {
                             self.isReady = true
                             self.statusMessage = String(localized: "準備完了 (\(engineLabel)) - \(self.shortcutUsageDescription)")
                         } else {
+                            self.isReady = false
                             self.statusMessage = String(localized: "\(engineLabel) の接続先を確定中...")
                         }
                     } else if case .error(let msg) = status {
+                        self.isReady = false
+                        self.localASRService?.setWarmCaptureEnabled(false)
+                        self.localASRService?.stop()
+                        self.localASRService = nil
                         self.statusMessage = msg
                     } else if case .starting(let msg) = status {
+                        self.isReady = false
+                        self.localASRService?.setWarmCaptureEnabled(false)
+                        self.localASRService?.stop()
+                        self.localASRService = nil
                         self.statusMessage = msg
+                    } else if case .stopped = status {
+                        self.isReady = false
+                        self.localASRService?.setWarmCaptureEnabled(false)
+                        self.localASRService?.stop()
+                        self.localASRService = nil
                     }
                 }
             )
