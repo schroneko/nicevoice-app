@@ -182,6 +182,10 @@ struct SettingsContentView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
+                        if let issue = appState.shortcutMonitoringIssue {
+                            ShortcutIssueBanner(issue: issue)
+                        }
+
                         if selectedShortcutKey == .custom {
                             VStack(alignment: .leading, spacing: 10) {
                                 HStack {
@@ -767,6 +771,39 @@ struct VoiceEnrollmentSection: View {
         data.append(header)
         data.append(pcmData)
         return data
+    }
+}
+
+struct ShortcutIssueBanner: View {
+    let issue: ShortcutMonitoringIssue
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.orange)
+                .frame(width: 20, height: 20)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(issue.title)
+                    .font(.callout)
+                    .fontWeight(.semibold)
+                Text(issue.message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.orange.opacity(0.12))
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color.orange.opacity(0.35), lineWidth: 1)
+        }
     }
 }
 

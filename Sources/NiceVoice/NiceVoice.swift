@@ -293,6 +293,7 @@ final class AppState {
     var usageStats: UsageStats = UsageStats()
     var dictionaryEntries: [DictionaryEntry] = []
     var fillerSettings: FillerSettings = FillerSettings()
+    var shortcutMonitoringIssue: ShortcutMonitoringIssue?
 
     @ObservationIgnored
     @AppStorage("transcriptionEngine") var transcriptionEngineRaw = TranscriptionEngine.defaultEngine.rawValue
@@ -421,6 +422,7 @@ final class AppState {
             customShortcut: customShortcut,
             onPressBegan: { [weak self] in self?.beginLongPressRecordingPreflight() },
             onPressCancelled: { [weak self] in self?.cancelPendingLongPressRecording() },
+            onMonitoringIssueChanged: { [weak self] issue in self?.handleShortcutMonitoringIssue(issue) },
             onKeyDown: { [weak self] in self?.startRecording() },
             onKeyUp: { [weak self] in self?.stopRecording() }
         )
@@ -869,6 +871,13 @@ final class AppState {
     func updateCustomShortcut(_ newValue: CustomShortcut) {
         customShortcutRaw = newValue.rawValue
         keyMonitor?.updateShortcut(shortcutKey: shortcutKey, customShortcut: newValue)
+    }
+
+    private func handleShortcutMonitoringIssue(_ issue: ShortcutMonitoringIssue?) {
+        shortcutMonitoringIssue = issue
+        if let issue {
+            statusMessage = issue.title
+        }
     }
 
     private func requestSpeechRecognitionAuthorization() async -> Bool {

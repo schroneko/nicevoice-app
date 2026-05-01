@@ -133,6 +133,23 @@ struct CustomShortcut: RawRepresentable, Equatable {
         return (modifierNames + [keyDisplayName]).joined(separator: " + ")
     }
 
+    var carbonModifierFlags: UInt32 {
+        var flags: UInt32 = 0
+        if modifierFlags.contains(.command) {
+            flags |= UInt32(cmdKey)
+        }
+        if modifierFlags.contains(.option) {
+            flags |= UInt32(optionKey)
+        }
+        if modifierFlags.contains(.control) {
+            flags |= UInt32(controlKey)
+        }
+        if modifierFlags.contains(.shift) {
+            flags |= UInt32(shiftKey)
+        }
+        return flags
+    }
+
     func matches(keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags) -> Bool {
         keyCode == self.keyCode && Self.normalizedModifierFlags(modifierFlags) == self.modifierFlags
     }
@@ -282,6 +299,69 @@ struct CustomShortcut: RawRepresentable, Equatable {
     }
 }
 
+enum ShortcutMonitoringIssue: Equatable {
+    case shortcutConflict(displayName: String, appName: String?)
+
+    var title: String {
+        switch self {
+        case .shortcutConflict:
+            return String(localized: "ショートカットが競合しています")
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .shortcutConflict(let displayName, let appName):
+            if let appName {
+                return String(localized: "\(displayName) は \(appName) でも使われているため、NiceVoice のショートカットを無効にしました。別の組み合わせに変更してください。")
+            }
+            return String(localized: "\(displayName) は他のアプリで使われている可能性があるため、NiceVoice のショートカットを無効にしました。別の組み合わせに変更してください。")
+        }
+    }
+}
+
+struct ShortcutConflictCandidate {
+    let appName: String
+    let keyCode: UInt16
+    let carbonModifiers: UInt32
+}
+
+enum ShortcutConflictDetector {
+    private struct StoredShortcut: Decodable {
+        let carbonKeyCode: UInt16
+        let carbonModifiers: UInt32
+    }
+
+    private static let appDomains: [(domain: String, appName: String)] = [
+        ("com.openai.codex", "Codex"),
+        ("com.openai.chat", "ChatGPT"),
+        ("com.openai.atlas", "Atlas")
+    ]
+
+    static func knownConflict(for shortcut: CustomShortcut) -> ShortcutConflictCandidate? {
+        for appDomain in appDomains {
+            guard let defaults = UserDefaults(suiteName: appDomain.domain) else { continue }
+            for value in defaults.dictionaryRepresentation().values {
+                guard let rawValue = value as? String,
+                      let data = rawValue.data(using: .utf8),
+                      let storedShortcut = try? JSONDecoder().decode(StoredShortcut.self, from: data),
+                      storedShortcut.carbonKeyCode == shortcut.keyCode,
+                      storedShortcut.carbonModifiers == shortcut.carbonModifierFlags else {
+                    continue
+                }
+
+                return ShortcutConflictCandidate(
+                    appName: appDomain.appName,
+                    keyCode: storedShortcut.carbonKeyCode,
+                    carbonModifiers: storedShortcut.carbonModifiers
+                )
+            }
+        }
+
+        return nil
+    }
+}
+
 final class KeyMonitor {
     private enum LongPressRoutingState {
         case idle
@@ -294,6 +374,7 @@ final class KeyMonitor {
     private var eventTapSource: CFRunLoopSource?
     private var customShortcutEventTap: CFMachPort?
     private var customShortcutEventTapSource: CFRunLoopSource?
+    private var customShortcutHotKeyRef: EventHotKeyRef?
     private var isKeyPressed = false
     private var isCustomShortcutPressed = false
     private var didConsumeCustomShortcutKeyPress = false
@@ -302,6 +383,7 @@ final class KeyMonitor {
     private var longPressRoutingState: LongPressRoutingState = .idle
     private let onPressBegan: (() -> Void)?
     private let onPressCancelled: (() -> Void)?
+    private let onMonitoringIssueChanged: (ShortcutMonitoringIssue?) -> Void
     private let onKeyDown: () -> Void
     private let onKeyUp: () -> Void
     private var shortcutKey: ShortcutKey
@@ -314,6 +396,7 @@ final class KeyMonitor {
         customShortcut: CustomShortcut = .defaultValue,
         onPressBegan: (() -> Void)? = nil,
         onPressCancelled: (() -> Void)? = nil,
+        onMonitoringIssueChanged: @escaping (ShortcutMonitoringIssue?) -> Void = { _ in },
         onKeyDown: @escaping () -> Void,
         onKeyUp: @escaping () -> Void
     ) {
@@ -321,6 +404,7 @@ final class KeyMonitor {
         self.customShortcut = customShortcut
         self.onPressBegan = onPressBegan
         self.onPressCancelled = onPressCancelled
+        self.onMonitoringIssueChanged = onMonitoringIssueChanged
         self.onKeyDown = onKeyDown
         self.onKeyUp = onKeyUp
         startMonitoring()
@@ -372,6 +456,8 @@ final class KeyMonitor {
             CFMachPortInvalidate(customShortcutEventTap)
             self.customShortcutEventTap = nil
         }
+
+        releaseCustomShortcutReservation()
     }
 
     private func startMonitoring() {
@@ -414,6 +500,17 @@ final class KeyMonitor {
     }
 
     private func startCustomShortcutMonitoring() {
+        if let conflict = ShortcutConflictDetector.knownConflict(for: customShortcut) {
+            debugLog("⚠️ Known shortcut conflict detected for: \(customShortcut.displayName), app=\(conflict.appName)")
+            notifyMonitoringIssue(.shortcutConflict(displayName: customShortcut.displayName, appName: conflict.appName))
+            return
+        }
+
+        guard reserveCustomShortcut() else {
+            notifyMonitoringIssue(.shortcutConflict(displayName: customShortcut.displayName, appName: nil))
+            return
+        }
+
         let eventMask =
             (1 << CGEventType.keyDown.rawValue) |
             (1 << CGEventType.keyUp.rawValue) |
@@ -436,6 +533,7 @@ final class KeyMonitor {
             callback: callback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
+            releaseCustomShortcutReservation()
             debugLog("⚠️ Accessibility permission is required for custom shortcut monitoring")
             return
         }
@@ -445,7 +543,44 @@ final class KeyMonitor {
         customShortcutEventTapSource = source
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: eventTap, enable: true)
+        notifyMonitoringIssue(nil)
         debugLog("✅ Custom shortcut monitor started successfully for: \(resolvedDisplayName)")
+    }
+
+    private func reserveCustomShortcut() -> Bool {
+        releaseCustomShortcutReservation()
+
+        let hotKeyID = EventHotKeyID(signature: OSType(0x4E56534B), id: UInt32(customShortcut.rawValue.hashValue & 0x7fffffff))
+        var hotKeyRef: EventHotKeyRef?
+        let status = RegisterEventHotKey(
+            UInt32(customShortcut.keyCode),
+            customShortcut.carbonModifierFlags,
+            hotKeyID,
+            GetApplicationEventTarget(),
+            0,
+            &hotKeyRef
+        )
+
+        guard status == noErr, let hotKeyRef else {
+            debugLog("⚠️ Custom shortcut conflict detected for: \(customShortcut.displayName), status=\(status)")
+            return false
+        }
+
+        customShortcutHotKeyRef = hotKeyRef
+        return true
+    }
+
+    private func releaseCustomShortcutReservation() {
+        if let customShortcutHotKeyRef {
+            UnregisterEventHotKey(customShortcutHotKeyRef)
+            self.customShortcutHotKeyRef = nil
+        }
+    }
+
+    private func notifyMonitoringIssue(_ issue: ShortcutMonitoringIssue?) {
+        DispatchQueue.main.async {
+            self.onMonitoringIssueChanged(issue)
+        }
     }
 
     private func startLongPressMonitoring() {
