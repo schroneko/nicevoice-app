@@ -300,22 +300,33 @@ struct CustomShortcut: RawRepresentable, Equatable {
 }
 
 enum ShortcutMonitoringIssue: Equatable {
+    case accessibilityPermissionMissing(displayName: String)
     case shortcutConflict(displayName: String, appName: String?)
+    case shortcutConflictNeedsAccessibility(displayName: String, appName: String?)
 
     var title: String {
         switch self {
-        case .shortcutConflict:
+        case .accessibilityPermissionMissing:
+            return String(localized: "アクセシビリティ権限が必要です")
+        case .shortcutConflict, .shortcutConflictNeedsAccessibility:
             return String(localized: "ショートカットが競合しています")
         }
     }
 
     var message: String {
         switch self {
+        case .accessibilityPermissionMissing(let displayName):
+            return String(localized: "\(displayName) の録音開始は試行しますが、他のアプリへキー入力が渡る可能性があります。NiceVoice にアクセシビリティ権限を許可してください。")
         case .shortcutConflict(let displayName, let appName):
             if let appName {
-                return String(localized: "\(displayName) は \(appName) でも使われているため、NiceVoice のショートカットを無効にしました。別の組み合わせに変更してください。")
+                return String(localized: "\(displayName) は \(appName) でも使われています。NiceVoice はこのショートカットを優先して処理します。")
             }
-            return String(localized: "\(displayName) は他のアプリで使われている可能性があるため、NiceVoice のショートカットを無効にしました。別の組み合わせに変更してください。")
+            return String(localized: "\(displayName) は他のアプリでも使われている可能性があります。NiceVoice はこのショートカットを優先して処理します。")
+        case .shortcutConflictNeedsAccessibility(let displayName, let appName):
+            if let appName {
+                return String(localized: "\(displayName) は \(appName) でも使われています。NiceVoice を優先するにはアクセシビリティ権限を許可してください。")
+            }
+            return String(localized: "\(displayName) は他のアプリでも使われている可能性があります。NiceVoice を優先するにはアクセシビリティ権限を許可してください。")
         }
     }
 }
@@ -338,7 +349,10 @@ enum ShortcutConflictDetector {
         ("com.openai.atlas", "Atlas")
     ]
 
-    static func knownConflict(for shortcut: CustomShortcut) -> ShortcutConflictCandidate? {
+    static func knownConflict(
+        for shortcut: CustomShortcut,
+        runningBundleIdentifiers: Set<String> = currentRunningBundleIdentifiers()
+    ) -> ShortcutConflictCandidate? {
         for appDomain in appDomains {
             guard let defaults = UserDefaults(suiteName: appDomain.domain) else { continue }
             for value in defaults.dictionaryRepresentation().values {
@@ -360,6 +374,10 @@ enum ShortcutConflictDetector {
 
         return nil
     }
+
+    private static func currentRunningBundleIdentifiers() -> Set<String> {
+        Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
+    }
 }
 
 final class KeyMonitor {
@@ -375,6 +393,7 @@ final class KeyMonitor {
     private var customShortcutEventTap: CFMachPort?
     private var customShortcutEventTapSource: CFRunLoopSource?
     private var customShortcutHotKeyRef: EventHotKeyRef?
+    private var customShortcutEventHandlerRef: EventHandlerRef?
     private var isKeyPressed = false
     private var isCustomShortcutPressed = false
     private var didConsumeCustomShortcutKeyPress = false
@@ -500,15 +519,15 @@ final class KeyMonitor {
     }
 
     private func startCustomShortcutMonitoring() {
+        var monitoringIssue: ShortcutMonitoringIssue?
+
         if let conflict = ShortcutConflictDetector.knownConflict(for: customShortcut) {
             debugLog("⚠️ Known shortcut conflict detected for: \(customShortcut.displayName), app=\(conflict.appName)")
-            notifyMonitoringIssue(.shortcutConflict(displayName: customShortcut.displayName, appName: conflict.appName))
-            return
+            monitoringIssue = .shortcutConflict(displayName: customShortcut.displayName, appName: conflict.appName)
         }
 
-        guard reserveCustomShortcut() else {
-            notifyMonitoringIssue(.shortcutConflict(displayName: customShortcut.displayName, appName: nil))
-            return
+        if !reserveCustomShortcut(), monitoringIssue == nil {
+            monitoringIssue = .shortcutConflict(displayName: customShortcut.displayName, appName: nil)
         }
 
         let eventMask =
@@ -533,8 +552,12 @@ final class KeyMonitor {
             callback: callback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
-            releaseCustomShortcutReservation()
             debugLog("⚠️ Accessibility permission is required for custom shortcut monitoring")
+            if case .shortcutConflict(_, let appName) = monitoringIssue {
+                notifyMonitoringIssue(.shortcutConflictNeedsAccessibility(displayName: customShortcut.displayName, appName: appName))
+            } else {
+                notifyMonitoringIssue(.accessibilityPermissionMissing(displayName: customShortcut.displayName))
+            }
             return
         }
 
@@ -543,12 +566,16 @@ final class KeyMonitor {
         customShortcutEventTapSource = source
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: eventTap, enable: true)
-        notifyMonitoringIssue(nil)
+        notifyMonitoringIssue(monitoringIssue)
         debugLog("✅ Custom shortcut monitor started successfully for: \(resolvedDisplayName)")
     }
 
     private func reserveCustomShortcut() -> Bool {
         releaseCustomShortcutReservation()
+
+        guard installCustomShortcutHotKeyHandler() else {
+            return false
+        }
 
         let hotKeyID = EventHotKeyID(signature: OSType(0x4E56534B), id: UInt32(customShortcut.rawValue.hashValue & 0x7fffffff))
         var hotKeyRef: EventHotKeyRef?
@@ -562,6 +589,7 @@ final class KeyMonitor {
         )
 
         guard status == noErr, let hotKeyRef else {
+            removeCustomShortcutHotKeyHandler()
             debugLog("⚠️ Custom shortcut conflict detected for: \(customShortcut.displayName), status=\(status)")
             return false
         }
@@ -570,10 +598,71 @@ final class KeyMonitor {
         return true
     }
 
+    private func installCustomShortcutHotKeyHandler() -> Bool {
+        var eventTypes = [
+            EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)),
+            EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased))
+        ]
+        var handlerRef: EventHandlerRef?
+        let status = InstallEventHandler(
+            GetApplicationEventTarget(),
+            { _, event, userInfo in
+                guard let userInfo else { return noErr }
+                let monitor = Unmanaged<KeyMonitor>.fromOpaque(userInfo).takeUnretainedValue()
+                return monitor.handleCustomShortcutHotKeyEvent(event)
+            },
+            eventTypes.count,
+            &eventTypes,
+            Unmanaged.passUnretained(self).toOpaque(),
+            &handlerRef
+        )
+
+        guard status == noErr, let handlerRef else {
+            debugLog("⚠️ Failed to install custom shortcut hotkey handler, status=\(status)")
+            return false
+        }
+
+        customShortcutEventHandlerRef = handlerRef
+        return true
+    }
+
+    private func handleCustomShortcutHotKeyEvent(_ event: EventRef?) -> OSStatus {
+        guard shortcutKey.usesCustomKeyCombinationBehavior, let event else { return noErr }
+
+        switch GetEventKind(event) {
+        case UInt32(kEventHotKeyPressed):
+            guard !isCustomShortcutPressed else { return noErr }
+            isCustomShortcutPressed = true
+            didConsumeCustomShortcutKeyPress = true
+            DispatchQueue.main.async {
+                self.onKeyDown()
+            }
+        case UInt32(kEventHotKeyReleased):
+            guard isCustomShortcutPressed || didConsumeCustomShortcutKeyPress else { return noErr }
+            isCustomShortcutPressed = false
+            didConsumeCustomShortcutKeyPress = false
+            DispatchQueue.main.async {
+                self.onKeyUp()
+            }
+        default:
+            break
+        }
+
+        return noErr
+    }
+
     private func releaseCustomShortcutReservation() {
         if let customShortcutHotKeyRef {
             UnregisterEventHotKey(customShortcutHotKeyRef)
             self.customShortcutHotKeyRef = nil
+        }
+        removeCustomShortcutHotKeyHandler()
+    }
+
+    private func removeCustomShortcutHotKeyHandler() {
+        if let customShortcutEventHandlerRef {
+            RemoveEventHandler(customShortcutEventHandlerRef)
+            self.customShortcutEventHandlerRef = nil
         }
     }
 

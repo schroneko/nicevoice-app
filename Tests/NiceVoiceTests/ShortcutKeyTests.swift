@@ -88,4 +88,14 @@ struct ShortcutKeyTests {
         #expect(restored == shortcut)
         #expect(restored?.displayName == "Shift + Command + Z")
     }
+
+    @Test
+    func defaultCustomShortcutDoesNotTreatRunningCodexAsAutomaticConflict() {
+        let conflict = ShortcutConflictDetector.knownConflict(
+            for: .defaultValue,
+            runningBundleIdentifiers: ["com.openai.codex"]
+        )
+
+        #expect(conflict == nil)
+    }
 }

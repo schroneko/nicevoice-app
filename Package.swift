@@ -9,6 +9,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.7.9"),
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.8.1"),
+        .package(url: "https://github.com/swiftlang/swift-testing.git", exact: "6.2.4"),
     ],
     targets: [
         .executableTarget(
@@ -23,7 +24,10 @@ let package = Package(
         ),
         .testTarget(
             name: "NiceVoiceTests",
-            dependencies: ["NiceVoice"]
+            dependencies: [
+                "NiceVoice",
+                .product(name: "Testing", package: "swift-testing")
+            ]
         )
     ],
     swiftLanguageModes: [.v5]
