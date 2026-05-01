@@ -132,6 +132,7 @@ final class LocalServerManager {
                 existingValue: proc.environment?["PYTHONPATH"],
                 additionalEntries: runtime.pythonPathEntries
             )
+            proc.environment?["PYTHONDONTWRITEBYTECODE"] = "1"
         case .uvx(let uvxPath, let serverPath):
             debugLog("[\(serverCommand)] found uvx at \(uvxPath), server at \(serverPath)")
             proc.executableURL = URL(fileURLWithPath: uvxPath)

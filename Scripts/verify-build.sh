@@ -13,6 +13,10 @@ if [[ -z "${INSTALL_DEST}" ]]; then
     fi
 fi
 
+killall -9 NiceVoice 2>/dev/null || true
+pkill -f "managed-by nicevoice" 2>/dev/null || true
+sleep 1
+
 echo "Building and bundling..." >&2
 "${ROOT_DIR}/Scripts/package-app.sh" \
     --configuration debug \
