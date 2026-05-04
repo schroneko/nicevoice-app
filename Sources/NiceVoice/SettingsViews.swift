@@ -95,9 +95,9 @@ struct SettingsContentView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("設定")
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
-                        .foregroundStyle(LinearGradient(colors: [.purple, .indigo], startPoint: .leading, endPoint: .trailing))
+                    Text("General")
+                        .font(.system(size: 28, weight: .semibold))
+                        .foregroundStyle(.primary)
                     Text("アプリの動作をカスタマイズ")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -115,24 +115,14 @@ struct SettingsContentView: View {
                 .offset(y: sectionAnimations[0] ? 0 : 16)
 
                 SettingsSection(
-                    title: "環境診断",
-                    icon: "wrench.and.screwdriver.fill",
-                    gradientColors: [.orange, .yellow]
-                ) {
-                    EnvironmentDiagnosticsContentView()
-                }
-                .opacity(sectionAnimations[1] ? 1 : 0)
-                .offset(y: sectionAnimations[1] ? 0 : 16)
-
-                SettingsSection(
                     title: "アップデート",
                     icon: "arrow.triangle.2.circlepath.circle.fill",
                     gradientColors: [.blue, .indigo]
                 ) {
                     UpdateSettingsContentView()
                 }
-                .opacity(sectionAnimations[2] ? 1 : 0)
-                .offset(y: sectionAnimations[2] ? 0 : 16)
+                .opacity(sectionAnimations[1] ? 1 : 0)
+                .offset(y: sectionAnimations[1] ? 0 : 16)
 
                 SettingsSection(
                     title: "一般",
@@ -243,8 +233,8 @@ struct SettingsContentView: View {
                         }
                     }
                 }
-                .opacity(sectionAnimations[3] ? 1 : 0)
-                .offset(y: sectionAnimations[3] ? 0 : 16)
+                .opacity(sectionAnimations[2] ? 1 : 0)
+                .offset(y: sectionAnimations[2] ? 0 : 16)
 
                 SettingsSection(
                     title: "書き起こし調整",
@@ -271,8 +261,8 @@ struct SettingsContentView: View {
                         appState.updateFillerSettings(fillerSettings)
                     }
                 }
-                .opacity(sectionAnimations[4] ? 1 : 0)
-                .offset(y: sectionAnimations[4] ? 0 : 16)
+                .opacity(sectionAnimations[3] ? 1 : 0)
+                .offset(y: sectionAnimations[3] ? 0 : 16)
 
                 SettingsSection(
                     title: "フィラー除去",
@@ -288,8 +278,8 @@ struct SettingsContentView: View {
                         appState.updateFillerSettings(fillerSettings)
                     }
                 }
-                .opacity(sectionAnimations[5] ? 1 : 0)
-                .offset(y: sectionAnimations[5] ? 0 : 16)
+                .opacity(sectionAnimations[4] ? 1 : 0)
+                .offset(y: sectionAnimations[4] ? 0 : 16)
 
                 SettingsSection(
                     title: "声紋認証",
@@ -297,6 +287,16 @@ struct SettingsContentView: View {
                     gradientColors: [.mint, .teal]
                 ) {
                     VoiceEnrollmentSection()
+                }
+                .opacity(sectionAnimations[5] ? 1 : 0)
+                .offset(y: sectionAnimations[5] ? 0 : 16)
+
+                SettingsSection(
+                    title: "履歴",
+                    icon: "clock",
+                    gradientColors: [.gray, .secondary]
+                ) {
+                    HistoryManagementSection(appState: appState)
                 }
                 .opacity(sectionAnimations[6] ? 1 : 0)
                 .offset(y: sectionAnimations[6] ? 0 : 16)
@@ -364,6 +364,49 @@ enum EnrollmentStatus: Equatable {
     case processing
     case success
     case failed(String)
+}
+
+struct HistoryManagementSection: View {
+    var appState: AppState
+    @State private var showingClearConfirmation = false
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("\(appState.history.count) 件の履歴")
+                    .font(.callout)
+                    .fontWeight(.medium)
+                Text("最近の履歴はメニューバーからコピーできます")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button {
+                showingClearConfirmation = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "trash")
+                    Text("すべてクリア")
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(appState.history.isEmpty ? Color.secondary : Color.red)
+            }
+            .buttonStyle(.plain)
+            .disabled(appState.history.isEmpty)
+        }
+        .padding(.vertical, 4)
+        .padding(.horizontal, 8)
+        .alert("履歴をすべて削除しますか？", isPresented: $showingClearConfirmation) {
+            Button("キャンセル", role: .cancel) {}
+            Button("削除", role: .destructive) {
+                appState.clearHistory()
+            }
+        } message: {
+            Text("この操作は取り消せません。")
+        }
+    }
 }
 
 private final class VoiceCaptureBuffer {
@@ -814,12 +857,8 @@ struct SettingsSection<Content: View>: View {
     @ViewBuilder let content: Content
     @State private var isHovered = false
 
-    private var iconGradient: LinearGradient {
-        LinearGradient(
-            colors: gradientColors,
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+    private var accentColor: Color {
+        gradientColors.first ?? .accentColor
     }
 
     var body: some View {
@@ -827,12 +866,11 @@ struct SettingsSection<Content: View>: View {
             HStack(spacing: 12) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(iconGradient)
+                        .fill(accentColor.opacity(0.12))
                         .frame(width: 32, height: 32)
-                        .shadow(color: gradientColors[0].opacity(0.3), radius: 4, y: 2)
                     Image(systemName: icon)
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(accentColor)
                 }
                 Text(title)
                     .font(.headline)
@@ -845,22 +883,14 @@ struct SettingsSection<Content: View>: View {
         .padding(22)
         .background {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.ultraThinMaterial)
+                .fill(Color(nsColor: .controlBackgroundColor))
         }
         .overlay {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(
-                    LinearGradient(
-                        colors: [.white.opacity(0.2), .white.opacity(0.05)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1
-                )
+                .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
         }
-        .shadow(color: .black.opacity(0.06), radius: 12, y: 4)
-        .scaleEffect(isHovered ? 1.005 : 1.0)
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isHovered)
+        .scaleEffect(isHovered ? 1.002 : 1.0)
+        .animation(.easeOut(duration: 0.12), value: isHovered)
         .onHover { hovering in
             isHovered = hovering
         }
@@ -870,13 +900,7 @@ struct SettingsSection<Content: View>: View {
 struct SectionDivider: View {
     var body: some View {
         Rectangle()
-            .fill(
-                LinearGradient(
-                    colors: [.clear, .secondary.opacity(0.15), .clear],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-            )
+            .fill(Color.secondary.opacity(0.14))
             .frame(height: 1)
             .padding(.vertical, 10)
     }
@@ -903,7 +927,7 @@ struct SettingsToggleRow: View {
             Toggle("", isOn: $isOn)
                 .labelsHidden()
                 .toggleStyle(.switch)
-                .tint(.purple)
+                .tint(.accentColor)
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 8)

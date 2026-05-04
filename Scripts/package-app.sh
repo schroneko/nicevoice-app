@@ -306,7 +306,7 @@ if [[ -d "${PRODUCTS_DIR}/Sparkle.framework" ]]; then
 fi
 
 echo "==> Compiling localizations..."
-xcrun xcstringstool compile Sources/NiceVoice/Resources/Localizable.xcstrings -o "${APP_PATH}/Contents/Resources"
+swift Scripts/compile-xcstrings.swift Sources/NiceVoice/Resources/Localizable.xcstrings "${APP_PATH}/Contents/Resources"
 
 echo "==> Updating Info.plist..."
 set_plist_value "${PLIST_PATH}" string "CFBundleIdentifier" "app.nicevoice.NiceVoice"
