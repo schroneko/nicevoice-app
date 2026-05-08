@@ -2,17 +2,24 @@ import AVFoundation
 
 enum MicrophonePermission {
     static var isGranted: Bool {
-        AVAudioApplication.shared.recordPermission == .granted
+        AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
     }
 
     static var isDenied: Bool {
-        AVAudioApplication.shared.recordPermission == .denied
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .denied, .restricted:
+            true
+        case .authorized, .notDetermined:
+            false
+        @unknown default:
+            true
+        }
     }
 
     static func request() async -> Bool {
         await withCheckedContinuation { continuation in
             DispatchQueue.main.async {
-                AVAudioApplication.requestRecordPermission { granted in
+                AVCaptureDevice.requestAccess(for: .audio) { granted in
                     continuation.resume(returning: granted)
                 }
             }

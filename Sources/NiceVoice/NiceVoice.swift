@@ -908,19 +908,19 @@ final class AppState {
             return
         }
 
-        let authorizationStatus = AVAudioApplication.shared.recordPermission
+        let authorizationStatus = AVCaptureDevice.authorizationStatus(for: .audio)
         debugLog("requestPermissions: microphone authorization status=\(authorizationStatus.rawValue)")
 
         let micStatus: Bool
         switch authorizationStatus {
-        case .granted:
+        case .authorized:
             micStatus = true
-        case .undetermined:
+        case .notDetermined:
             await MainActor.run {
-                statusMessage = String(localized: "録音開始時にマイク権限を確認します")
+                statusMessage = String(localized: "マイク権限を確認中...")
             }
-            micStatus = true
-        case .denied:
+            micStatus = await MicrophonePermission.request()
+        case .denied, .restricted:
             micStatus = false
         @unknown default:
             micStatus = false
