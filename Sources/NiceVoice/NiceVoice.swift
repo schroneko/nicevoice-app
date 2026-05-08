@@ -37,7 +37,7 @@ struct NiceVoiceApp: App {
     }
 
     var body: some Scene {
-        Window("Nice Voice", id: "main") {
+        Window("Preferences", id: "main") {
             MainWindowView(appState: appDelegate.appState)
                 .environment(\.locale, resolvedLocale)
                 .id(appLanguageRaw)
@@ -112,6 +112,9 @@ func debugLog(_ message: String) {
 class AppDelegate: NSObject, NSApplicationDelegate {
     let appState = AppState()
     private var statusItem: NSStatusItem?
+    private var preferencesWindow: NSWindow?
+    private var advancedTranscriptionWindow: NSWindow?
+    private var developerToolsWindow: NSWindow?
 
     @AppStorage("showInMenuBar") var showInMenuBar = true
 
@@ -171,24 +174,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func statusItemClicked(_ sender: AnyObject?) {
-        guard let event = NSApp.currentEvent else { return }
-
-        if event.type == .rightMouseUp {
-            showStatusMenu()
-        } else {
-            openMainWindow()
-        }
+        showStatusMenu()
     }
 
-    private func openMainWindow() {
+    private func openMainWindow(tab: PreferencesTab = .general) {
         NSApp.activate(ignoringOtherApps: true)
-        if let window = NSApp.windows.first(where: { $0.title == "Nice Voice" }) {
+        if let window = preferencesWindow ?? NSApp.windows.first(where: { $0.title == "Preferences" }) {
             window.makeKeyAndOrderFront(nil)
         } else {
-            if let url = URL(string: "nicevoice://main") {
-                NSWorkspace.shared.open(url)
-            }
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 720, height: 620),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                backing: .buffered,
+                defer: false
+            )
+            window.title = "Preferences"
+            window.center()
+            window.contentView = NSHostingView(rootView: MainWindowView(appState: appState))
+            preferencesWindow = window
+            window.makeKeyAndOrderFront(nil)
         }
+        NotificationCenter.default.post(name: .openPreferencesTab, object: tab.rawValue)
     }
 
     private func showStatusMenu() {
@@ -200,10 +206,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
-        let openItem = NSMenuItem(title: String(localized: "Nice Voice を開く"), action: #selector(openMainWindowAction), keyEquivalent: "o")
-        openItem.keyEquivalentModifierMask = .command
-        openItem.target = self
-        menu.addItem(openItem)
+        addRecentHistoryItems(to: menu)
+
+        menu.addItem(NSMenuItem.separator())
+
+        let preferencesItem = NSMenuItem(title: String(localized: "Preferences..."), action: #selector(openPreferencesAction), keyEquivalent: ",")
+        preferencesItem.keyEquivalentModifierMask = .command
+        preferencesItem.target = self
+        menu.addItem(preferencesItem)
+
+        let dictionaryItem = NSMenuItem(title: String(localized: "Dictionary..."), action: #selector(openDictionaryAction), keyEquivalent: "d")
+        dictionaryItem.keyEquivalentModifierMask = [.command, .option]
+        dictionaryItem.target = self
+        menu.addItem(dictionaryItem)
+
+        let advancedItem = NSMenuItem(title: String(localized: "Advanced Transcription..."), action: #selector(openAdvancedTranscriptionAction), keyEquivalent: "a")
+        advancedItem.keyEquivalentModifierMask = [.command, .option]
+        advancedItem.target = self
+        menu.addItem(advancedItem)
+
+        if AppFeatureFlags.isDeveloperToolsEnabled() {
+            let developerItem = NSMenuItem(title: String(localized: "Developer Tools..."), action: #selector(openDeveloperToolsAction), keyEquivalent: "i")
+            developerItem.keyEquivalentModifierMask = [.command, .option]
+            developerItem.target = self
+            menu.addItem(developerItem)
+        }
 
         menu.addItem(NSMenuItem.separator())
 
@@ -217,8 +244,101 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem?.menu = nil
     }
 
-    @objc private func openMainWindowAction() {
-        openMainWindow()
+    private func addRecentHistoryItems(to menu: NSMenu) {
+        let recentRecords = Array(appState.history.prefix(5))
+        if recentRecords.isEmpty {
+            let emptyItem = NSMenuItem(title: String(localized: "最近の文字起こしはありません"), action: nil, keyEquivalent: "")
+            emptyItem.isEnabled = false
+            menu.addItem(emptyItem)
+            return
+        }
+
+        let headerItem = NSMenuItem(title: String(localized: "最近の文字起こし"), action: nil, keyEquivalent: "")
+        headerItem.isEnabled = false
+        menu.addItem(headerItem)
+
+        for record in recentRecords {
+            let item = NSMenuItem(title: menuTitle(for: record), action: #selector(copyRecentHistoryItem(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = record.text
+            menu.addItem(item)
+        }
+    }
+
+    private func menuTitle(for record: TranscriptionRecord) -> String {
+        let text = record.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.count > 36 else { return text }
+        return "\(text.prefix(36))..."
+    }
+
+    @objc private func copyRecentHistoryItem(_ sender: NSMenuItem) {
+        guard let text = sender.representedObject as? String else { return }
+        appState.copyHistoryItem(text)
+    }
+
+    @objc private func openPreferencesAction() {
+        openMainWindow(tab: .general)
+    }
+
+    @objc private func openDictionaryAction() {
+        openMainWindow(tab: .dictionary)
+    }
+
+    @objc private func openAdvancedTranscriptionAction() {
+        openAdvancedTranscriptionWindow()
+    }
+
+    @objc private func openDeveloperToolsAction() {
+        openDeveloperToolsWindow()
+    }
+
+    private func openAdvancedTranscriptionWindow() {
+        showAuxiliaryWindow(
+            storedWindow: &advancedTranscriptionWindow,
+            title: "Advanced Transcription",
+            width: 900,
+            height: 640
+        ) {
+            AnyView(BatchTranscriptionView(appState: appState))
+        }
+    }
+
+    private func openDeveloperToolsWindow() {
+        showAuxiliaryWindow(
+            storedWindow: &developerToolsWindow,
+            title: "Developer Tools",
+            width: 820,
+            height: 680
+        ) {
+            AnyView(DeveloperView(appState: appState))
+        }
+    }
+
+    private func showAuxiliaryWindow(
+        storedWindow: inout NSWindow?,
+        title: String,
+        width: CGFloat,
+        height: CGFloat,
+        content: () -> AnyView
+    ) {
+        NSApp.activate(ignoringOtherApps: true)
+        if let window = storedWindow {
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: width, height: height),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = title
+        window.center()
+        window.contentView = NSHostingView(rootView: content())
+        window.isReleasedWhenClosed = false
+        storedWindow = window
+        window.makeKeyAndOrderFront(nil)
     }
 
     @objc private func quitApp() {

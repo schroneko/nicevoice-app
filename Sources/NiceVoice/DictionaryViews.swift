@@ -8,21 +8,15 @@ struct DictionaryView: View {
     @State private var showingImportError = false
     @State private var importErrorMessage = ""
 
-    private let gradientColors: [Color] = [.purple, .indigo]
+    private let gradientColors: [Color] = [.accentColor, .accentColor]
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("辞書")
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: gradientColors,
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
+                    Text("Dictionary")
+                        .font(.system(size: 28, weight: .semibold))
+                        .foregroundStyle(.primary)
                     Text("カスタム変換ルール")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -46,13 +40,10 @@ struct DictionaryView: View {
                             .font(.system(size: 18, weight: .medium))
                             .foregroundStyle(.secondary)
                             .frame(width: 36, height: 36)
-                            .background(
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .fill(.ultraThinMaterial)
-                            )
+                            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                             .overlay(
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .strokeBorder(Color.purple.opacity(0.2), lineWidth: 1)
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .strokeBorder(Color.secondary.opacity(0.16), lineWidth: 1)
                             )
                     }
                     .buttonStyle(.plain)
@@ -65,15 +56,7 @@ struct DictionaryView: View {
                             .foregroundStyle(.white)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 8)
-                            .background(
-                                LinearGradient(
-                                    colors: gradientColors,
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .shadow(color: .purple.opacity(0.3), radius: 8, y: 4)
+                            .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                     }
                     .buttonStyle(.plain)
                 }
@@ -89,14 +72,20 @@ struct DictionaryView: View {
                 Spacer()
             } else {
                 ScrollView {
-                    FlowLayout(spacing: 10) {
+                    VStack(spacing: 0) {
+                        DictionaryTableHeader()
+
                         ForEach(appState.dictionaryEntries) { entry in
-                            DictionaryCard(
+                            DictionaryRuleRow(
                                 entry: entry,
-                                gradientColors: gradientColors,
+                                onToggle: { isEnabled in
+                                    var updated = entry
+                                    updated.isEnabled = isEnabled
+                                    appState.updateDictionaryEntry(updated)
+                                },
                                 onEdit: { editingEntry = entry },
                                 onDelete: {
-                                    withAnimation(.spring(response: 0.3)) {
+                                    withAnimation(.easeOut(duration: 0.15)) {
                                         appState.removeDictionaryEntry(entry)
                                     }
                                 }
@@ -113,13 +102,7 @@ struct DictionaryView: View {
                     HStack(spacing: 8) {
                         Image(systemName: "book.closed.fill")
                             .font(.caption)
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: gradientColors,
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
+                            .foregroundStyle(.secondary)
                         Text("\(appState.dictionaryEntries.count) 件のルール")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -128,7 +111,7 @@ struct DictionaryView: View {
                 }
                 .padding(.horizontal, 32)
                 .padding(.vertical, 18)
-                .background(.ultraThinMaterial)
+                .background(Color(nsColor: .windowBackgroundColor))
             }
         }
         .sheet(isPresented: $showingAddSheet) {
@@ -194,43 +177,95 @@ struct DictionaryView: View {
     }
 }
 
+struct DictionaryTableHeader: View {
+    var body: some View {
+        HStack(spacing: 12) {
+            Text("読み")
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text("表記")
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text("有効")
+                .frame(width: 60, alignment: .center)
+            Text("操作")
+                .frame(width: 76, alignment: .trailing)
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
+struct DictionaryRuleRow: View {
+    let entry: DictionaryEntry
+    let onToggle: (Bool) -> Void
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+
+    private var enabledBinding: Binding<Bool> {
+        Binding(
+            get: { entry.isEnabled },
+            set: { onToggle($0) }
+        )
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(entry.reading)
+                .font(.callout)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(entry.writing)
+                .font(.callout)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Toggle("", isOn: enabledBinding)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .frame(width: 60)
+
+            HStack(spacing: 8) {
+                Button(action: onEdit) {
+                    Image(systemName: "pencil")
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+
+                Button(action: onDelete) {
+                    Image(systemName: "trash")
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.red)
+            }
+            .frame(width: 76, alignment: .trailing)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color.secondary.opacity(0.12))
+                .frame(height: 1)
+        }
+    }
+}
+
 struct DictionaryEmptyStateView: View {
     let gradientColors: [Color]
     let onAdd: () -> Void
 
     var body: some View {
         VStack(spacing: 24) {
-            ZStack {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: gradientColors.map { $0.opacity(0.1) },
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 120, height: 120)
-
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: gradientColors.map { $0.opacity(0.15) },
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 90, height: 90)
-
-                Image(systemName: "character.book.closed.fill")
-                    .font(.system(size: 40))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: gradientColors,
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            }
+            Image(systemName: "character.book.closed")
+                .font(.system(size: 42, weight: .regular))
+                .foregroundStyle(.secondary)
+                .frame(width: 72, height: 72)
+                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
             VStack(spacing: 8) {
                 Text("辞書が空です")
@@ -248,15 +283,7 @@ struct DictionaryEmptyStateView: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 20)
                     .padding(.vertical, 10)
-                    .background(
-                        LinearGradient(
-                            colors: gradientColors,
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .shadow(color: .purple.opacity(0.3), radius: 10, y: 5)
+                    .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
             .buttonStyle(.plain)
         }
@@ -347,13 +374,7 @@ struct DictionaryEditSheet: View {
             Text(isEditing ? "ルールを編集" : "ルールを追加")
                 .font(.title3)
                 .fontWeight(.semibold)
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: gradientColors,
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
+                .foregroundStyle(.primary)
 
             VStack(spacing: 16) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -372,14 +393,7 @@ struct DictionaryEditSheet: View {
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .strokeBorder(
-                                    LinearGradient(
-                                        colors: [.purple.opacity(0.3), .indigo.opacity(0.3)],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    ),
-                                    lineWidth: 1
-                                )
+                                .strokeBorder(Color.secondary.opacity(0.2), lineWidth: 1)
                         )
                 }
 
@@ -399,14 +413,7 @@ struct DictionaryEditSheet: View {
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .strokeBorder(
-                                    LinearGradient(
-                                        colors: [.purple.opacity(0.3), .indigo.opacity(0.3)],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    ),
-                                    lineWidth: 1
-                                )
+                                .strokeBorder(Color.secondary.opacity(0.2), lineWidth: 1)
                         )
                 }
             }
@@ -463,21 +470,8 @@ struct DictionaryEditSheet: View {
                     .padding(.horizontal, 20)
                     .padding(.vertical, 10)
                     .background(
-                        LinearGradient(
-                            colors: (reading.isEmpty || writing.isEmpty)
-                                ? [.gray.opacity(0.5), .gray.opacity(0.4)]
-                                : gradientColors,
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .shadow(
-                        color: (reading.isEmpty || writing.isEmpty)
-                            ? .clear
-                            : .purple.opacity(0.3),
-                        radius: 8,
-                        y: 4
+                        (reading.isEmpty || writing.isEmpty) ? Color.gray.opacity(0.55) : Color.accentColor,
+                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
                     )
                 }
                 .buttonStyle(.plain)
