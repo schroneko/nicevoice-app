@@ -418,10 +418,20 @@ final class AppState {
     @ObservationIgnored
     @AppStorage("transcriptionEngine") var transcriptionEngineRaw = TranscriptionEngine.defaultEngine.rawValue
 
+    @ObservationIgnored
+    @AppStorage("transcriptionLanguageMode") var transcriptionLanguageModeRaw = TranscriptionLanguageMode.defaultMode.rawValue
+
     var transcriptionEngine: TranscriptionEngine {
         get { TranscriptionEngine.normalized(rawValue: transcriptionEngineRaw) }
         set {
             transcriptionEngineRaw = TranscriptionEngine.normalized(rawValue: newValue.rawValue).rawValue
+        }
+    }
+
+    var transcriptionLanguageMode: TranscriptionLanguageMode {
+        get { TranscriptionLanguageMode(rawValue: transcriptionLanguageModeRaw) ?? .defaultMode }
+        set {
+            transcriptionLanguageModeRaw = newValue.rawValue
         }
     }
 
@@ -492,6 +502,7 @@ final class AppState {
 
         if #available(macOS 26.0, *) {
             speechAnalyzerService = SpeechAnalyzerService(
+                languageMode: transcriptionLanguageMode,
                 onTranscription: { [weak self] text, isFinal in
                     debugLog("📥 onTranscription called: isFinal=\(isFinal), len=\(text.count), text='\(text.prefix(50))'")
                     DispatchQueue.main.async {
@@ -557,7 +568,11 @@ final class AppState {
 
     func setupTranscriptionService() {
         normalizeTranscriptionEngineSelection()
-        debugLog("setupTranscriptionService: engine=\(transcriptionEngine.rawValue)")
+        let languageMode = transcriptionLanguageMode
+        if #available(macOS 26.0, *) {
+            (speechAnalyzerService as? SpeechAnalyzerService)?.setLanguageMode(languageMode)
+        }
+        debugLog("setupTranscriptionService: engine=\(transcriptionEngine.rawValue), languageMode=\(languageMode.rawValue)")
         isReady = false
         localASRService?.setWarmCaptureEnabled(false)
         localASRService?.stop()
@@ -582,6 +597,7 @@ final class AppState {
 
             deepgramService = DeepgramService(
                 apiKey: apiKey,
+                languageMode: languageMode,
                 onTranscription: { [weak self] text, isFinal in
                     debugLog("[Deepgram] onTranscription: isFinal=\(isFinal), len=\(text.count)")
                     DispatchQueue.main.async {
@@ -684,6 +700,7 @@ final class AppState {
                     wsEndpoint: endpoint.wsEndpoint,
                     healthEndpoint: endpoint.healthEndpoint,
                     sampleRate: sampleRate,
+                    languageMode: languageMode,
                     onTranscription: { [weak self] text, isFinal in
                         debugLog("📥 [\(engineLabel)] onTranscription: isFinal=\(isFinal), len=\(text.count)")
                         DispatchQueue.main.async {
@@ -1370,6 +1387,7 @@ final class AppState {
                     result = try await BatchTranscriptionService.shared.transcribeFile(
                         at: tempURL,
                         engine: engine,
+                        languageMode: self.transcriptionLanguageMode,
                         onProgress: { _ in },
                         onStatusChange: { _ in }
                     )

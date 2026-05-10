@@ -16,6 +16,7 @@ final class DeepgramService {
 
     private let apiKey: String
     private let sampleRate: Double
+    private let languageMode: TranscriptionLanguageMode
     private let onTranscription: (String, Bool) -> Void
     private let onFinalCompletion: ((String) -> Void)?
     private let onError: (String) -> Void
@@ -30,6 +31,7 @@ final class DeepgramService {
     init(
         apiKey: String,
         sampleRate: Double = Constants.Deepgram.sampleRate,
+        languageMode: TranscriptionLanguageMode = .defaultMode,
         onTranscription: @escaping (String, Bool) -> Void,
         onFinalCompletion: ((String) -> Void)? = nil,
         onError: @escaping (String) -> Void,
@@ -39,6 +41,7 @@ final class DeepgramService {
     ) {
         self.apiKey = apiKey
         self.sampleRate = sampleRate
+        self.languageMode = languageMode
         self.onTranscription = onTranscription
         self.onFinalCompletion = onFinalCompletion
         self.onError = onError
@@ -144,7 +147,7 @@ final class DeepgramService {
         var components = URLComponents(string: Constants.Deepgram.wsEndpoint)!
         components.queryItems = [
             URLQueryItem(name: "model", value: Constants.Deepgram.defaultModel),
-            URLQueryItem(name: "language", value: Constants.Deepgram.defaultLanguage),
+            URLQueryItem(name: "language", value: languageMode.deepgramLanguage),
             URLQueryItem(name: "smart_format", value: "true"),
             URLQueryItem(name: "punctuate", value: "true"),
             URLQueryItem(name: "interim_results", value: "true"),
@@ -427,6 +430,7 @@ final class DeepgramService {
     static func transcribeBatch(
         fileURL: URL,
         apiKey: String,
+        languageMode: TranscriptionLanguageMode = .defaultMode,
         onProgress: @escaping (Double) -> Void,
         onStatusChange: @escaping (String) -> Void
     ) async throws -> String {
@@ -448,7 +452,7 @@ final class DeepgramService {
         var components = URLComponents(string: Constants.Deepgram.restEndpoint)!
         components.queryItems = [
             URLQueryItem(name: "model", value: Constants.Deepgram.defaultModel),
-            URLQueryItem(name: "language", value: Constants.Deepgram.defaultLanguage),
+            URLQueryItem(name: "language", value: languageMode.deepgramLanguage),
             URLQueryItem(name: "smart_format", value: "true"),
             URLQueryItem(name: "punctuate", value: "true"),
         ]

@@ -51,6 +51,7 @@ final class BatchTranscriptionService: @unchecked Sendable {
     func transcribeFile(
         at url: URL,
         engine: TranscriptionEngine = .speechAnalyzer,
+        languageMode: TranscriptionLanguageMode = .defaultMode,
         onProgress: @escaping (Double) -> Void,
         onStatusChange: @escaping (String) -> Void
     ) async throws -> String {
@@ -69,6 +70,7 @@ final class BatchTranscriptionService: @unchecked Sendable {
                 at: url,
                 wsEndpoint: endpoint.wsEndpoint,
                 sampleRate: Constants.VoxtralLocal.sampleRate,
+                languageMode: languageMode,
                 onProgress: onProgress,
                 onStatusChange: onStatusChange
             )
@@ -80,6 +82,7 @@ final class BatchTranscriptionService: @unchecked Sendable {
                 at: url,
                 wsEndpoint: endpoint.wsEndpoint,
                 sampleRate: Constants.Qwen3ASR.sampleRate,
+                languageMode: languageMode,
                 onProgress: onProgress,
                 onStatusChange: onStatusChange
             )
@@ -91,6 +94,7 @@ final class BatchTranscriptionService: @unchecked Sendable {
             return try await DeepgramService.transcribeBatch(
                 fileURL: url,
                 apiKey: apiKey,
+                languageMode: languageMode,
                 onProgress: onProgress,
                 onStatusChange: onStatusChange
             )
@@ -318,6 +322,7 @@ final class BatchTranscriptionService: @unchecked Sendable {
         at url: URL,
         wsEndpoint: String,
         sampleRate: Double,
+        languageMode: TranscriptionLanguageMode,
         onProgress: @escaping (Double) -> Void,
         onStatusChange: @escaping (String) -> Void
     ) async throws -> String {
@@ -364,6 +369,7 @@ final class BatchTranscriptionService: @unchecked Sendable {
 
         let createdMsg = try await wsTask.receive()
         debugLog("WebSocket connected: \(createdMsg)")
+        try await sendSessionUpdate(to: wsTask, languageMode: languageMode)
 
         onStatusChange(String(localized: "音声を送信中..."))
         onProgress(0.15)
@@ -478,6 +484,27 @@ final class BatchTranscriptionService: @unchecked Sendable {
         debugLog("Local ASR batch transcription completed: \(fullText.count) chars, text: \(fullText)")
 
         return fullText
+    }
+
+    private func sendSessionUpdate(to wsTask: URLSessionWebSocketTask, languageMode: TranscriptionLanguageMode) async throws {
+        var transcription: [String: Any] = [
+            "allowed_languages": languageMode.allowedLanguageCodes
+        ]
+        if let language = languageMode.singleLanguageCode {
+            transcription["language"] = language
+        }
+        let message: [String: Any] = [
+            "type": "session.update",
+            "session": [
+                "input_audio_transcription": transcription
+            ]
+        ]
+        let data = try JSONSerialization.data(withJSONObject: message)
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw BatchTranscriptionError.analyzerInitFailed
+        }
+        try await wsTask.send(.string(text))
+        _ = try? await wsTask.receive()
     }
 }
 

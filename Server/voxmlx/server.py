@@ -19,6 +19,7 @@ from mistral_common.tokens.tokenizers.base import SpecialTokenPolicy
 from . import DEFAULT_DELAY_TOKENS, REALTIME_LEFT_PAD_TOKENS, REALTIME_RIGHT_PAD_TOKENS, _build_prompt_tokens, load_model
 from .audio import SAMPLES_PER_TOKEN, log_mel_spectrogram_step
 from .cache import RotatingKVCache
+from .language_logits import make_language_logit_mask, normalize_allowed_languages
 
 logger = logging.getLogger("voxmlx.server")
 
@@ -47,26 +48,36 @@ class StreamingSession:
         self.model = model
         self.sp = sp
         self.temperature = temperature
+        self.allowed_languages = set()
+        self.language = None
+        self._language_logit_mask = None
+        self._language_logit_mask_vocab_size = None
 
-        prompt_tokens, n_delay_tokens = _build_prompt_tokens(
-            sp,
-            n_left_pad_tokens=N_LEFT_PAD_TOKENS,
-            num_delay_tokens=DEFAULT_DELAY_TOKENS,
-        )
-        self.prefix_len = len(prompt_tokens)
-        self.eos_token_id = sp.eos_id
-
-        self.t_cond = model.time_embedding(mx.array([n_delay_tokens], dtype=mx.float32))
-        mx.eval(self.t_cond)
-
-        prompt_ids = mx.array([prompt_tokens])
-        self.text_embeds = model.language_model.embed(prompt_ids)[0]
-        mx.eval(self.text_embeds)
+        self._configure_prompt()
 
         self.n_layers = len(model.language_model.layers)
         self.sliding_window = 8192
 
         self._reset_state()
+
+    def _configure_prompt(self):
+        prompt_language = self.language if self.language in {"ja", "en"} else None
+
+        prompt_tokens, n_delay_tokens = _build_prompt_tokens(
+            self.sp,
+            n_left_pad_tokens=N_LEFT_PAD_TOKENS,
+            num_delay_tokens=DEFAULT_DELAY_TOKENS,
+            language=prompt_language,
+        )
+        self.prefix_len = len(prompt_tokens)
+        self.eos_token_id = self.sp.eos_id
+
+        self.t_cond = self.model.time_embedding(mx.array([n_delay_tokens], dtype=mx.float32))
+        mx.eval(self.t_cond)
+
+        prompt_ids = mx.array([prompt_tokens])
+        self.text_embeds = self.model.language_model.embed(prompt_ids)[0]
+        mx.eval(self.text_embeds)
 
     def _reset_state(self):
         """Clear all incremental state for a new utterance."""
@@ -94,9 +105,30 @@ class StreamingSession:
         self._reset_state()
 
     def _sample(self, logits):
+        mask = self._get_language_logit_mask(logits.shape[-1])
+        if mask is not None:
+            logits = logits + mask.reshape(1, 1, -1)
         if self.temperature <= 0:
             return mx.argmax(logits[0, -1:], axis=-1).squeeze()
         return mx.random.categorical(logits[0, -1:] / self.temperature).squeeze()
+
+    def set_allowed_languages(self, allowed_languages):
+        self.allowed_languages = normalize_allowed_languages(allowed_languages)
+        next_language = next(iter(self.allowed_languages)) if len(self.allowed_languages) == 1 else None
+        if next_language != self.language:
+            self.language = next_language
+            self._configure_prompt()
+            self.reset()
+        self._language_logit_mask = None
+        self._language_logit_mask_vocab_size = None
+
+    def _get_language_logit_mask(self, vocab_size):
+        if not self.allowed_languages:
+            return None
+        if self._language_logit_mask is None or self._language_logit_mask_vocab_size != vocab_size:
+            self._language_logit_mask = make_language_logit_mask(self.sp, self.allowed_languages, vocab_size)
+            self._language_logit_mask_vocab_size = vocab_size
+        return self._language_logit_mask
 
     def _decode_steps(self, embeds, n_to_decode):
         """Decode n_to_decode positions. Returns (n_consumed, hit_eos, tokens)."""
@@ -351,6 +383,7 @@ def create_app(model_path: str, temperature: float = 0.0):
         logger.info("WebSocket connected")
 
         session = StreamingSession(model, sp, temperature)
+        sent_text = ""
 
         await ws.send_json({"type": "session.created"})
 
@@ -366,6 +399,13 @@ def create_app(model_path: str, temperature: float = 0.0):
                 msg_type = msg.get("type", "")
 
                 if msg_type == "session.update":
+                    session_config = msg.get("session", {})
+                    transcription_config = session_config.get("input_audio_transcription", {})
+                    allowed_languages = normalize_allowed_languages(transcription_config.get("allowed_languages"))
+                    language = transcription_config.get("language")
+                    if language:
+                        allowed_languages = normalize_allowed_languages([language])
+                    session.set_allowed_languages(allowed_languages)
                     await ws.send_json({"type": "session.updated"})
 
                 elif msg_type == "input_audio_buffer.append":
@@ -378,11 +418,13 @@ def create_app(model_path: str, temperature: float = 0.0):
                     audio_f32 = pcm16.astype(np.float32) / 32768.0
 
                     tokens = session.feed_audio(audio_f32)
-                    for tok in tokens:
+                    if tokens:
+                        delta = session.full_text[len(sent_text) :]
+                        sent_text = session.full_text
                         await ws.send_json(
                             {
                                 "type": "response.audio_transcript.delta",
-                                "delta": tok,
+                                "delta": delta,
                             }
                         )
 
@@ -394,25 +436,30 @@ def create_app(model_path: str, temperature: float = 0.0):
                             }
                         )
                         session.reset()
+                        sent_text = ""
 
                 elif msg_type == "input_audio_buffer.commit":
                     is_final = msg.get("final", False)
                     if is_final:
                         tokens = session.finalize()
-                        for tok in tokens:
+                        final_source = session.eos_text or session.full_text
+                        if tokens:
+                            delta = session.full_text[len(sent_text) :]
+                            sent_text = session.full_text
                             await ws.send_json(
                                 {
                                     "type": "response.audio_transcript.delta",
-                                    "delta": tok,
+                                    "delta": delta,
                                 }
                             )
                         await ws.send_json(
                             {
                                 "type": "response.audio_transcript.done",
-                                "text": session.eos_text or session.full_text,
+                                "text": final_source,
                             }
                         )
                         session.reset()
+                        sent_text = ""
 
         except WebSocketDisconnect:
             logger.info("WebSocket disconnected")

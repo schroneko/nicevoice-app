@@ -240,6 +240,77 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
     }
 }
 
+enum TranscriptionLanguageMode: String, CaseIterable, Codable {
+    case japaneseEnglish
+    case japanese
+    case english
+    case multilingual
+
+    static let defaultMode: TranscriptionLanguageMode = .japaneseEnglish
+
+    var displayName: String {
+        switch self {
+        case .japaneseEnglish: return String(localized: "日本語 + English")
+        case .japanese: return String(localized: "日本語のみ")
+        case .english: return "English only"
+        case .multilingual: return String(localized: "多言語")
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .japaneseEnglish:
+            return String(localized: "既定値。日本語と英語だけを許可して、フランス語などへの誤認識を抑えます")
+        case .japanese:
+            return String(localized: "日本語の音声入力に固定します")
+        case .english:
+            return String(localized: "英語の音声入力に固定します")
+        case .multilingual:
+            return String(localized: "Voxtral が対応する言語を自動判定します")
+        }
+    }
+
+    var deepgramLanguage: String {
+        switch self {
+        case .japanese: return "ja"
+        case .english: return "en"
+        case .japaneseEnglish, .multilingual: return "multi"
+        }
+    }
+
+    var singleLanguageCode: String? {
+        switch self {
+        case .japanese: return "ja"
+        case .english: return "en"
+        case .japaneseEnglish, .multilingual: return nil
+        }
+    }
+
+    var allowedLanguageCodes: [String] {
+        switch self {
+        case .japaneseEnglish: return ["ja", "en"]
+        case .japanese: return ["ja"]
+        case .english: return ["en"]
+        case .multilingual: return []
+        }
+    }
+
+    var speechAnalyzerLanguages: [SupportedLanguage] {
+        switch self {
+        case .japaneseEnglish, .multilingual: return [.japanese, .english]
+        case .japanese: return [.japanese]
+        case .english: return [.english]
+        }
+    }
+
+    var defaultSpeechAnalyzerLanguage: SupportedLanguage {
+        switch self {
+        case .english: return .english
+        case .japaneseEnglish, .japanese, .multilingual: return .japanese
+        }
+    }
+}
+
 enum AppLanguage: String, CaseIterable {
     case system
     case ja

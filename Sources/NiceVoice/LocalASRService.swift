@@ -27,6 +27,7 @@ final class LocalASRService {
     private let wsEndpoint: String
     private let healthEndpoint: String
     private let sampleRate: Double
+    private let languageMode: TranscriptionLanguageMode
     private let onTranscription: (String, Bool) -> Void
     private let onFinalCompletion: ((String) -> Void)?
     private let onError: (String) -> Void
@@ -42,6 +43,7 @@ final class LocalASRService {
         wsEndpoint: String,
         healthEndpoint: String,
         sampleRate: Double,
+        languageMode: TranscriptionLanguageMode = .defaultMode,
         onTranscription: @escaping (String, Bool) -> Void,
         onFinalCompletion: ((String) -> Void)? = nil,
         onError: @escaping (String) -> Void,
@@ -52,6 +54,7 @@ final class LocalASRService {
         self.wsEndpoint = wsEndpoint
         self.healthEndpoint = healthEndpoint
         self.sampleRate = sampleRate
+        self.languageMode = languageMode
         self.onTranscription = onTranscription
         self.onFinalCompletion = onFinalCompletion
         self.onError = onError
@@ -316,6 +319,7 @@ final class LocalASRService {
         case "session.created":
             debugLog("✅ voxmlx session created")
             sessionReady = true
+            sendSessionUpdate()
             flushPendingChunks()
             DispatchQueue.main.async {
                 self.onStatusChange?(String(localized: "voxmlx 接続完了"))
@@ -371,6 +375,22 @@ final class LocalASRService {
             pendingStop = false
             sendEndAudio()
         }
+    }
+
+    private func sendSessionUpdate() {
+        var transcription: [String: Any] = [
+            "allowed_languages": languageMode.allowedLanguageCodes
+        ]
+        if let language = languageMode.singleLanguageCode {
+            transcription["language"] = language
+        }
+        let message: [String: Any] = [
+            "type": "session.update",
+            "session": [
+                "input_audio_transcription": transcription
+            ]
+        ]
+        sendJSON(message)
     }
 
     private func sendAudioChunk(_ pcmData: Data) {

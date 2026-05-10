@@ -36,6 +36,7 @@ final class SpeechAnalyzerService {
     private var isDetectingLanguage = false
     private var languageDetectionBuffers: [AVAudioPCMBuffer] = []
     private let languageDetectionDuration: TimeInterval = 1.0
+    private var languageMode: TranscriptionLanguageMode
 
     private let onTranscription: (String, Bool) -> Void
     private let onFinalCompletion: ((String) -> Void)?
@@ -53,6 +54,7 @@ final class SpeechAnalyzerService {
     }
 
     init(
+        languageMode: TranscriptionLanguageMode = .defaultMode,
         onTranscription: @escaping (String, Bool) -> Void,
         onFinalCompletion: ((String) -> Void)? = nil,
         onError: @escaping (String) -> Void,
@@ -61,6 +63,7 @@ final class SpeechAnalyzerService {
         onLanguageDetected: ((SupportedLanguage) -> Void)? = nil,
         onCaptureStarted: (() -> Void)? = nil
     ) {
+        self.languageMode = languageMode
         self.onTranscription = onTranscription
         self.onFinalCompletion = onFinalCompletion
         self.onError = onError
@@ -70,9 +73,13 @@ final class SpeechAnalyzerService {
         self.onCaptureStarted = onCaptureStarted
     }
 
+    func setLanguageMode(_ mode: TranscriptionLanguageMode) {
+        languageMode = mode
+    }
+
     func start() async {
         var transcribers: [SpeechTranscriber] = []
-        for language in SupportedLanguage.allCases {
+        for language in languageMode.speechAnalyzerLanguages {
             let transcriber = SpeechTranscriber(
                 locale: language.locale,
                 transcriptionOptions: [],
@@ -95,7 +102,7 @@ final class SpeechAnalyzerService {
 
         analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: transcribers)
         onStatusChange?(String(localized: "準備完了"))
-        debugLog("✅ SpeechAnalyzer initialized with Japanese and English locales")
+        debugLog("✅ SpeechAnalyzer initialized with language mode \(languageMode.rawValue)")
         if let format = analyzerFormat {
             debugLog("🔊 Analyzer format: \(format.sampleRate)Hz, \(format.channelCount)ch")
         }
@@ -112,7 +119,7 @@ final class SpeechAnalyzerService {
         isDetectingLanguage = false
         audioBuffers = []
         languageDetectionBuffers = []
-        detectedLanguage = .japanese
+        detectedLanguage = languageMode.defaultSpeechAnalyzerLanguage
 
         audioEngine = AVAudioEngine()
         guard let audioEngine else { return }
@@ -129,7 +136,7 @@ final class SpeechAnalyzerService {
             debugLog("✅ No audio conversion needed")
         }
 
-        startMainTranscription(language: .japanese, initialBuffers: [])
+        startMainTranscription(language: languageMode.defaultSpeechAnalyzerLanguage, initialBuffers: [])
 
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
             guard let self, self.isRunning else { return }
@@ -236,7 +243,7 @@ final class SpeechAnalyzerService {
     }
 
     private func detectLanguageAndStartTranscription(buffers: [AVAudioPCMBuffer]) async {
-        let language: SupportedLanguage = .japanese
+        let language = languageMode.defaultSpeechAnalyzerLanguage
         debugLog("🌍 Using fixed language: \(language.displayName)")
 
         detectedLanguage = language

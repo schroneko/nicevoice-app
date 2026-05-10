@@ -73,6 +73,7 @@ struct SettingsContentView: View {
     @AppStorage("shortcutKey") private var shortcutKeyRaw = ShortcutKey.fn.rawValue
     @AppStorage("customShortcut") private var customShortcutRaw = CustomShortcut.defaultValue.rawValue
     @AppStorage("appLanguage") private var appLanguageRaw = AppLanguage.system.rawValue
+    @AppStorage("transcriptionLanguageMode") private var transcriptionLanguageModeRaw = TranscriptionLanguageMode.defaultMode.rawValue
     @State private var fillerSettings: FillerSettings
     @State private var sectionAnimations: [Bool] = Array(repeating: false, count: 8)
     @State private var isCapturingCustomShortcut = false
@@ -84,6 +85,10 @@ struct SettingsContentView: View {
 
     private var selectedCustomShortcut: CustomShortcut {
         CustomShortcut(rawValue: customShortcutRaw) ?? .defaultValue
+    }
+
+    private var selectedLanguageMode: TranscriptionLanguageMode {
+        TranscriptionLanguageMode(rawValue: transcriptionLanguageModeRaw) ?? .defaultMode
     }
 
     init(appState: AppState) {
@@ -241,6 +246,33 @@ struct SettingsContentView: View {
                     icon: "text.alignleft",
                     gradientColors: [.purple, .indigo]
                 ) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("認識する言語")
+                                .font(.callout)
+                                .fontWeight(.medium)
+                            Text(selectedLanguageMode.description)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Picker("", selection: $transcriptionLanguageModeRaw) {
+                            ForEach(TranscriptionLanguageMode.allCases, id: \.rawValue) { mode in
+                                Text(mode.displayName).tag(mode.rawValue)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .onChange(of: transcriptionLanguageModeRaw) { _, newValue in
+                            appState.transcriptionLanguageMode = TranscriptionLanguageMode(rawValue: newValue) ?? .defaultMode
+                            appState.setupTranscriptionService()
+                            Task {
+                                await appState.reinitializeAfterEngineChange()
+                            }
+                        }
+                    }
+
+                    SectionDivider()
+
                     SettingsToggleRow(
                         title: "句読点を自動で付ける",
                         description: "。、？を適切な位置に追加して読みやすくします",

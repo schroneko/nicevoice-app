@@ -484,6 +484,7 @@ struct BatchTranscriptionView: View {
                 let result = try await service.transcribeFile(
                     at: url,
                     engine: engine,
+                    languageMode: appState.transcriptionLanguageMode,
                     onProgress: { progress in
                         guard !Task.isCancelled else { return }
                         DispatchQueue.main.async {

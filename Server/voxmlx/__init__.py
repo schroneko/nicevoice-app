@@ -40,10 +40,16 @@ def _build_prompt_tokens(
     sp: Tekkenizer,
     n_left_pad_tokens: int = 32,
     num_delay_tokens: int = DEFAULT_DELAY_TOKENS,
+    language: str | None = None,
 ) -> tuple[list[int], int]:
     streaming_pad = sp.get_special_token("[STREAMING_PAD]")
     prefix_len = n_left_pad_tokens + num_delay_tokens  # 38 STREAMING_PAD tokens
-    tokens = [sp.bos_id] + [streaming_pad] * prefix_len
+    pad_tokens = [streaming_pad] * prefix_len
+    if language in {"ja", "en"}:
+        language_tokens = sp.encode(f"lang:{language}", bos=False, eos=False)
+        if len(language_tokens) <= len(pad_tokens):
+            pad_tokens[: len(language_tokens)] = language_tokens
+    tokens = [sp.bos_id] + pad_tokens
     return tokens, num_delay_tokens
 
 
