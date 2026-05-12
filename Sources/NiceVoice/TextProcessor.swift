@@ -504,6 +504,11 @@ struct TextProcessor {
 
         for starter in Self.starterPhrases {
             if result.hasPrefix(starter) && result.count > starter.count {
+                let isLongerGreeting = Self.greetingPhrases.contains {
+                    $0.count > starter.count && $0.hasPrefix(starter) && result.hasPrefix($0)
+                }
+                if isLongerGreeting { continue }
+
                 let afterStarter = result.dropFirst(starter.count)
                 if let first = afterStarter.first, first != "。" && first != "、" {
                     result = starter + "。" + String(afterStarter)

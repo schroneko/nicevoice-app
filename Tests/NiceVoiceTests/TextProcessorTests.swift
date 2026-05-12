@@ -53,6 +53,18 @@ struct TextProcessorTests {
     }
 
     @Test
+    func politeMorningGreetingRemainsIntact() {
+        let processor = TextProcessor(
+            fillerSettings: FillerSettings(),
+            dictionaryEntries: []
+        )
+
+        let result = processor.process("おはようございます")
+
+        #expect(result == "おはようございます")
+    }
+
+    @Test
     func trailingPartialRepeatIsStillTrimmed() {
         let processor = TextProcessor(
             fillerSettings: FillerSettings(),

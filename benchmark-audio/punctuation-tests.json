@@ -102,6 +102,12 @@
     "description": "文頭の「はい」の後に句点を挿入"
   },
   {
+    "id": "polite_morning_greeting",
+    "input": "おはようございます",
+    "expected": "おはようございます",
+    "description": "「おはようございます」の途中に句点を挿入しない"
+  },
+  {
     "id": "particle_comma_ne",
     "input": "それはなくした方がいいと思うんですけど、ね。",
     "expected": "それはなくした方がいいと思うんですけどね。",

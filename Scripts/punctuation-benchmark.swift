@@ -33,6 +33,7 @@ func removeLeadingFillers(_ text: String) -> String {
         result = result.replacingOccurrences(of: "。\(filler)", with: "。")
         result = result.replacingOccurrences(of: "に\(filler)", with: "に")
         result = result.replacingOccurrences(of: "もう\(filler)", with: "もう")
+        result = result.replacingOccurrences(of: "ば\(filler)", with: "ば")
     }
 
     let fillerPronounPatterns = [
@@ -265,8 +266,17 @@ func addLocalPunctuation(_ text: String) -> String {
     }
 
     let startersOnlyAtBeginning = ["はい", "いいえ", "うん", "ええ", "そうですね", "なるほど", "おはよう"]
+    let longerGreetingPhrases = [
+        "ありがとうございます", "すみません",
+        "こんにちは", "こんばんは", "おはようございます", "お疲れ様です", "お疲れさまです"
+    ]
     for starter in startersOnlyAtBeginning {
         if result.hasPrefix(starter) && result.count > starter.count {
+            let isLongerGreeting = longerGreetingPhrases.contains {
+                $0.count > starter.count && $0.hasPrefix(starter) && result.hasPrefix($0)
+            }
+            if isLongerGreeting { continue }
+
             let afterStarter = result.dropFirst(starter.count)
             if let first = afterStarter.first, first != "。" && first != "、" {
                 result = starter + "。" + String(afterStarter)
