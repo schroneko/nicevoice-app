@@ -15,6 +15,18 @@ struct TextProcessorTests {
     }
 
     @Test
+    func builtInDeveloperDictionaryTermsAreApplied() {
+        let processor = TextProcessor(
+            fillerSettings: FillerSettings(),
+            dictionaryEntries: []
+        )
+
+        let result = processor.process("エルメスエージェントとコーデックスCLIとコーデックスとCloudflareワーカーズ")
+
+        #expect(result == "Hermes AgentとCodex CLIとCodexとCloudflare Workers")
+    }
+
+    @Test
     func interimProcessingDoesNotLeaveTrailingSentenceEnd() {
         let processor = TextProcessor(
             fillerSettings: FillerSettings(),

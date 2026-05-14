@@ -15,8 +15,12 @@ struct TextProcessor {
     private static let builtInDictionary: [(String, String)] = [
         ("クロードコード", "Claude Code"),
         ("クロードエムディー", "CLAUDE.md"),
+        ("エルメスエージェント", "Hermes Agent"),
+        ("コーデックスCLI", "Codex CLI"),
+        ("Cloudflareワーカーズ", "Cloudflare Workers"),
         ("ラングラー", "Wrangler"),
         ("クロード", "Claude"),
+        ("コーデックス", "Codex"),
         ("スーパーベース", "Supabase"),
         ("スパベース", "Supabase"),
         ("グロック", "Grok"),
