@@ -67,6 +67,7 @@ struct TextProcessor {
     }()
 
     private static let politeEndings = ["お願いいたします", "お願いします", "くださいませ", "ください", "でございます", "思います"]
+    private static let finalRequestEndings = ["お願いいたします", "お願いします"]
     private static let politeEndingSkipCharacters: Set<Character> = ["。", "、", "？", "！", "よ", "ね", "か", "が", "け"]
 
     private static let questionEndings = [
@@ -80,6 +81,7 @@ struct TextProcessor {
     }()
 
     private static let starterPhrases = ["はい", "いいえ", "うん", "ええ", "そうですね", "なるほど", "おはよう"]
+    private static let commaStarterPhrases = ["じゃあ"]
 
     private static let punctuationCharacters: Set<Character> = ["。", "、", "？", "！", "?", "!", ".", ","]
     private static let particleCharacters: Set<Character> = ["か", "が", "け", "ね", "よ"]
@@ -439,6 +441,9 @@ struct TextProcessor {
                         offset = result.distance(from: result.startIndex, to: afterEnd) + 1
                         continue
                     }
+                } else if Self.finalRequestEndings.contains(phrase) {
+                    result.append("。")
+                    break
                 }
                 offset = result.distance(from: result.startIndex, to: range.lowerBound) + phrase.count
             }
@@ -505,6 +510,17 @@ struct TextProcessor {
 
     private func insertStarterPunctuation(in text: String) -> String {
         var result = text
+
+        for starter in Self.commaStarterPhrases {
+            if result.hasPrefix(starter) && result.count > starter.count {
+                let afterStarter = result.dropFirst(starter.count)
+                if afterStarter.first == "。" {
+                    result = starter + "、" + String(afterStarter.dropFirst())
+                } else if let first = afterStarter.first, first != "、" {
+                    result = starter + "、" + String(afterStarter)
+                }
+            }
+        }
 
         for starter in Self.starterPhrases {
             if result.hasPrefix(starter) && result.count > starter.count {

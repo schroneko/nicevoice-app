@@ -102,6 +102,18 @@
     "description": "文頭の「はい」の後に句点を挿入"
   },
   {
+    "id": "starter_jaa_request",
+    "input": "じゃあそれでお願いします",
+    "expected": "じゃあ、それでお願いします。",
+    "description": "文頭の「じゃあ」の後に読点を挿入し、文末の依頼表現に句点を挿入"
+  },
+  {
+    "id": "starter_jaa_period_request",
+    "input": "じゃあ。それでお願いします",
+    "expected": "じゃあ、それでお願いします。",
+    "description": "文頭の「じゃあ。」を「じゃあ、」へ補正"
+  },
+  {
     "id": "polite_morning_greeting",
     "input": "おはようございます",
     "expected": "おはようございます",

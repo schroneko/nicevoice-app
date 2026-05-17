@@ -111,4 +111,18 @@ struct TextProcessorTests {
 
         #expect(result == "この形で大丈夫ですからそのまま進めてください")
     }
+
+    @Test
+    func jaaStarterUsesCommaAndFinalRequestPeriod() {
+        let processor = TextProcessor(
+            fillerSettings: FillerSettings(),
+            dictionaryEntries: []
+        )
+
+        let spokenResult = processor.process("じゃあそれでお願いします")
+        let punctuatedResult = processor.process("じゃあ。それでお願いします")
+
+        #expect(spokenResult == "じゃあ、それでお願いします。")
+        #expect(punctuatedResult == "じゃあ、それでお願いします。")
+    }
 }

@@ -205,6 +205,7 @@ func addLocalPunctuation(_ text: String) -> String {
     }
 
     let politeEndingsForMid = ["お願いいたします", "お願いします", "くださいませ", "ください", "でございます", "思います"]
+    let finalRequestEndings = ["お願いいたします", "お願いします"]
     for phrase in politeEndingsForMid {
         var offset = 0
         while offset < result.count {
@@ -218,6 +219,9 @@ func addLocalPunctuation(_ text: String) -> String {
                     offset = result.distance(from: result.startIndex, to: afterEnd) + 1
                     continue
                 }
+            } else if finalRequestEndings.contains(phrase) {
+                result.append("。")
+                break
             }
             offset = result.distance(from: result.startIndex, to: range.lowerBound) + phrase.count
         }
@@ -262,6 +266,18 @@ func addLocalPunctuation(_ text: String) -> String {
                 }
             }
             offset = result.distance(from: result.startIndex, to: range.lowerBound) + conj.count + 1
+        }
+    }
+
+    let commaStartersOnlyAtBeginning = ["じゃあ"]
+    for starter in commaStartersOnlyAtBeginning {
+        if result.hasPrefix(starter) && result.count > starter.count {
+            let afterStarter = result.dropFirst(starter.count)
+            if afterStarter.first == "。" {
+                result = starter + "、" + String(afterStarter.dropFirst())
+            } else if let first = afterStarter.first, first != "、" {
+                result = starter + "、" + String(afterStarter)
+            }
         }
     }
 
