@@ -45,6 +45,12 @@ final class FloatingPanel {
         self.window = panel
     }
 
+    private func currentFloatingPanelStyle() -> FloatingPanelStyle {
+        let raw = UserDefaults.standard.string(forKey: "floatingPanelStyle")
+            ?? FloatingPanelStyle.current.rawValue
+        return FloatingPanelStyle(rawValue: raw) ?? .current
+    }
+
     private func measuredPanelSize() -> NSSize {
         guard let hostingView, let appState else {
             return NSSize(width: Constants.UI.floatingPanelWidth, height: Constants.UI.floatingPanelHeight)
@@ -53,16 +59,12 @@ final class FloatingPanel {
         hostingView.rootView = FloatingPanelView(appState: appState)
         hostingView.layoutSubtreeIfNeeded()
         let fittingSize = hostingView.fittingSize
-        let minWidth = appState.usesExpandedFloatingPanel
-            ? Constants.UI.floatingPanelExpandedWidth
-            : Constants.UI.floatingPanelWidth
-        let minHeight = appState.usesExpandedFloatingPanel
-            ? Constants.UI.floatingPanelExpandedHeight
-            : Constants.UI.floatingPanelHeight
+        let style = currentFloatingPanelStyle()
+        let minSize = style.minPanelSize(expanded: appState.usesExpandedFloatingPanel)
 
         return NSSize(
-            width: min(max(fittingSize.width, minWidth), Constants.UI.floatingPanelMaxWidth),
-            height: max(fittingSize.height, minHeight)
+            width: min(max(fittingSize.width, minSize.width), Constants.UI.floatingPanelMaxWidth),
+            height: max(fittingSize.height, minSize.height)
         )
     }
 

@@ -1952,6 +1952,11 @@ final class AppState {
         currentAXPreviewText = ""
     }
 
+    func dismissFloatingPanelError() {
+        errorMessage = nil
+        floatingPanel?.hide()
+    }
+
     func cancelRecording() {
         cancelInlinePreview()
         switch transcriptionEngine {
@@ -2248,25 +2253,26 @@ struct SpinningIcon: View {
 struct FloatingPanelView: View {
     var appState: AppState
     @State private var isVisible = false
-
-    private var isError: Bool {
-        appState.errorMessage != nil
-    }
+    @AppStorage("floatingPanelStyle") private var floatingPanelStyleRaw = FloatingPanelStyle.current.rawValue
 
     var body: some View {
+        let style = FloatingPanelStyle(rawValue: floatingPanelStyleRaw) ?? .current
         Group {
-            if isError {
-                ErrorIndicatorView(message: appState.errorMessage ?? "")
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            } else if appState.isShowingFinalizationPanel {
-                FinalizingIndicatorView(previewText: appState.floatingPanelPreviewText)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-            } else {
-                RecordingIndicatorView(
-                    currentLevel: { appState.audioLevels.last ?? 0 },
-                    startDate: appState.recordingStartDate
-                )
-                .background(.ultraThinMaterial, in: Capsule())
+            switch style {
+            case .current:
+                CurrentStyleView(appState: appState)
+            case .codexMinimal:
+                CodexMinimalStyleView(appState: appState)
+            case .liquidOrb:
+                LiquidOrbStyleView(appState: appState)
+            case .pillWaveform:
+                PillWaveformStyleView(appState: appState)
+            case .glassCaption:
+                GlassCaptionStyleView(appState: appState)
+            case .orbitDot:
+                OrbitDotStyleView(appState: appState)
+            case .frostedBar:
+                FrostedBarStyleView(appState: appState)
             }
         }
         .scaleEffect(isVisible ? 1 : 0.6)

@@ -2,7 +2,8 @@ import SwiftUI
 
 struct DeveloperView: View {
     var appState: AppState
-    @State private var sectionAnimations: [Bool] = [false, false, false, false]
+    @State private var sectionAnimations: [Bool] = [false, false, false, false, false]
+    @AppStorage("floatingPanelStyle") private var floatingPanelStyleRaw = FloatingPanelStyle.current.rawValue
     @State private var deepgramApiKeyInput = ""
     @State private var hasDeepgramApiKey = false
 
@@ -186,6 +187,28 @@ struct DeveloperView: View {
                 }
 
                 SettingsSection(
+                    title: "フローティングパネルスタイル",
+                    icon: "rectangle.on.rectangle.angled",
+                    gradientColors: [.purple, .pink]
+                ) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(FloatingPanelStyle.allCases) { style in
+                            FloatingPanelStyleRow(
+                                style: style,
+                                isSelected: floatingPanelStyleRaw == style.rawValue,
+                                action: { floatingPanelStyleRaw = style.rawValue }
+                            )
+                        }
+                        Text("録音すると選択中のスタイルでフローティングパネルが表示されます。録音中の切り替えは次の録音から反映されます。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 4)
+                    }
+                }
+                .opacity(sectionAnimations[3] ? 1 : 0)
+                .offset(y: sectionAnimations[3] ? 0 : 16)
+
+                SettingsSection(
                     title: "デバッグ情報",
                     icon: "ladybug.fill",
                     gradientColors: [.green, .teal]
@@ -216,8 +239,8 @@ struct DeveloperView: View {
                         .buttonStyle(.plain)
                     }
                 }
-                .opacity(sectionAnimations[3] ? 1 : 0)
-                .offset(y: sectionAnimations[3] ? 0 : 16)
+                .opacity(sectionAnimations[4] ? 1 : 0)
+                .offset(y: sectionAnimations[4] ? 0 : 16)
 
                 Spacer(minLength: 20)
             }
@@ -415,6 +438,69 @@ struct DebugInfoRow: View {
                 .foregroundStyle(.primary)
                 .textSelection(.enabled)
             Spacer()
+        }
+    }
+}
+
+struct FloatingPanelStyleRow: View {
+    let style: FloatingPanelStyle
+    let isSelected: Bool
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    private var indicatorGradient: LinearGradient {
+        LinearGradient(
+            colors: [.purple, .pink],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .stroke(.secondary.opacity(0.4), lineWidth: 1)
+                        .frame(width: 16, height: 16)
+                    if isSelected {
+                        Circle()
+                            .fill(indicatorGradient)
+                            .frame(width: 10, height: 10)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(style.displayName)
+                        .font(.callout)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.primary)
+                    Text(style.subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+            }
+            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
+            .background {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(isSelected ? AnyShapeStyle(indicatorGradient.opacity(0.08)) : AnyShapeStyle(isHovered ? Color.secondary.opacity(0.06) : Color.clear))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(
+                        isSelected ? AnyShapeStyle(indicatorGradient.opacity(0.3)) : AnyShapeStyle(Color.clear),
+                        lineWidth: 1
+                    )
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            isHovered = hovering
         }
     }
 }
