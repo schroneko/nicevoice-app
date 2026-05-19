@@ -221,6 +221,12 @@ final class LocalServerManager {
         onStatusChange(.stopped)
     }
 
+    func restart() {
+        debugLog("[\(serverCommand)] restart requested")
+        stop()
+        start()
+    }
+
     private func handleProcessOutput(_ output: String) {
         for rawLine in output.split(whereSeparator: \.isNewline) {
             let line = String(rawLine).trimmingCharacters(in: .whitespacesAndNewlines)

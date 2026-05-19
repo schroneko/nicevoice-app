@@ -440,6 +440,7 @@ final class AppState {
     private var deepgramService: DeepgramService?
     private(set) var localServerManager: LocalServerManager?
     var localServerStatus: LocalServerStatus = .stopped
+    private var localServerRecoveryTask: Task<Void, Never>?
     private(set) var modelDownloadManagers: [TranscriptionEngine: ModelDownloadManager] = [:]
     var modelDownloadStatuses: [TranscriptionEngine: ModelDownloadStatus] = [:]
     var modelDownloadStatus: ModelDownloadStatus {
@@ -574,6 +575,8 @@ final class AppState {
         }
         debugLog("setupTranscriptionService: engine=\(transcriptionEngine.rawValue), languageMode=\(languageMode.rawValue)")
         isReady = false
+        localServerRecoveryTask?.cancel()
+        localServerRecoveryTask = nil
         localASRService?.setWarmCaptureEnabled(false)
         localASRService?.stop()
         localASRService = nil
@@ -719,7 +722,9 @@ final class AppState {
                     onError: { [weak self] error in
                         debugLog("❌ \(engineLabel) error: \(error)")
                         DispatchQueue.main.async {
-                            self?.handleServiceError(error)
+                            guard let self else { return }
+                            self.restartLocalServerAfterLocalASRFailure(engineLabel: engineLabel, reason: error)
+                            self.handleServiceError(error)
                         }
                     },
                     onStatusChange: { [weak self] status in
@@ -820,6 +825,31 @@ final class AppState {
             shortcutKey.usesLongPressBehavior &&
             (transcriptionEngine == .voxtralLocal || transcriptionEngine == .qwen3ASR)
         localASRService?.setWarmCaptureEnabled(shouldWarmCapture)
+    }
+
+    private func restartLocalServerAfterLocalASRFailure(engineLabel: String, reason: String) {
+        guard transcriptionEngine == .voxtralLocal || transcriptionEngine == .qwen3ASR else { return }
+        guard let manager = localServerManager else { return }
+        guard localServerRecoveryTask == nil else {
+            debugLog("♻️ \(engineLabel) recovery already in progress")
+            return
+        }
+
+        debugLog("♻️ Restarting \(engineLabel) server after local ASR failure: \(reason)")
+        isReady = false
+        statusMessage = String(localized: "\(engineLabel) サーバーを再起動中...")
+        localASRService?.setWarmCaptureEnabled(false)
+        localASRService?.stop()
+        localASRService = nil
+
+        let recoveryTask = Task.detached(priority: .userInitiated) {
+            manager.restart()
+        }
+        localServerRecoveryTask = recoveryTask
+        Task { @MainActor [weak self] in
+            await recoveryTask.value
+            self?.localServerRecoveryTask = nil
+        }
     }
 
     func downloadModel() {
@@ -1253,6 +1283,7 @@ final class AppState {
         finalResultTimer = DispatchWorkItem { [weak self] in
             guard let self, self.waitingForFinalResult else { return }
             debugLog("⚠️ Final result timeout for \(timeoutEngineName) after \(timeoutSeconds)s")
+            self.restartLocalServerAfterLocalASRFailure(engineLabel: timeoutEngineName, reason: "final result timeout after \(timeoutSeconds)s")
             self.handleServiceError(timeoutMessage)
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + timeoutSeconds, execute: finalResultTimer!)
