@@ -28,7 +28,9 @@ enum Constants {
     }
 
     enum Timing {
-        static let finalResultTimeoutSeconds: Double = 3.0
+        static let speechAnalyzerFinalResultTimeoutSeconds: Double = 3.0
+        static let cloudFinalResultTimeoutSeconds: Double = 10.0
+        static let localASRFinalResultTimeoutSeconds: Double = 30.0
         static let pastePreDelaySeconds: Double = 0.1
         static let pastePostDelaySeconds: Double = 1.5
         static let keyEventDelayMicroseconds: UInt32 = 50_000

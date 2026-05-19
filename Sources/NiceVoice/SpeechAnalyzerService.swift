@@ -441,13 +441,15 @@ final class SpeechAnalyzerService {
                     }
                 }
 
-                if !finalText.isEmpty {
-                    let textToSend = finalText
-                    await MainActor.run {
-                        self.onFinalCompletion?(textToSend)
-                    }
+                let textToSend = finalText
+                await MainActor.run {
+                    self.onFinalCompletion?(textToSend)
                 }
             } catch {
+                if error is CancellationError {
+                    debugLog("🔍 Transcription task cancelled")
+                    return
+                }
                 await MainActor.run {
                     debugLog("❌ Transcription error: \(error)")
                     self.onError(String(localized: "音声認識エラー: \(error.localizedDescription)"))

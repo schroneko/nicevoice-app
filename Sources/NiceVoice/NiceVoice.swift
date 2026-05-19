@@ -1247,12 +1247,15 @@ final class AppState {
 
         scheduleProvisionalFinalizationIfNeeded()
 
+        let timeoutSeconds = transcriptionEngine.finalResultTimeoutSeconds
+        let timeoutMessage = transcriptionEngine.finalResultTimeoutMessage
+        let timeoutEngineName = transcriptionEngine.displayName
         finalResultTimer = DispatchWorkItem { [weak self] in
             guard let self, self.waitingForFinalResult else { return }
-            debugLog("⚠️ SpeechAnalyzer timeout - no final result received")
-            self.handleServiceError(String(localized: "音声認識がタイムアウトしました。もう一度試してください"))
+            debugLog("⚠️ Final result timeout for \(timeoutEngineName) after \(timeoutSeconds)s")
+            self.handleServiceError(timeoutMessage)
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: finalResultTimer!)
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeoutSeconds, execute: finalResultTimer!)
     }
 
     private func unavailableRecordingMessage() -> String {

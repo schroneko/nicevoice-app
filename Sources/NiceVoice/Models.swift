@@ -138,6 +138,28 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
         }
     }
 
+    var finalResultTimeoutSeconds: Double {
+        switch self {
+        case .speechAnalyzer:
+            return Constants.Timing.speechAnalyzerFinalResultTimeoutSeconds
+        case .deepgram:
+            return Constants.Timing.cloudFinalResultTimeoutSeconds
+        case .voxtralLocal, .qwen3ASR:
+            return Constants.Timing.localASRFinalResultTimeoutSeconds
+        }
+    }
+
+    var finalResultTimeoutMessage: String {
+        switch self {
+        case .speechAnalyzer:
+            return String(localized: "音声認識がタイムアウトしました。もう一度試してください")
+        case .voxtralLocal, .qwen3ASR:
+            return String(localized: "\(displayName) の文字起こし処理がタイムアウトしました。もう一度試してください")
+        case .deepgram:
+            return String(localized: "Deepgram の文字起こし処理がタイムアウトしました。もう一度試してください")
+        }
+    }
+
     var requiresExternalModelDownload: Bool {
         switch self {
         case .qwen3ASR:

@@ -50,6 +50,13 @@ struct AppFeatureFlagsTests {
     }
 
     @Test
+    func localEnginesWaitLongerForFinalResults() {
+        #expect(TranscriptionEngine.voxtralLocal.finalResultTimeoutSeconds == Constants.Timing.localASRFinalResultTimeoutSeconds)
+        #expect(TranscriptionEngine.qwen3ASR.finalResultTimeoutSeconds == Constants.Timing.localASRFinalResultTimeoutSeconds)
+        #expect(TranscriptionEngine.speechAnalyzer.finalResultTimeoutSeconds == Constants.Timing.speechAnalyzerFinalResultTimeoutSeconds)
+    }
+
+    @Test
     func developerDiagnosticsAreHiddenForRegularUsers() {
         let diagnostics = DependencyDiagnostics.snapshot(
             build: .release,
