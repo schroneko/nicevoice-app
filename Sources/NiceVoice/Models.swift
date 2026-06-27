@@ -53,20 +53,6 @@ struct UsageStats: Codable {
     }
 }
 
-struct DictionaryEntry: Identifiable, Codable, Equatable {
-    let id: UUID
-    var reading: String
-    var writing: String
-    var isEnabled: Bool = true
-
-    init(id: UUID = UUID(), reading: String, writing: String, isEnabled: Bool = true) {
-        self.id = id
-        self.reading = reading
-        self.writing = writing
-        self.isEnabled = isEnabled
-    }
-}
-
 struct FillerSettings: Codable {
     var removeFillers: Bool = true
     var enabledPresets: Set<String> = [

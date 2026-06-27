@@ -2,7 +2,6 @@ import Foundation
 
 struct TextProcessor {
     let fillerSettings: FillerSettings
-    let dictionaryEntries: [DictionaryEntry]
 
     private static let leadingFillers = ["あの", "えっと", "えーと"]
     private static let leadingFillerCleanupPrefixes = ["、", "。", "に", "もう", "ば"]
@@ -227,9 +226,6 @@ struct TextProcessor {
             result = result.replacingOccurrences(of: reading, with: writing)
         }
 
-        for entry in dictionaryEntries where entry.isEnabled {
-            result = result.replacingOccurrences(of: entry.reading, with: entry.writing)
-        }
         return result
     }
 

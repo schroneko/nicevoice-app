@@ -4,10 +4,7 @@ import Testing
 struct TextProcessorTests {
     @Test
     func builtInDictionaryAndQuestionNormalizationAreApplied() {
-        let processor = TextProcessor(
-            fillerSettings: FillerSettings(),
-            dictionaryEntries: []
-        )
+        let processor = TextProcessor(fillerSettings: FillerSettings())
 
         let result = processor.process("クラウドフレア?")
 
@@ -16,10 +13,7 @@ struct TextProcessorTests {
 
     @Test
     func builtInDeveloperDictionaryTermsAreApplied() {
-        let processor = TextProcessor(
-            fillerSettings: FillerSettings(),
-            dictionaryEntries: []
-        )
+        let processor = TextProcessor(fillerSettings: FillerSettings())
 
         let result = processor.process("エルメスエージェントとコーデックスCLIとコーデックスとCloudflareワーカーズ")
 
@@ -28,10 +22,7 @@ struct TextProcessorTests {
 
     @Test
     func interimProcessingDoesNotLeaveTrailingSentenceEnd() {
-        let processor = TextProcessor(
-            fillerSettings: FillerSettings(),
-            dictionaryEntries: []
-        )
+        let processor = TextProcessor(fillerSettings: FillerSettings())
 
         let result = processor.process("今日はありがとうございました", isFinal: false)
 
@@ -39,25 +30,8 @@ struct TextProcessorTests {
     }
 
     @Test
-    func userDictionaryEntriesOverrideRecognizedTerms() {
-        let processor = TextProcessor(
-            fillerSettings: FillerSettings(),
-            dictionaryEntries: [
-                DictionaryEntry(reading: "ないすぼいす", writing: "NiceVoice")
-            ]
-        )
-
-        let result = processor.process("ないすぼいすを起動します")
-
-        #expect(result == "NiceVoiceを起動します")
-    }
-
-    @Test
     func repeatedGreetingPhrasesRemainIntact() {
-        let processor = TextProcessor(
-            fillerSettings: FillerSettings(),
-            dictionaryEntries: []
-        )
+        let processor = TextProcessor(fillerSettings: FillerSettings())
 
         let result = processor.process("こんにちはこんにちはこんにちはこんにちは")
 
@@ -66,10 +40,7 @@ struct TextProcessorTests {
 
     @Test
     func politeMorningGreetingRemainsIntact() {
-        let processor = TextProcessor(
-            fillerSettings: FillerSettings(),
-            dictionaryEntries: []
-        )
+        let processor = TextProcessor(fillerSettings: FillerSettings())
 
         let result = processor.process("おはようございます")
 
@@ -78,10 +49,7 @@ struct TextProcessorTests {
 
     @Test
     func trailingPartialRepeatIsStillTrimmed() {
-        let processor = TextProcessor(
-            fillerSettings: FillerSettings(),
-            dictionaryEntries: []
-        )
+        let processor = TextProcessor(fillerSettings: FillerSettings())
 
         let result = processor.process("こんにちはこんに")
 
@@ -90,10 +58,7 @@ struct TextProcessorTests {
 
     @Test
     func spokenFollowupClausesAreSplitMoreNaturally() {
-        let processor = TextProcessor(
-            fillerSettings: FillerSettings(),
-            dictionaryEntries: []
-        )
+        let processor = TextProcessor(fillerSettings: FillerSettings())
 
         let result = processor.process("ありがとうございますめちゃくちゃいい感じです今動いていますであの変換した時に切り替えた時になんかいい感じのUIをつけたいんですけれどお願いしてもいいですか")
 
@@ -102,10 +67,7 @@ struct TextProcessorTests {
 
     @Test
     func plainSentenceEndingDoesNotBreakReasonClauses() {
-        let processor = TextProcessor(
-            fillerSettings: FillerSettings(),
-            dictionaryEntries: []
-        )
+        let processor = TextProcessor(fillerSettings: FillerSettings())
 
         let result = processor.process("この形で大丈夫ですからそのまま進めてください")
 
@@ -114,10 +76,7 @@ struct TextProcessorTests {
 
     @Test
     func jaaStarterUsesCommaAndFinalRequestPeriod() {
-        let processor = TextProcessor(
-            fillerSettings: FillerSettings(),
-            dictionaryEntries: []
-        )
+        let processor = TextProcessor(fillerSettings: FillerSettings())
 
         let spokenResult = processor.process("じゃあそれでお願いします")
         let punctuatedResult = processor.process("じゃあ。それでお願いします")
