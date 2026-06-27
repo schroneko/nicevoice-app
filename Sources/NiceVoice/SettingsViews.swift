@@ -67,15 +67,23 @@ struct ShortcutKeyButton: View {
     }
 }
 
+enum SettingsStyle {
+    static let windowBackground = Color(nsColor: .windowBackgroundColor)
+    static let sidebarBackground = Color(nsColor: .controlBackgroundColor)
+    static let contentBackground = Color(nsColor: .windowBackgroundColor)
+    static let divider = Color.secondary.opacity(0.18)
+    static let rowHover = Color.white.opacity(0.05)
+}
+
 struct SettingsContentView: View {
     var appState: AppState
+    let selectedPane: PreferencesTab
     @AppStorage("showInMenuBar") private var showInMenuBar = true
     @AppStorage("shortcutKey") private var shortcutKeyRaw = ShortcutKey.fn.rawValue
     @AppStorage("customShortcut") private var customShortcutRaw = CustomShortcut.defaultValue.rawValue
     @AppStorage("appLanguage") private var appLanguageRaw = AppLanguage.system.rawValue
     @AppStorage("transcriptionLanguageMode") private var transcriptionLanguageModeRaw = TranscriptionLanguageMode.defaultMode.rawValue
     @State private var fillerSettings: FillerSettings
-    @State private var sectionAnimations: [Bool] = Array(repeating: false, count: 8)
     @State private var isCapturingCustomShortcut = false
     @State private var captureMonitor: Any?
 
@@ -91,272 +99,189 @@ struct SettingsContentView: View {
         TranscriptionLanguageMode(rawValue: transcriptionLanguageModeRaw) ?? .defaultMode
     }
 
-    init(appState: AppState) {
+    init(appState: AppState, selectedPane: PreferencesTab) {
         self.appState = appState
+        self.selectedPane = selectedPane
         _fillerSettings = State(initialValue: appState.fillerSettings)
     }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("General")
-                        .font(.system(size: 28, weight: .semibold))
-                        .foregroundStyle(.primary)
-                    Text("アプリの動作をカスタマイズ")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+            HStack(alignment: .top, spacing: 0) {
+                VStack(alignment: .leading, spacing: 26) {
+                    paneContent
+                    Spacer(minLength: 24)
                 }
-                .padding(.bottom, 8)
+                .frame(maxWidth: 620, alignment: .leading)
 
-                SettingsSection(
-                    title: "権限",
-                    icon: "lock.shield.fill",
-                    gradientColors: [.green, .teal]
-                ) {
-                    PermissionStatusView()
-                }
-                .opacity(sectionAnimations[0] ? 1 : 0)
-                .offset(y: sectionAnimations[0] ? 0 : 16)
-
-                SettingsSection(
-                    title: "アップデート",
-                    icon: "arrow.triangle.2.circlepath.circle.fill",
-                    gradientColors: [.blue, .indigo]
-                ) {
-                    UpdateSettingsContentView()
-                }
-                .opacity(sectionAnimations[1] ? 1 : 0)
-                .offset(y: sectionAnimations[1] ? 0 : 16)
-
-                SettingsSection(
-                    title: "一般",
-                    icon: "gearshape.fill",
-                    gradientColors: [.gray, .gray.opacity(0.7)]
-                ) {
-                    SettingsToggleRow(
-                        title: "メニューバーに常駐する",
-                        description: "オフにすると Dock からのみ起動できます",
-                        isOn: $showInMenuBar
-                    )
-
-                    SectionDivider()
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("ショートカットキー")
-                                .font(.callout)
-                                .fontWeight(.medium)
-                            Text("録音を開始・停止するキー")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        LazyVGrid(columns: [
-                            GridItem(.flexible()),
-                            GridItem(.flexible()),
-                            GridItem(.flexible())
-                        ], spacing: 10) {
-                            ForEach(ShortcutKey.allCases, id: \.self) { key in
-                                ShortcutKeyButton(
-                                    key: key,
-                                    isSelected: selectedShortcutKey == key,
-                                    action: {
-                                        shortcutKeyRaw = key.rawValue
-                                        appState.updateShortcutSelection(key)
-                                    }
-                                )
-                            }
-                        }
-
-                        Text(selectedShortcutKey.usesLongPressBehavior
-                             ? "Space は長押しで録音し、短く押すと通常のスペースを入力します"
-                             : selectedShortcutKey.usesCustomKeyCombinationBehavior
-                             ? "\(selectedCustomShortcut.displayName) を押している間だけ録音します。このショートカットだけが有効です"
-                             : "選んだキーを押している間だけ録音します。このショートカットだけが有効です")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                        if let issue = appState.shortcutMonitoringIssue {
-                            ShortcutIssueBanner(issue: issue)
-                        }
-
-                        if selectedShortcutKey == .custom {
-                            VStack(alignment: .leading, spacing: 10) {
-                                HStack {
-                                    Text("現在の組み合わせ")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                    Spacer()
-                                    Text(selectedCustomShortcut.displayName)
-                                        .font(.callout)
-                                        .fontWeight(.medium)
-                                }
-
-                                Button(isCapturingCustomShortcut ? "キー入力待ち..." : "ショートカットを記録") {
-                                    if isCapturingCustomShortcut {
-                                        stopShortcutCapture()
-                                    } else {
-                                        startShortcutCapture()
-                                    }
-                                }
-                                .buttonStyle(.borderedProminent)
-
-                                Text("modifier + key を押してください。Esc でキャンセルします")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(14)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .fill(Color.secondary.opacity(0.08))
-                            )
-                        }
-                    }
-
-                    SectionDivider()
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("言語")
-                                .font(.callout)
-                                .fontWeight(.medium)
-                            Text("表示言語を選択")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Picker("", selection: $appLanguageRaw) {
-                            ForEach(AppLanguage.allCases, id: \.rawValue) { lang in
-                                Text(lang.displayName).tag(lang.rawValue)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .onChange(of: appLanguageRaw) { _, newValue in
-                            let lang = AppLanguage(rawValue: newValue) ?? .system
-                            lang.apply()
-                        }
-                    }
-                }
-                .opacity(sectionAnimations[2] ? 1 : 0)
-                .offset(y: sectionAnimations[2] ? 0 : 16)
-
-                SettingsSection(
-                    title: "書き起こし調整",
-                    icon: "text.alignleft",
-                    gradientColors: [.purple, .indigo]
-                ) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("認識する言語")
-                                .font(.callout)
-                                .fontWeight(.medium)
-                            Text(selectedLanguageMode.description)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Picker("", selection: $transcriptionLanguageModeRaw) {
-                            ForEach(TranscriptionLanguageMode.allCases, id: \.rawValue) { mode in
-                                Text(mode.displayName).tag(mode.rawValue)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .onChange(of: transcriptionLanguageModeRaw) { _, newValue in
-                            appState.transcriptionLanguageMode = TranscriptionLanguageMode(rawValue: newValue) ?? .defaultMode
-                            appState.setupTranscriptionService()
-                            Task {
-                                await appState.reinitializeAfterEngineChange()
-                            }
-                        }
-                    }
-
-                    SectionDivider()
-
-                    SettingsToggleRow(
-                        title: "句読点を自動で付ける",
-                        description: "。、？を適切な位置に追加して読みやすくします",
-                        isOn: $fillerSettings.addPunctuation
-                    )
-                    .onChange(of: fillerSettings.addPunctuation) { _, _ in
-                        appState.updateFillerSettings(fillerSettings)
-                    }
-
-                    SectionDivider()
-
-                    SettingsToggleRow(
-                        title: "言い淀み・繰り返しを整理",
-                        description: "同じ言葉を繰り返した場合に1回にまとめます",
-                        isOn: $fillerSettings.removeRepetition
-                    )
-                    .onChange(of: fillerSettings.removeRepetition) { _, _ in
-                        appState.updateFillerSettings(fillerSettings)
-                    }
-                }
-                .opacity(sectionAnimations[3] ? 1 : 0)
-                .offset(y: sectionAnimations[3] ? 0 : 16)
-
-                SettingsSection(
-                    title: "フィラー除去",
-                    icon: "text.badge.minus",
-                    gradientColors: [.orange, .pink]
-                ) {
-                    SettingsToggleRow(
-                        title: "フィラーを除去する",
-                        description: "「えー」「あー」などの言葉を自動で除去します",
-                        isOn: $fillerSettings.removeFillers
-                    )
-                    .onChange(of: fillerSettings.removeFillers) { _, _ in
-                        appState.updateFillerSettings(fillerSettings)
-                    }
-                }
-                .opacity(sectionAnimations[4] ? 1 : 0)
-                .offset(y: sectionAnimations[4] ? 0 : 16)
-
-                SettingsSection(
-                    title: "声紋認証",
-                    icon: "person.badge.shield.checkmark.fill",
-                    gradientColors: [.mint, .teal]
-                ) {
-                    VoiceEnrollmentSection()
-                }
-                .opacity(sectionAnimations[5] ? 1 : 0)
-                .offset(y: sectionAnimations[5] ? 0 : 16)
-
-                SettingsSection(
-                    title: "履歴",
-                    icon: "clock",
-                    gradientColors: [.gray, .secondary]
-                ) {
-                    HistoryManagementSection(appState: appState)
-                }
-                .opacity(sectionAnimations[6] ? 1 : 0)
-                .offset(y: sectionAnimations[6] ? 0 : 16)
-
-                SettingsSection(
-                    title: "サポート",
-                    icon: "doc.text.fill",
-                    gradientColors: [.mint, .blue]
-                ) {
-                    SupportLinksContentView()
-                }
-                .opacity(sectionAnimations[7] ? 1 : 0)
-                .offset(y: sectionAnimations[7] ? 0 : 16)
-
-                Spacer(minLength: 20)
+                Spacer(minLength: 0)
             }
-            .padding(32)
+            .padding(.horizontal, 28)
+            .padding(.top, 58)
+            .padding(.bottom, 30)
         }
+        .background(SettingsStyle.contentBackground)
         .onDisappear {
             stopShortcutCapture()
         }
-        .onAppear {
-            for index in 0..<sectionAnimations.count {
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.8).delay(Double(index) * 0.1 + 0.1)) {
-                    sectionAnimations[index] = true
+    }
+
+    @ViewBuilder
+    private var paneContent: some View {
+        switch selectedPane {
+        case .general:
+            generalPane
+        case .transcription:
+            transcriptionPane
+        case .voice:
+            VoiceEnrollmentSection()
+        case .about:
+            aboutPane
+        }
+    }
+
+    private var generalPane: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SettingsToggleRow(
+                title: "メニューバーに常駐する",
+                description: "オフにすると Dock からのみ起動できます",
+                isOn: $showInMenuBar
+            )
+
+            SectionDivider()
+
+            SettingsControlRow(title: "ショートカットキー", description: shortcutDescription) {
+                Picker("", selection: $shortcutKeyRaw) {
+                    ForEach(ShortcutKey.allCases, id: \.self) { key in
+                        Text(key.displayName).tag(key.rawValue)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 190)
+                .onChange(of: shortcutKeyRaw) { _, newValue in
+                    let key = ShortcutKey(rawValue: newValue) ?? .fn
+                    appState.updateShortcutSelection(key)
                 }
             }
+
+            if let issue = appState.shortcutMonitoringIssue {
+                SectionDivider()
+                ShortcutIssueBanner(issue: issue)
+            }
+
+            if selectedShortcutKey == .custom {
+                SectionDivider()
+
+                SettingsControlRow(title: "現在の組み合わせ", description: "modifier + key を押してください。Esc でキャンセルします") {
+                    Button(isCapturingCustomShortcut ? "キー入力待ち..." : selectedCustomShortcut.displayName) {
+                        if isCapturingCustomShortcut {
+                            stopShortcutCapture()
+                        } else {
+                            startShortcutCapture()
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+
+            SectionDivider()
+
+            SettingsControlRow(title: "表示言語", description: "アプリ内の表示言語を選択します") {
+                Picker("", selection: $appLanguageRaw) {
+                    ForEach(AppLanguage.allCases, id: \.rawValue) { lang in
+                        Text(lang.displayName).tag(lang.rawValue)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 190)
+                .onChange(of: appLanguageRaw) { _, newValue in
+                    let lang = AppLanguage(rawValue: newValue) ?? .system
+                    lang.apply()
+                }
+            }
+
+            SectionDivider()
+
+            PermissionStatusView()
+
+            SectionDivider()
+
+            HistoryManagementSection(appState: appState)
         }
+    }
+
+    private var transcriptionPane: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SettingsControlRow(title: "認識する言語", description: selectedLanguageMode.description) {
+                Picker("", selection: $transcriptionLanguageModeRaw) {
+                    ForEach(TranscriptionLanguageMode.allCases, id: \.rawValue) { mode in
+                        Text(mode.displayName).tag(mode.rawValue)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 220)
+                .onChange(of: transcriptionLanguageModeRaw) { _, newValue in
+                    appState.transcriptionLanguageMode = TranscriptionLanguageMode(rawValue: newValue) ?? .defaultMode
+                    appState.setupTranscriptionService()
+                    Task {
+                        await appState.reinitializeAfterEngineChange()
+                    }
+                }
+            }
+
+            SectionDivider()
+
+            SettingsToggleRow(
+                title: "句読点を自動で付ける",
+                description: "。、？を適切な位置に追加して読みやすくします",
+                isOn: $fillerSettings.addPunctuation
+            )
+            .onChange(of: fillerSettings.addPunctuation) { _, _ in
+                appState.updateFillerSettings(fillerSettings)
+            }
+
+            SectionDivider()
+
+            SettingsToggleRow(
+                title: "言い淀み・繰り返しを整理",
+                description: "同じ言葉を繰り返した場合に1回にまとめます",
+                isOn: $fillerSettings.removeRepetition
+            )
+            .onChange(of: fillerSettings.removeRepetition) { _, _ in
+                appState.updateFillerSettings(fillerSettings)
+            }
+
+            SectionDivider()
+
+            SettingsToggleRow(
+                title: "フィラーを除去する",
+                description: "「えー」「あー」などの言葉を自動で除去します",
+                isOn: $fillerSettings.removeFillers
+            )
+            .onChange(of: fillerSettings.removeFillers) { _, _ in
+                appState.updateFillerSettings(fillerSettings)
+            }
+        }
+    }
+
+    private var aboutPane: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            UpdateSettingsContentView()
+
+            SectionDivider()
+
+            BetaAccessContentView()
+        }
+    }
+
+    private var shortcutDescription: String {
+        if selectedShortcutKey.usesLongPressBehavior {
+            return "Space は長押しで録音し、短く押すと通常のスペースを入力します"
+        }
+        if selectedShortcutKey.usesCustomKeyCombinationBehavior {
+            return "\(selectedCustomShortcut.displayName) を押している間だけ録音します。このショートカットだけが有効です"
+        }
+        return "選んだキーを押している間だけ録音します。このショートカットだけが有効です"
     }
 
     private func startShortcutCapture() {
@@ -681,6 +606,11 @@ struct VoiceEnrollmentSection: View {
             enrollmentStatus = .failed(String(localized: "声紋認証の準備が完了していません"))
             return
         }
+        guard MicrophonePermission.hasAvailableInputDevice else {
+            enrollmentStatus = .failed(String(localized: "マイクが接続されていません"))
+            debugLog("SpeakerVerification UI: no available input device")
+            return
+        }
 
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
@@ -887,7 +817,6 @@ struct SettingsSection<Content: View>: View {
     let icon: String
     let gradientColors: [Color]
     @ViewBuilder let content: Content
-    @State private var isHovered = false
 
     private var accentColor: Color {
         gradientColors.first ?? .accentColor
@@ -897,34 +826,20 @@ struct SettingsSection<Content: View>: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 12) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(accentColor.opacity(0.12))
-                        .frame(width: 32, height: 32)
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(accentColor.opacity(0.18))
+                        .frame(width: 28, height: 28)
                     Image(systemName: icon)
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(accentColor)
                 }
                 Text(title)
-                    .font(.headline)
+                    .font(.system(size: 15, weight: .semibold))
                     .fontWeight(.semibold)
             }
-            .padding(.bottom, 18)
+            .padding(.bottom, 14)
 
             content
-        }
-        .padding(22)
-        .background {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
-        }
-        .scaleEffect(isHovered ? 1.002 : 1.0)
-        .animation(.easeOut(duration: 0.12), value: isHovered)
-        .onHover { hovering in
-            isHovered = hovering
         }
     }
 }
@@ -932,9 +847,9 @@ struct SettingsSection<Content: View>: View {
 struct SectionDivider: View {
     var body: some View {
         Rectangle()
-            .fill(Color.secondary.opacity(0.14))
+            .fill(SettingsStyle.divider)
             .frame(height: 1)
-            .padding(.vertical, 10)
+            .padding(.vertical, 12)
     }
 }
 
@@ -945,7 +860,13 @@ struct SettingsToggleRow: View {
     @State private var isHovered = false
 
     var body: some View {
-        HStack(alignment: .center, spacing: 14) {
+        HStack(alignment: .top, spacing: 12) {
+            Toggle("", isOn: $isOn)
+                .labelsHidden()
+                .toggleStyle(.checkbox)
+                .frame(width: 18)
+                .padding(.top, 1)
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.callout)
@@ -956,16 +877,53 @@ struct SettingsToggleRow: View {
                     .lineSpacing(2)
             }
             Spacer()
-            Toggle("", isOn: $isOn)
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .tint(.accentColor)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 5)
         .padding(.horizontal, 8)
         .background {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(isHovered ? Color.secondary.opacity(0.06) : Color.clear)
+                .fill(isHovered ? SettingsStyle.rowHover : Color.clear)
+        }
+        .animation(.easeOut(duration: 0.15), value: isHovered)
+        .onHover { hovering in
+            isHovered = hovering
+        }
+    }
+}
+
+struct SettingsControlRow<Control: View>: View {
+    let title: LocalizedStringKey
+    let description: String
+    let control: Control
+    @State private var isHovered = false
+
+    init(title: LocalizedStringKey, description: String, @ViewBuilder control: () -> Control) {
+        self.title = title
+        self.description = description
+        self.control = control()
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.callout)
+                    .fontWeight(.medium)
+                Text(description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineSpacing(2)
+            }
+
+            Spacer(minLength: 18)
+
+            control
+        }
+        .padding(.vertical, 5)
+        .padding(.horizontal, 8)
+        .background {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(isHovered ? SettingsStyle.rowHover : Color.clear)
         }
         .animation(.easeOut(duration: 0.15), value: isHovered)
         .onHover { hovering in

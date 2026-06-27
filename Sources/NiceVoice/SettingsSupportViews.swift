@@ -158,87 +158,78 @@ struct UpdateSettingsContentView: View {
 
             SectionDivider()
 
-            Button {
-                updateManager.performPrimaryAction()
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: updateManager.isConfigured ? "arrow.triangle.2.circlepath.circle.fill" : "sparkles")
+            if updateManager.isConfigured {
+                Button {
+                    updateManager.performPrimaryAction()
+                } label: {
                     Text(updateManager.primaryActionTitle)
+                        .frame(minWidth: 132)
                 }
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(
-                    LinearGradient(
-                        colors: updateManager.isConfigured ? [.blue, .indigo] : [.orange, .pink],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .clipShape(Capsule())
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                .disabled(!updateManager.canPerformPrimaryAction)
             }
-            .buttonStyle(.plain)
         }
     }
 }
 
-struct SupportLinksContentView: View {
+struct BetaAccessContentView: View {
+    @State private var licenseManager = LicenseAccessManager.shared
+    @State private var licenseCode = ""
+
+    private var canSubmit: Bool {
+        LicenseCode(licenseCode) != nil && licenseManager.isLicenseServerConfigured
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ForEach(Array(SupportLink.allCases.enumerated()), id: \.element.id) { index, link in
-                Button {
-                    NSWorkspace.shared.open(link.url)
-                } label: {
-                    SettingsLinkRow(link: link)
-                }
-                .buttonStyle(.plain)
+            SettingsValueRow(
+                title: "Beta access",
+                description: "ぬこスク特典のベータ機能",
+                value: licenseManager.hasBetaAccess ? "有効" : "未設定"
+            )
 
-                if index < SupportLink.allCases.count - 1 {
-                    SectionDivider()
+            SectionDivider()
+
+            SettingsControlRow(title: "ライセンスコード", description: statusDescription) {
+                HStack(spacing: 8) {
+                    TextField("XXXX-XXXX-XXXX", text: $licenseCode)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 190)
+                        .disabled(licenseManager.hasBetaAccess || !licenseManager.isLicenseServerConfigured)
+
+                    Button(buttonTitle) {
+                        Task {
+                            await licenseManager.activate(code: licenseCode)
+                            if licenseManager.hasBetaAccess {
+                                licenseCode = ""
+                            }
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!canSubmit || licenseManager.hasBetaAccess || licenseManager.state == .activating)
                 }
             }
+        }
+        .onAppear {
+            licenseManager.reload()
         }
     }
-}
 
-struct SettingsLinkRow: View {
-    let link: SupportLink
-    @State private var isHovered = false
+    private var buttonTitle: String {
+        licenseManager.state == .activating ? "確認中" : "適用"
+    }
 
-    var body: some View {
-        HStack(alignment: .center, spacing: 14) {
-            Image(systemName: "arrow.up.right.square")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.blue)
-                .frame(width: 20)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(link.title)
-                    .font(.callout)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.primary)
-
-                Text(link.subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.tertiary)
-        }
-        .padding(.vertical, 4)
-        .padding(.horizontal, 8)
-        .background {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(isHovered ? Color.secondary.opacity(0.06) : Color.clear)
-        }
-        .animation(.easeOut(duration: 0.15), value: isHovered)
-        .onHover { hovering in
-            isHovered = hovering
+    private var statusDescription: String {
+        switch licenseManager.state {
+        case .idle:
+            return "配布された個別コードを入力してください"
+        case .activating:
+            return "ライセンスを確認しています"
+        case .activated:
+            return "この Mac でベータ機能を利用できます"
+        case .unavailable(let message), .failed(let message):
+            return message
         }
     }
 }

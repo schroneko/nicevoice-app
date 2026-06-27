@@ -45,10 +45,13 @@ struct NiceVoiceApp: App {
         .defaultSize(width: 800, height: 600)
         .commands {
             CommandGroup(after: .appInfo) {
-                Button(updateManager.primaryActionTitle) {
-                    updateManager.performPrimaryAction()
+                if updateManager.isConfigured {
+                    Button(updateManager.primaryActionTitle) {
+                        updateManager.performPrimaryAction()
+                    }
+                    .keyboardShortcut("u", modifiers: [.command, .option])
+                    .disabled(!updateManager.canPerformPrimaryAction)
                 }
-                .keyboardShortcut("u", modifiers: [.command, .option])
             }
         }
     }
@@ -215,11 +218,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         preferencesItem.target = self
         menu.addItem(preferencesItem)
 
-        let dictionaryItem = NSMenuItem(title: String(localized: "Dictionary..."), action: #selector(openDictionaryAction), keyEquivalent: "d")
-        dictionaryItem.keyEquivalentModifierMask = [.command, .option]
-        dictionaryItem.target = self
-        menu.addItem(dictionaryItem)
-
         let advancedItem = NSMenuItem(title: String(localized: "Advanced Transcription..."), action: #selector(openAdvancedTranscriptionAction), keyEquivalent: "a")
         advancedItem.keyEquivalentModifierMask = [.command, .option]
         advancedItem.target = self
@@ -278,10 +276,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openPreferencesAction() {
         openMainWindow(tab: .general)
-    }
-
-    @objc private func openDictionaryAction() {
-        openMainWindow(tab: .dictionary)
     }
 
     @objc private func openAdvancedTranscriptionAction() {
@@ -411,7 +405,6 @@ final class AppState {
     }
 
     var usageStats: UsageStats = UsageStats()
-    var dictionaryEntries: [DictionaryEntry] = []
     var fillerSettings: FillerSettings = FillerSettings()
     var shortcutMonitoringIssue: ShortcutMonitoringIssue?
 
@@ -463,14 +456,12 @@ final class AppState {
 
     private enum UserDefaultsKey {
         static let usageStats = "usageStats"
-        static let dictionary = "dictionaryEntries"
         static let fillerSettings = "fillerSettings"
         static let history = "transcriptionHistory"
     }
 
     init() {
         loadUsageStats()
-        loadDictionary()
         loadFillerSettings()
         loadHistory()
         normalizeTranscriptionEngineSelection()
@@ -979,6 +970,14 @@ final class AppState {
             }
             return
         }
+        guard MicrophonePermission.hasAvailableInputDevice else {
+            await MainActor.run {
+                isReady = false
+                statusMessage = String(localized: "マイクが接続されていません")
+                debugLog("requestPermissions: no available input device")
+            }
+            return
+        }
 
         if transcriptionEngine == .voxtralLocal || transcriptionEngine == .qwen3ASR {
             let engineLabel = transcriptionEngine == .voxtralLocal ? "Voxtral Local" : "Qwen3 ASR"
@@ -1125,6 +1124,18 @@ final class AppState {
             return
         }
 
+        guard MicrophonePermission.hasAvailableInputDevice else {
+            debugLog("🔍 [DEBUG] startRecording blocked: no available input device")
+            isReady = false
+            statusMessage = String(localized: "マイクが接続されていません")
+            errorMessage = statusMessage
+            floatingPanel?.show()
+            Task {
+                await requestPermissions()
+            }
+            return
+        }
+
         if !isReady {
             debugLog("🔍 [DEBUG] startRecording - not ready, showing error")
             errorMessage = unavailableRecordingMessage()
@@ -1161,6 +1172,16 @@ final class AppState {
         guard transcriptionEngine == .voxtralLocal || transcriptionEngine == .qwen3ASR else { return }
         guard #available(macOS 26.0, *) else { return }
         guard !isDebuggerAttached() else { return }
+        guard MicrophonePermission.hasAvailableInputDevice else {
+            isReady = false
+            statusMessage = String(localized: "マイクが接続されていません")
+            errorMessage = statusMessage
+            floatingPanel?.show()
+            Task {
+                await requestPermissions()
+            }
+            return
+        }
         guard isReady else { return }
 
         errorMessage = nil
@@ -1465,7 +1486,7 @@ final class AppState {
     }
 
     private func addLocalPunctuation(_ text: String, isFinal: Bool = true) -> String {
-        let processor = TextProcessor(fillerSettings: fillerSettings, dictionaryEntries: dictionaryEntries)
+        let processor = TextProcessor(fillerSettings: fillerSettings)
         return processor.process(text, isFinal: isFinal)
     }
 
@@ -2179,18 +2200,6 @@ final class AppState {
         }
     }
 
-    private func saveDictionary() {
-        save(dictionaryEntries, forKey: UserDefaultsKey.dictionary)
-    }
-
-    private func loadDictionary() {
-        if let entries: [DictionaryEntry] = load(forKey: UserDefaultsKey.dictionary) {
-            dictionaryEntries = entries
-            deduplicateDictionary()
-            sortDictionary()
-        }
-    }
-
     private func saveFillerSettings() {
         save(fillerSettings, forKey: UserDefaultsKey.fillerSettings)
     }
@@ -2211,50 +2220,6 @@ final class AppState {
             history = records
             debugLog("📂 History loaded (\(records.count) items)")
         }
-    }
-
-    func addDictionaryEntry(_ entry: DictionaryEntry) {
-        guard !dictionaryEntries.contains(where: { $0.reading == entry.reading }) else {
-            debugLog("⚠️ Duplicate dictionary entry ignored: \(entry.reading)")
-            return
-        }
-        dictionaryEntries.append(entry)
-        sortDictionary()
-        saveDictionary()
-    }
-
-    func removeDictionaryEntry(_ entry: DictionaryEntry) {
-        dictionaryEntries.removeAll { $0.id == entry.id }
-        saveDictionary()
-    }
-
-    func updateDictionaryEntry(_ entry: DictionaryEntry) {
-        if let index = dictionaryEntries.firstIndex(where: { $0.id == entry.id }) {
-            dictionaryEntries[index] = entry
-            sortDictionary()
-            saveDictionary()
-        }
-    }
-
-    func deduplicateDictionary() {
-        var seen = Set<String>()
-        var unique: [DictionaryEntry] = []
-        for entry in dictionaryEntries {
-            if !seen.contains(entry.reading) {
-                seen.insert(entry.reading)
-                unique.append(entry)
-            }
-        }
-        if unique.count != dictionaryEntries.count {
-            debugLog("🧹 Removed \(dictionaryEntries.count - unique.count) duplicate entries")
-            dictionaryEntries = unique
-            sortDictionary()
-            saveDictionary()
-        }
-    }
-
-    private func sortDictionary() {
-        dictionaryEntries.sort { $0.reading.localizedCompare($1.reading) == .orderedAscending }
     }
 
     func recordConversion(characters: Int, tokens: Int) {

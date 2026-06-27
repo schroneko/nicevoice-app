@@ -50,14 +50,18 @@ final class AppUpdateManager: ObservableObject {
     }
 
     var primaryActionTitle: String {
-        isConfigured ? "アップデートを確認…" : "更新履歴を開く"
+        "アップデートを確認…"
     }
 
     var statusDescription: String {
         if isConfigured {
             return "現在のバージョン \(BundleInfo.shortVersion()) (\(BundleInfo.buildNumber()))"
         }
-        return "自動更新は未設定です。更新履歴ページから最新リリースを確認できます"
+        return "自動更新は未設定です"
+    }
+
+    var canPerformPrimaryAction: Bool {
+        isConfigured && canCheckForUpdates
     }
 
     func performPrimaryAction() {
@@ -67,8 +71,6 @@ final class AppUpdateManager: ObservableObject {
             return
         }
         #endif
-
-        NSWorkspace.shared.open(SupportLink.updates.url)
     }
 
     func setAutomaticallyChecksForUpdates(_ value: Bool) {
