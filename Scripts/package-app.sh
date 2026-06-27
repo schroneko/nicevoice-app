@@ -325,6 +325,10 @@ if [[ -n "${NICEVOICE_SPARKLE_PUBLIC_KEY:-}" ]]; then
     set_plist_value "${PLIST_PATH}" string "SUPublicEDKey" "${NICEVOICE_SPARKLE_PUBLIC_KEY}"
 fi
 
+if [[ -n "${NICEVOICE_LICENSE_API_URL:-}" ]]; then
+    set_plist_value "${PLIST_PATH}" string "NiceVoiceLicenseAPIURL" "${NICEVOICE_LICENSE_API_URL}"
+fi
+
 if [[ -n "${NICEVOICE_ENABLE_AUTOMATIC_CHECKS:-}" ]]; then
     set_plist_value "${PLIST_PATH}" bool "SUEnableAutomaticChecks" "${NICEVOICE_ENABLE_AUTOMATIC_CHECKS}"
 fi
