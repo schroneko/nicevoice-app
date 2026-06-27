@@ -114,6 +114,12 @@ final class SpeechAnalyzerService {
             onError(String(localized: "SpeechAnalyzer が初期化されていません"))
             return
         }
+        guard MicrophonePermission.hasAvailableInputDevice else {
+            debugLog("SpeechAnalyzer recording blocked: no available input device")
+            onError(String(localized: "マイクが接続されていません"))
+            onStatusChange?(String(localized: "マイクが接続されていません"))
+            return
+        }
 
         isRunning = true
         isDetectingLanguage = false

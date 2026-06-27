@@ -65,6 +65,12 @@ final class LocalASRService {
 
     func startRecording(deferStreamingUntilConfirmation: Bool = false) {
         guard !isRunning else { return }
+        guard MicrophonePermission.hasAvailableInputDevice else {
+            debugLog("❌ voxmlx recording blocked: no available input device")
+            onError(String(localized: "マイクが接続されていません"))
+            onStatusChange?(String(localized: "マイクが接続されていません"))
+            return
+        }
 
         isRunning = true
         sessionReady = false
@@ -451,6 +457,14 @@ final class LocalASRService {
     }
 
     private func startAudioCapture(notifyCaptureStarted: Bool) {
+        guard MicrophonePermission.hasAvailableInputDevice else {
+            debugLog("❌ voxmlx audio capture blocked: no available input device")
+            onError(String(localized: "マイクが接続されていません"))
+            isAudioCaptureActive = false
+            isRunning = false
+            return
+        }
+
         audioEngine = AVAudioEngine()
         guard let audioEngine else { return }
 

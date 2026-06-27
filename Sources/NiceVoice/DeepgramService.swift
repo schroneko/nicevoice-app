@@ -52,6 +52,12 @@ final class DeepgramService {
 
     func startRecording() {
         guard !isRunning else { return }
+        guard MicrophonePermission.hasAvailableInputDevice else {
+            debugLog("Deepgram recording blocked: no available input device")
+            onError(String(localized: "マイクが接続されていません"))
+            onStatusChange?(String(localized: "マイクが接続されていません"))
+            return
+        }
 
         isRunning = true
         accumulatedText = ""
@@ -329,6 +335,13 @@ final class DeepgramService {
     }
 
     private func startAudioCapture() {
+        guard MicrophonePermission.hasAvailableInputDevice else {
+            debugLog("Deepgram audio capture blocked: no available input device")
+            onError(String(localized: "マイクが接続されていません"))
+            isRunning = false
+            return
+        }
+
         audioEngine = AVAudioEngine()
         guard let audioEngine else { return }
 
