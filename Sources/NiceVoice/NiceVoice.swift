@@ -92,9 +92,14 @@ private func rotateLogIfNeeded() {
     }
 }
 
+private let debugLogDateFormatter: ISO8601DateFormatter = {
+    let formatter = ISO8601DateFormatter()
+    return formatter
+}()
+
 func debugLog(_ message: String) {
     #if DEBUG
-    let timestamp = ISO8601DateFormatter().string(from: Date())
+    let timestamp = debugLogDateFormatter.string(from: Date())
     let logMessage = "[\(timestamp)] \(message)\n"
     print(logMessage, terminator: "")
     logger.debug("\(message, privacy: .private)")
@@ -2058,7 +2063,7 @@ final class AppState {
 
         let record = TranscriptionRecord(text: text, timestamp: Date(), audioPath: audioPath)
         history.insert(record, at: 0)
-        if history.count > 20 {
+        if history.count > Constants.History.maxCount {
             if let removed = history.last, let path = removed.audioPath {
                 try? FileManager.default.removeItem(atPath: path)
                 debugLog("🗑️ Old audio removed: \(path)")

@@ -163,7 +163,7 @@ struct ModernRecentTranscriptionRow: View {
             Spacer()
 
             if showCopied {
-                Text("Copied")
+                Text(String(localized: "コピーしました"))
                     .font(.caption2)
                     .fontWeight(.medium)
                     .foregroundStyle(.green)
@@ -494,10 +494,20 @@ struct ModernHistoryRowView: View {
         audioPlayer.toggle(url: url, id: record.id)
     }
 
-    private var timeString: String {
+    private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm"
-        return formatter.string(from: record.timestamp)
+        return formatter
+    }()
+
+    private static let shortDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "M/d"
+        return formatter
+    }()
+
+    private var timeString: String {
+        Self.timeFormatter.string(from: record.timestamp)
     }
 
     private var dateString: String {
@@ -507,9 +517,7 @@ struct ModernHistoryRowView: View {
         } else if calendar.isDateInYesterday(record.timestamp) {
             return String(localized: "昨日")
         } else {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "M/d"
-            return formatter.string(from: record.timestamp)
+            return Self.shortDateFormatter.string(from: record.timestamp)
         }
     }
 
@@ -577,7 +585,7 @@ struct ModernHistoryRowView: View {
                     HStack(spacing: 4) {
                         Image(systemName: "checkmark")
                             .font(.system(size: 10, weight: .bold))
-                        Text("Copied")
+                        Text(String(localized: "コピーしました"))
                             .font(.caption2)
                             .fontWeight(.semibold)
                     }
