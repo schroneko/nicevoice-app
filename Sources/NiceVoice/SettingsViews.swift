@@ -639,8 +639,14 @@ struct VoiceEnrollmentSection: View {
                 return
             }
 
+            var inputConsumed = false
             var error: NSError?
             let status = converter.convert(to: convertedBuffer, error: &error) { _, outStatus in
+                if inputConsumed {
+                    outStatus.pointee = .noDataNow
+                    return nil
+                }
+                inputConsumed = true
                 outStatus.pointee = .haveData
                 return buffer
             }

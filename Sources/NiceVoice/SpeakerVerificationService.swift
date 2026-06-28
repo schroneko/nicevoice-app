@@ -41,14 +41,15 @@ final class SpeakerVerificationService {
         }
 
         let result = try diarizer.performCompleteDiarization(audioSamples)
-        guard let segment = result.segments.first else {
+        guard !result.segments.isEmpty else {
             throw SpeakerVerificationError.embeddingFailed
         }
+        let segment = result.segments.max(by: { $0.durationSeconds < $1.durationSeconds })!
         let embedding = segment.embedding
 
         self.enrolledEmbedding = embedding
         saveEnrolledEmbedding(embedding)
-        debugLog("SpeakerVerification: enrolled with \(embedding.count)-dim embedding")
+        debugLog("SpeakerVerification: enrolled with \(embedding.count)-dim embedding from \(String(format: "%.1f", segment.durationSeconds))s segment")
         return true
     }
 
@@ -69,7 +70,7 @@ final class SpeakerVerificationService {
         return try enroll(audioSamples: samples)
     }
 
-    func verify(audioSamples: [Float], threshold: Float = 1.5) throws -> SpeakerVerificationResult {
+    func verify(audioSamples: [Float], threshold: Float = 0.7) throws -> SpeakerVerificationResult {
         guard let diarizer else {
             throw SpeakerVerificationError.notInitialized
         }
@@ -106,17 +107,18 @@ final class SpeakerVerificationService {
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
         let samples = try await loadAudioSamples(from: tempURL)
-        guard samples.count > 8000 else { return true }
+        let tailSamples = samples.count > 80000 ? Array(samples.suffix(80000)) : samples
+        guard tailSamples.count > 8000 else { return true }
 
-        let result = try diarizer.performCompleteDiarization(samples)
-        guard let segment = result.segments.first else { return true }
+        let result = try diarizer.performCompleteDiarization(tailSamples)
+        guard let segment = result.segments.last else { return true }
 
         let distance = SpeakerUtilities.cosineDistance(enrolled, segment.embedding)
         debugLog("SpeakerCheck: quickVerify distance=\(distance)")
-        return distance < 1.5
+        return distance < 0.7
     }
 
-    func filterByEnrolledSpeaker(wavData: Data, threshold: Float = 1.5) async throws -> SpeakerFilterResult {
+    func filterByEnrolledSpeaker(wavData: Data, threshold: Float = 0.7) async throws -> SpeakerFilterResult {
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).wav")
         try wavData.write(to: tempURL)
         defer { try? FileManager.default.removeItem(at: tempURL) }
@@ -293,8 +295,14 @@ final class SpeakerVerificationService {
                 let outputCapacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1
                 guard let converted = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outputCapacity) else { break }
 
+                var inputConsumed = false
                 var error: NSError?
                 let status = conv.convert(to: converted, error: &error) { _, outStatus in
+                    if inputConsumed {
+                        outStatus.pointee = .noDataNow
+                        return nil
+                    }
+                    inputConsumed = true
                     outStatus.pointee = .haveData
                     return buffer
                 }

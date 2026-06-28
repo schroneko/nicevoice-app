@@ -2036,6 +2036,8 @@ final class AppState {
         waitingForFinalResult = false
         finalResultTimer?.cancel()
         provisionalFinalizationTimer?.cancel()
+        speakerCheckTimer?.invalidate()
+        speakerCheckTimer = nil
         recordingStartDate = nil
         currentTranscription = ""
         latestRawTranscription = ""
