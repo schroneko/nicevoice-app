@@ -244,7 +244,6 @@ final class LicenseAccessManager {
             saveEntitlement(entitlement)
             self.entitlement = entitlement
             state = .activated
-            NotificationCenter.default.post(name: .authDidChange, object: nil)
         } catch let error as LicenseActivationError {
             state = .failed(error.localizedDescription)
         } catch {

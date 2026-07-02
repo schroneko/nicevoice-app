@@ -53,11 +53,6 @@ final class SpeakerVerificationService {
         return true
     }
 
-    func enrollFromAudioFile(url: URL) async throws -> Bool {
-        let samples = try await loadAudioSamples(from: url)
-        return try enroll(audioSamples: samples)
-    }
-
     func enrollFromRecordedData(_ data: Data, format: AVAudioFormat) async throws -> Bool {
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).wav")
         try data.write(to: tempURL)
@@ -68,33 +63,6 @@ final class SpeakerVerificationService {
             throw SpeakerVerificationError.noAudioData
         }
         return try enroll(audioSamples: samples)
-    }
-
-    func verify(audioSamples: [Float], threshold: Float = 0.7) throws -> SpeakerVerificationResult {
-        guard let diarizer else {
-            throw SpeakerVerificationError.notInitialized
-        }
-
-        guard let enrolled = enrolledEmbedding else {
-            throw SpeakerVerificationError.notEnrolled
-        }
-
-        let result = try diarizer.performCompleteDiarization(audioSamples)
-        guard let segment = result.segments.first else {
-            throw SpeakerVerificationError.embeddingFailed
-        }
-        let testEmbedding = segment.embedding
-
-        let distance = cosineDistance(enrolled, testEmbedding)
-        let isMatch = distance < threshold
-
-        debugLog("SpeakerVerification: distance=\(distance), threshold=\(threshold), match=\(isMatch)")
-
-        return SpeakerVerificationResult(
-            isMatch: isMatch,
-            distance: distance,
-            confidence: confidenceFromDistance(distance)
-        )
     }
 
     func quickVerify(wavData: Data) async throws -> Bool {
@@ -224,18 +192,6 @@ final class SpeakerVerificationService {
         debugLog("SpeakerVerification: enrollment reset")
     }
 
-    private func cosineDistance(_ a: [Float], _ b: [Float]) -> Float {
-        SpeakerUtilities.cosineDistance(a, b)
-    }
-
-    private func confidenceFromDistance(_ distance: Float) -> SpeakerConfidence {
-        if distance < 0.3 { return .veryHigh }
-        if distance < 0.5 { return .high }
-        if distance < 0.7 { return .medium }
-        if distance < 0.9 { return .low }
-        return .veryLow
-    }
-
     private func saveEnrolledEmbedding(_ embedding: [Float]) {
         let data = embedding.withUnsafeBytes { Data($0) }
         UserDefaults.standard.set(data, forKey: "speakerEmbedding")
@@ -326,31 +282,6 @@ final class SpeakerVerificationService {
         return allSamples
     }
 
-    private func extractFloatSamples(from data: Data, format: AVAudioFormat) -> [Float] {
-        let headerSize = 44
-        guard data.count > headerSize else { return [] }
-
-        let pcmData = data.subdata(in: headerSize..<data.count)
-        let sampleCount = pcmData.count / 2
-
-        var samples: [Float] = []
-        samples.reserveCapacity(sampleCount)
-
-        pcmData.withUnsafeBytes { buffer in
-            let int16Buffer = buffer.bindMemory(to: Int16.self)
-            for i in 0..<sampleCount {
-                samples.append(Float(int16Buffer[i]) / Float(Int16.max))
-            }
-        }
-
-        return samples
-    }
-}
-
-struct SpeakerVerificationResult {
-    let isMatch: Bool
-    let distance: Float
-    let confidence: SpeakerConfidence
 }
 
 struct SpeakerFilterResult {
@@ -360,24 +291,6 @@ struct SpeakerFilterResult {
     let totalSpeechDuration: Float
     let enrolledSpeechDuration: Float
     let isSingleSpeaker: Bool
-}
-
-enum SpeakerConfidence: String {
-    case veryHigh
-    case high
-    case medium
-    case low
-    case veryLow
-
-    var displayName: String {
-        switch self {
-        case .veryHigh: return String(localized: "非常に高い")
-        case .high: return String(localized: "高い")
-        case .medium: return String(localized: "中程度")
-        case .low: return String(localized: "低い")
-        case .veryLow: return String(localized: "非常に低い")
-        }
-    }
 }
 
 enum SpeakerVerificationError: LocalizedError {

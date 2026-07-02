@@ -34,8 +34,6 @@ enum Constants {
         static let pastePreDelaySeconds: Double = 0.1
         static let pastePostDelaySeconds: Double = 1.5
         static let keyEventDelayMicroseconds: UInt32 = 50_000
-        static let deleteKeyDelayMicroseconds: UInt32 = 10_000
-        static let accessibilityCheckDelaySeconds: Double = 1.0
     }
 
     enum UI {
@@ -45,7 +43,6 @@ enum Constants {
         static let floatingPanelExpandedHeight: CGFloat = 104
         static let floatingPanelMaxWidth: CGFloat = 520
         static let floatingPanelBottomOffset: CGFloat = 40
-        static let maxFocusedElementHeight: CGFloat = 100
         static let maxAXTreeSearchDepth = 10
     }
 

@@ -32,10 +32,6 @@ final class SpeechAnalyzerService {
     private var audioBuffers: [AVAudioPCMBuffer] = []
     private var recordingFormat: AVAudioFormat?
 
-    private var detectedLanguage: SupportedLanguage = .japanese
-    private var isDetectingLanguage = false
-    private var languageDetectionBuffers: [AVAudioPCMBuffer] = []
-    private let languageDetectionDuration: TimeInterval = 1.0
     private var languageMode: TranscriptionLanguageMode
 
     private let onTranscription: (String, Bool) -> Void
@@ -43,7 +39,6 @@ final class SpeechAnalyzerService {
     private let onError: (String) -> Void
     private let onStatusChange: ((String) -> Void)?
     private let onAudioLevel: ((Float) -> Void)?
-    private let onLanguageDetected: ((SupportedLanguage) -> Void)?
     private let onCaptureStarted: (() -> Void)?
 
     static var isAvailable: Bool {
@@ -60,7 +55,6 @@ final class SpeechAnalyzerService {
         onError: @escaping (String) -> Void,
         onStatusChange: ((String) -> Void)? = nil,
         onAudioLevel: ((Float) -> Void)? = nil,
-        onLanguageDetected: ((SupportedLanguage) -> Void)? = nil,
         onCaptureStarted: (() -> Void)? = nil
     ) {
         self.languageMode = languageMode
@@ -69,7 +63,6 @@ final class SpeechAnalyzerService {
         self.onError = onError
         self.onStatusChange = onStatusChange
         self.onAudioLevel = onAudioLevel
-        self.onLanguageDetected = onLanguageDetected
         self.onCaptureStarted = onCaptureStarted
     }
 
@@ -122,10 +115,7 @@ final class SpeechAnalyzerService {
         }
 
         isRunning = true
-        isDetectingLanguage = false
         audioBuffers = []
-        languageDetectionBuffers = []
-        detectedLanguage = languageMode.defaultSpeechAnalyzerLanguage
 
         audioEngine = AVAudioEngine()
         guard let audioEngine else { return }
@@ -181,7 +171,7 @@ final class SpeechAnalyzerService {
     }
 
     func stopRecording() {
-        debugLog("🔍 [STOP] stopRecording called - isRunning=\(isRunning), isDetectingLanguage=\(isDetectingLanguage), bufferCount=\(languageDetectionBuffers.count)")
+        debugLog("🔍 [STOP] stopRecording called - isRunning=\(isRunning)")
         guard isRunning else {
             debugLog("🔍 [STOP] Early return - isRunning is false")
             return
@@ -246,132 +236,6 @@ final class SpeechAnalyzerService {
             }
         }
         return copy
-    }
-
-    private func detectLanguageAndStartTranscription(buffers: [AVAudioPCMBuffer]) async {
-        let language = languageMode.defaultSpeechAnalyzerLanguage
-        debugLog("🌍 Using fixed language: \(language.displayName)")
-
-        detectedLanguage = language
-
-        await MainActor.run {
-            self.onLanguageDetected?(language)
-        }
-
-        startMainTranscription(language: language, initialBuffers: buffers)
-    }
-
-    private func detectBestLanguage(japaneseResult: String?, englishResult: String?) -> SupportedLanguage {
-        let jaText = japaneseResult ?? ""
-        let enText = englishResult ?? ""
-
-        let jaClean = removePunctuation(jaText)
-        let enClean = removePunctuation(enText)
-
-        let (jaHiraganaKanji, jaKatakana, _) = calculateCharacterRatios(jaClean)
-        let (_, _, enAscii) = calculateCharacterRatios(enClean)
-
-        let jaHasParticles = containsJapaneseParticles(jaClean)
-        let jaLength = jaClean.count
-        let enLength = enClean.count
-
-        debugLog("🌍 JA: '\(jaClean.prefix(20))' len=\(jaLength), HiraganaKanji=\(jaHiraganaKanji), Katakana=\(jaKatakana), hasParticles=\(jaHasParticles)")
-        debugLog("🌍 EN: '\(enClean.prefix(20))' len=\(enLength), ASCII=\(enAscii)")
-
-        if jaClean.isEmpty && enClean.isEmpty {
-            return .japanese
-        }
-
-        if jaHasParticles && jaHiraganaKanji >= 0.8 {
-            debugLog("🌍 Japanese has particles/greeting and high hiragana/kanji -> Japanese")
-            return .japanese
-        }
-
-        if jaKatakana >= 0.7 && enAscii >= 0.7 {
-            debugLog("🌍 High katakana in JA + high ASCII in EN -> English")
-            return .english
-        }
-
-        if enAscii >= 0.9 && enLength > jaLength * 3 && enLength >= 10 && !jaHasParticles {
-            debugLog("🌍 EN is much longer (\(enLength) vs \(jaLength)) with high ASCII (no JA particles) -> English")
-            return .english
-        }
-
-        if enAscii >= 0.9 && jaHiraganaKanji < 0.3 {
-            debugLog("🌍 Very high ASCII in EN + low hiragana/kanji in JA -> English")
-            return .english
-        }
-
-        if jaHiraganaKanji >= 0.5 && jaKatakana < 0.3 && jaLength >= 2 {
-            debugLog("🌍 High hiragana/kanji with low katakana -> Japanese")
-            return .japanese
-        }
-
-        if enAscii >= 0.7 && enLength >= 3 && jaHiraganaKanji < 0.5 {
-            debugLog("🌍 High ASCII ratio in English result with low JA hiragana -> English")
-            return .english
-        }
-
-        if jaHiraganaKanji >= 0.3 {
-            return .japanese
-        }
-
-        return .english
-    }
-
-    private func containsJapaneseParticles(_ text: String) -> Bool {
-        let particles = ["は", "が", "を", "に", "で", "と", "も", "の", "へ", "から", "まで", "より", "など", "か", "ね", "よ", "わ", "さ", "ぞ", "ぜ", "な", "って", "って", "けど", "けれど", "ので", "のに", "ても", "ながら", "たら", "れば", "なら", "ます", "です", "でした", "ました", "ている", "てる", "ください", "ありがとう", "すみません", "こんにちは", "おはよう", "こんばんは"]
-        for particle in particles {
-            if text.contains(particle) {
-                return true
-            }
-        }
-        return false
-    }
-
-    private func transcribeBuffersWithLanguage(_ buffers: [AVAudioPCMBuffer], language: SupportedLanguage) async -> String? {
-        let transcriber = SpeechTranscriber(
-            locale: language.locale,
-            transcriptionOptions: [],
-            reportingOptions: [],
-            attributeOptions: []
-        )
-        let analyzer = SpeechAnalyzer(modules: [transcriber])
-
-        var continuation: AsyncStream<AnalyzerInput>.Continuation?
-        let inputStream = AsyncStream<AnalyzerInput> { c in
-            continuation = c
-        }
-
-        let analyzerTask = Task {
-            try await analyzer.start(inputSequence: inputStream)
-        }
-
-        let resultTask = Task { () -> String? in
-            var result: String?
-            do {
-                for try await transcriptionResult in transcriber.results {
-                    result = String(transcriptionResult.text.characters)
-                    debugLog("🔍 Detection result (\(language.displayName)): '\(result ?? "")'")
-                }
-            } catch {
-                debugLog("❌ Detection transcription error: \(error)")
-            }
-            return result
-        }
-
-        for buffer in buffers {
-            if let converted = convertBufferForAnalyzer(buffer) {
-                continuation?.yield(AnalyzerInput(buffer: converted))
-            }
-        }
-        continuation?.finish()
-
-        try? await analyzer.finalizeAndFinishThroughEndOfInput()
-        analyzerTask.cancel()
-
-        let result = await resultTask.value
-        return result
     }
 
     private func startMainTranscription(language: SupportedLanguage, initialBuffers: [AVAudioPCMBuffer]) {
@@ -499,48 +363,6 @@ final class SpeechAnalyzerService {
             .replacingOccurrences(of: "、", with: ",")
             .replacingOccurrences(of: "！", with: "!")
             .replacingOccurrences(of: "？", with: "?")
-    }
-
-    private func removePunctuation(_ text: String) -> String {
-        let punctuation = CharacterSet.punctuationCharacters
-            .union(CharacterSet(charactersIn: "。、！？「」『』（）・"))
-        return text.unicodeScalars
-            .filter { !punctuation.contains($0) }
-            .map { String($0) }
-            .joined()
-    }
-
-    private func calculateCharacterRatios(_ text: String) -> (hiraganaKanji: Double, katakana: Double, ascii: Double) {
-        var hiraganaKanjiCount = 0
-        var katakanaCount = 0
-        var asciiCount = 0
-        var totalCount = 0
-
-        for scalar in text.unicodeScalars {
-            if scalar.properties.isWhitespace { continue }
-            totalCount += 1
-
-            let value = scalar.value
-            let isHiragana = value >= 0x3040 && value <= 0x309F
-            let isKatakana = (value >= 0x30A0 && value <= 0x30FF) || value == 0x30FC
-            let isKanji = value >= 0x4E00 && value <= 0x9FFF
-            let isAsciiLetter = (value >= 0x41 && value <= 0x5A) || (value >= 0x61 && value <= 0x7A)
-
-            if isHiragana || isKanji {
-                hiraganaKanjiCount += 1
-            }
-            if isKatakana {
-                katakanaCount += 1
-            }
-            if isAsciiLetter {
-                asciiCount += 1
-            }
-        }
-
-        let hiraganaKanjiRatio = totalCount > 0 ? Double(hiraganaKanjiCount) / Double(totalCount) : 0
-        let katakanaRatio = totalCount > 0 ? Double(katakanaCount) / Double(totalCount) : 0
-        let asciiRatio = totalCount > 0 ? Double(asciiCount) / Double(totalCount) : 0
-        return (hiraganaKanjiRatio, katakanaRatio, asciiRatio)
     }
 
     private func feedBufferToAnalyzer(_ buffer: AVAudioPCMBuffer) {

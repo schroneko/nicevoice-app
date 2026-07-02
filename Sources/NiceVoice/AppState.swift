@@ -183,12 +183,6 @@ final class AppState {
                         self.audioLevels.append(level)
                     }
                 },
-                onLanguageDetected: { [weak self] language in
-                    DispatchQueue.main.async {
-                        debugLog("🌍 Language detected: \(language.displayName)")
-                        self?.statusMessage = String(localized: "検出: \(language.displayName)")
-                    }
-                },
                 onCaptureStarted: { [weak self] in
                     self?.handleCaptureStarted()
                 }
