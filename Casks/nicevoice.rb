@@ -2,10 +2,10 @@ cask "nicevoice" do
   version "0.2.0"
   sha256 "0a3146ca79b988f574aa5cd0559bf39784b96e1fdd289826dc7b05ea27cd73a6"
 
-  url "https://github.com/schroneko/nicevoice-app/releases/download/v#{version}/NiceVoice-#{version}.zip"
+  url "https://github.com/schroneko/homebrew-nicevoice/releases/download/v#{version}/NiceVoice-#{version}.zip"
   name "NiceVoice"
   desc "Voice input app for macOS"
-  homepage "https://github.com/schroneko/nicevoice-app"
+  homepage "https://github.com/schroneko/homebrew-nicevoice"
 
   app "NiceVoice.app"
 
