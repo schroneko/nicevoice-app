@@ -1068,7 +1068,7 @@ final class AppState {
     }
 
     private func retranscribeFilteredAudio(_ samples: [Float], originalAudioData: Data) {
-        let wavData = SpeakerVerificationService.shared.createWAV(from: samples)
+        let wavData = WAVEncoder.data(samples: samples)
         let tempDir = FileManager.default.temporaryDirectory
         let tempURL = tempDir.appendingPathComponent("\(UUID().uuidString).wav")
 

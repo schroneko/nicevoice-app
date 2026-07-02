@@ -631,7 +631,7 @@ struct VoiceEnrollmentSection: View {
         isPulseAnimating = true
         startTimer()
 
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { buffer, _ in
+        inputNode.installTap(onBus: 0, bufferSize: Constants.Audio.bufferSize, format: inputFormat) { buffer, _ in
             let ratio = targetFormat.sampleRate / inputFormat.sampleRate
             let outputFrameCapacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1
 
@@ -708,7 +708,7 @@ struct VoiceEnrollmentSection: View {
             return
         }
 
-        let wavData = createWAVData(from: capturedPCMData, sampleRate: 16000, channels: 1, bitsPerSample: 16)
+        let wavData = WAVEncoder.data(pcmData: capturedPCMData, sampleRate: 16000, channels: 1)
         recordedData = wavData
         enrollmentStatus = .processing
 
@@ -757,32 +757,6 @@ struct VoiceEnrollmentSection: View {
         recordingTimer = nil
     }
 
-    private func createWAVData(from pcmData: Data, sampleRate: UInt32, channels: UInt16, bitsPerSample: UInt16) -> Data {
-        let byteRate = sampleRate * UInt32(channels) * UInt32(bitsPerSample / 8)
-        let blockAlign = channels * (bitsPerSample / 8)
-        let dataSize = UInt32(pcmData.count)
-        let fileSize: UInt32 = 36 + dataSize
-
-        var header = Data()
-        header.append(contentsOf: "RIFF".utf8)
-        header.append(withUnsafeBytes(of: fileSize.littleEndian) { Data($0) })
-        header.append(contentsOf: "WAVE".utf8)
-        header.append(contentsOf: "fmt ".utf8)
-        header.append(withUnsafeBytes(of: UInt32(16).littleEndian) { Data($0) })
-        header.append(withUnsafeBytes(of: UInt16(1).littleEndian) { Data($0) })
-        header.append(withUnsafeBytes(of: channels.littleEndian) { Data($0) })
-        header.append(withUnsafeBytes(of: sampleRate.littleEndian) { Data($0) })
-        header.append(withUnsafeBytes(of: byteRate.littleEndian) { Data($0) })
-        header.append(withUnsafeBytes(of: blockAlign.littleEndian) { Data($0) })
-        header.append(withUnsafeBytes(of: bitsPerSample.littleEndian) { Data($0) })
-        header.append(contentsOf: "data".utf8)
-        header.append(withUnsafeBytes(of: dataSize.littleEndian) { Data($0) })
-
-        var data = Data()
-        data.append(header)
-        data.append(pcmData)
-        return data
-    }
 }
 
 struct ShortcutIssueBanner: View {

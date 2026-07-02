@@ -98,38 +98,6 @@ final class SpeakerVerificationService {
         return try filterSamples(samples, threshold: threshold)
     }
 
-    func createWAV(from samples: [Float], sampleRate: Int = 16000) -> Data {
-        let numChannels: UInt16 = 1
-        let bitsPerSample: UInt16 = 16
-        let byteRate = UInt32(sampleRate) * UInt32(numChannels) * UInt32(bitsPerSample / 8)
-        let blockAlign = numChannels * (bitsPerSample / 8)
-        let dataSize = UInt32(samples.count * 2)
-        let chunkSize: UInt32 = 36 + dataSize
-
-        var data = Data()
-        data.append(contentsOf: "RIFF".utf8)
-        withUnsafeBytes(of: chunkSize.littleEndian) { data.append(contentsOf: $0) }
-        data.append(contentsOf: "WAVE".utf8)
-        data.append(contentsOf: "fmt ".utf8)
-        withUnsafeBytes(of: UInt32(16).littleEndian) { data.append(contentsOf: $0) }
-        withUnsafeBytes(of: UInt16(1).littleEndian) { data.append(contentsOf: $0) }
-        withUnsafeBytes(of: numChannels.littleEndian) { data.append(contentsOf: $0) }
-        withUnsafeBytes(of: UInt32(sampleRate).littleEndian) { data.append(contentsOf: $0) }
-        withUnsafeBytes(of: byteRate.littleEndian) { data.append(contentsOf: $0) }
-        withUnsafeBytes(of: blockAlign.littleEndian) { data.append(contentsOf: $0) }
-        withUnsafeBytes(of: bitsPerSample.littleEndian) { data.append(contentsOf: $0) }
-        data.append(contentsOf: "data".utf8)
-        withUnsafeBytes(of: dataSize.littleEndian) { data.append(contentsOf: $0) }
-
-        for sample in samples {
-            let clamped = max(-1.0, min(1.0, sample))
-            let int16 = Int16(clamped * Float(Int16.max))
-            withUnsafeBytes(of: int16.littleEndian) { data.append(contentsOf: $0) }
-        }
-
-        return data
-    }
-
     private func filterSamples(_ samples: [Float], threshold: Float) throws -> SpeakerFilterResult {
         guard let diarizer else {
             throw SpeakerVerificationError.notInitialized

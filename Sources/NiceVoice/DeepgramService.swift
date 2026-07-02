@@ -9,8 +9,7 @@ final class DeepgramService {
     private var receiveTask: Task<Void, Never>?
     private var keepAliveTask: Task<Void, Never>?
 
-    private var audioBuffers: [AVAudioPCMBuffer] = []
-    private var recordingFormat: AVAudioFormat?
+    private let recordedAudio = RecordedAudioStore(label: "Deepgram")
 
     private var accumulatedText = ""
 
@@ -61,7 +60,7 @@ final class DeepgramService {
 
         isRunning = true
         accumulatedText = ""
-        audioBuffers = []
+        recordedAudio.clear()
 
         startAudioCapture()
         connectWebSocket()
@@ -88,65 +87,11 @@ final class DeepgramService {
     }
 
     func getRecordedAudioData(consuming: Bool = true) -> Data? {
-        guard let format = recordingFormat, !audioBuffers.isEmpty else {
-            debugLog("No audio buffers to convert (Deepgram)")
-            return nil
-        }
-
-        let totalFrames = audioBuffers.reduce(0) { $0 + Int($1.frameLength) }
-        guard totalFrames > 0 else {
-            debugLog("Audio buffers are empty (Deepgram)")
-            return nil
-        }
-
-        debugLog("Converting \(audioBuffers.count) buffers (\(totalFrames) frames) to WAV (Deepgram)")
-
-        let bitsPerSample: UInt16 = 16
-        let channels = UInt16(format.channelCount)
-        let sampleRateInt = UInt32(format.sampleRate)
-        let byteRate = sampleRateInt * UInt32(channels) * UInt32(bitsPerSample / 8)
-        let blockAlign = channels * (bitsPerSample / 8)
-        let dataSize = UInt32(totalFrames) * UInt32(channels) * UInt32(bitsPerSample / 8)
-        let fileSize: UInt32 = 36 + dataSize
-
-        var header = Data()
-        header.append(contentsOf: "RIFF".utf8)
-        header.append(withUnsafeBytes(of: fileSize.littleEndian) { Data($0) })
-        header.append(contentsOf: "WAVE".utf8)
-        header.append(contentsOf: "fmt ".utf8)
-        header.append(withUnsafeBytes(of: UInt32(16).littleEndian) { Data($0) })
-        header.append(withUnsafeBytes(of: UInt16(1).littleEndian) { Data($0) })
-        header.append(withUnsafeBytes(of: channels.littleEndian) { Data($0) })
-        header.append(withUnsafeBytes(of: sampleRateInt.littleEndian) { Data($0) })
-        header.append(withUnsafeBytes(of: byteRate.littleEndian) { Data($0) })
-        header.append(withUnsafeBytes(of: blockAlign.littleEndian) { Data($0) })
-        header.append(withUnsafeBytes(of: bitsPerSample.littleEndian) { Data($0) })
-        header.append(contentsOf: "data".utf8)
-        header.append(withUnsafeBytes(of: dataSize.littleEndian) { Data($0) })
-
-        var audioData = header
-        for buffer in audioBuffers {
-            if let floatData = buffer.floatChannelData {
-                for frame in 0..<Int(buffer.frameLength) {
-                    for channel in 0..<Int(format.channelCount) {
-                        let sample = floatData[channel][frame]
-                        let clipped = max(-1.0, min(1.0, sample))
-                        var intSample = Int16(clipped * Float(Int16.max))
-                        audioData.append(Data(bytes: &intSample, count: 2))
-                    }
-                }
-            }
-        }
-
-        debugLog("WAV data created: \(audioData.count) bytes (Deepgram)")
-        if consuming {
-            audioBuffers = []
-        }
-        return audioData
+        recordedAudio.wavData(consuming: consuming)
     }
 
     func clearAudioBuffers() {
-        audioBuffers = []
+        recordedAudio.clear()
     }
 
     private func connectWebSocket() {
@@ -347,7 +292,7 @@ final class DeepgramService {
 
         let inputNode = audioEngine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
-        recordingFormat = inputFormat
+        recordedAudio.setFormat(inputFormat)
         debugLog("Deepgram input format: \(inputFormat.sampleRate)Hz, \(inputFormat.channelCount)ch")
 
         audioConverter = AVAudioConverter(from: inputFormat, to: targetFormat)
@@ -357,26 +302,15 @@ final class DeepgramService {
 
             let stillRecording = self.isRunning
 
-            if let copy = self.copyBuffer(buffer) {
-                self.audioBuffers.append(copy)
-            }
+            self.recordedAudio.append(copyOf: buffer)
 
             if stillRecording {
-                if let converted = self.convertToTargetFormat(buffer) {
-                    let pcmData = self.extractPCMData(from: converted)
-                    self.sendAudioData(pcmData)
+                if let converted = self.audioConverter?.convertBuffer(buffer, to: self.targetFormat) {
+                    self.sendAudioData(converted.int16PCMData)
                 }
             }
 
-            if let channelData = buffer.floatChannelData {
-                let frameLength = Int(buffer.frameLength)
-                var sum: Float = 0
-                for i in 0..<frameLength {
-                    let sample = channelData[0][i]
-                    sum += sample * sample
-                }
-                let rms = sqrt(sum / Float(frameLength))
-                let level = min(1.0, rms * Constants.Audio.levelMultiplier)
+            if let level = buffer.meterLevel {
                 DispatchQueue.main.async {
                     self.onAudioLevel?(level)
                 }
@@ -394,50 +328,6 @@ final class DeepgramService {
             onError(String(localized: "オーディオエンジンの起動に失敗しました"))
             isRunning = false
         }
-    }
-
-    private func convertToTargetFormat(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
-        guard let converter = audioConverter else { return nil }
-
-        let ratio = targetFormat.sampleRate / buffer.format.sampleRate
-        let outputFrameCapacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio)
-        guard let convertedBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outputFrameCapacity) else {
-            return nil
-        }
-
-        var error: NSError?
-        let status = converter.convert(to: convertedBuffer, error: &error) { _, outStatus in
-            outStatus.pointee = .haveData
-            return buffer
-        }
-
-        return status == .error ? nil : convertedBuffer
-    }
-
-    private func extractPCMData(from buffer: AVAudioPCMBuffer) -> Data {
-        let frameLength = Int(buffer.frameLength)
-        let bytesPerFrame = Int(buffer.format.streamDescription.pointee.mBytesPerFrame)
-        let totalBytes = frameLength * bytesPerFrame
-
-        guard let int16Data = buffer.int16ChannelData else {
-            return Data()
-        }
-
-        return Data(bytes: int16Data[0], count: totalBytes)
-    }
-
-    private func copyBuffer(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
-        guard let copy = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: buffer.frameCapacity) else {
-            return nil
-        }
-        copy.frameLength = buffer.frameLength
-
-        if let srcFloatData = buffer.floatChannelData, let dstFloatData = copy.floatChannelData {
-            for channel in 0..<Int(buffer.format.channelCount) {
-                memcpy(dstFloatData[channel], srcFloatData[channel], Int(buffer.frameLength) * MemoryLayout<Float>.size)
-            }
-        }
-        return copy
     }
 
     static func transcribeBatch(
