@@ -4,13 +4,13 @@ import Testing
 struct PasteBehaviorTests {
     @Test
     func clipboardRestoreUsesConfiguredDelay() {
-        #expect(AppState.clipboardRestoreDelay() == Constants.Timing.pastePostDelaySeconds)
+        #expect(TextInsertionController.clipboardRestoreDelay() == Constants.Timing.pastePostDelaySeconds)
     }
 
     @Test
     func clipboardRestoreOnlyRunsWhileInjectedTextIsStillPresent() {
         #expect(
-            AppState.shouldRestoreClipboard(
+            TextInsertionController.shouldRestoreClipboard(
                 previousContents: "S_1_1",
                 currentContents: "文字起こし結果",
                 pastedText: "文字起こし結果"
@@ -18,7 +18,7 @@ struct PasteBehaviorTests {
         )
 
         #expect(
-            AppState.shouldRestoreClipboard(
+            TextInsertionController.shouldRestoreClipboard(
                 previousContents: "S_1_1",
                 currentContents: "ユーザーが別でコピーした内容",
                 pastedText: "文字起こし結果"
@@ -26,7 +26,7 @@ struct PasteBehaviorTests {
         )
 
         #expect(
-            AppState.shouldRestoreClipboard(
+            TextInsertionController.shouldRestoreClipboard(
                 previousContents: nil,
                 currentContents: "文字起こし結果",
                 pastedText: "文字起こし結果"
