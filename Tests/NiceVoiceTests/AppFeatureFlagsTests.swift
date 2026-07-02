@@ -36,7 +36,7 @@ struct AppFeatureFlagsTests {
     func regularUsersDoNotSeeDeveloperOnlyEngines() {
         let engines = TranscriptionEngine.availableEngines(developerToolsEnabled: false)
 
-        #expect(engines == [.speechAnalyzer, .voxtralLocal, .deepgram])
+        #expect(engines == [.speechAnalyzer, .voxtralLocal])
     }
 
     @Test

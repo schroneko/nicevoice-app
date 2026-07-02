@@ -1803,16 +1803,6 @@
         }
       }
     },
-    "Deepgram API Key 設定済み": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Deepgram API Key configured"
-          }
-        }
-      }
-    },
     "デバッグ情報": {
       "localizations": {
         "en": {
@@ -1909,36 +1899,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Quit"
-          }
-        }
-      }
-    },
-    "検出: %@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Detected: %@"
-          }
-        }
-      }
-    },
-    "Deepgram API キーが未設定です": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Deepgram API key not configured"
-          }
-        }
-      }
-    },
-    "準備完了 (Deepgram) - %@ キーを押して録音": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ready (Deepgram) - Press %@ to record"
           }
         }
       }
@@ -2169,16 +2129,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Qwen3-ASR-1.7B (MLX, local inference)"
-          }
-        }
-      }
-    },
-    "Deepgram Nova-3 (クラウド API, 高精度)": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Deepgram Nova-3 (Cloud API, high accuracy)"
           }
         }
       }
@@ -2443,112 +2393,12 @@
         }
       }
     },
-    "Deepgram に接続中...": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Connecting to Deepgram..."
-          }
-        }
-      }
-    },
-    "Deepgram 接続完了": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Connected to Deepgram"
-          }
-        }
-      }
-    },
-    "Deepgram WebSocket エラー: %@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Deepgram WebSocket error: %@"
-          }
-        }
-      }
-    },
-    "Deepgram エラー": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Deepgram error"
-          }
-        }
-      }
-    },
     "voxmlx エラー": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "voxmlx error"
-          }
-        }
-      }
-    },
-    "Deepgram に送信中...": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sending to Deepgram..."
-          }
-        }
-      }
-    },
-    "Deepgram の URL が無効です": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Invalid Deepgram URL"
-          }
-        }
-      }
-    },
-    "Deepgram からの応答が無効です": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Invalid response from Deepgram"
-          }
-        }
-      }
-    },
-    "Deepgram API エラー (%lld): %@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Deepgram API error (%1$lld): %2$@"
-          }
-        }
-      }
-    },
-    "Deepgram の応答を解析できませんでした": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Failed to parse Deepgram response"
-          }
-        }
-      }
-    },
-    "Deepgram API キーが設定されていません。設定画面から入力してください": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Deepgram API key not configured. Please enter it in Settings"
           }
         }
       }

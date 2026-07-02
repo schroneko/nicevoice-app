@@ -1,7 +1,6 @@
 import Foundation
 
 enum StorageKey: String {
-    case deepgramApiKey = "com.nicevoice.deepgram-api-key"
     case licenseDeviceID = "com.nicevoice.license-device-id"
     case betaEntitlement = "com.nicevoice.beta-entitlement"
 }

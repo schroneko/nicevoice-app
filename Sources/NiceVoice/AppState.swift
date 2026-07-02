@@ -83,7 +83,6 @@ final class AppState {
 
     private var speechAnalyzerService: Any?
     private var localASRService: LocalASRService?
-    private var deepgramService: DeepgramService?
     private(set) var localServerManager: LocalServerManager?
     var localServerStatus: LocalServerStatus = .stopped
     private var localServerRecoveryTask: Task<Void, Never>?
@@ -239,7 +238,6 @@ final class AppState {
         localASRService?.setWarmCaptureEnabled(false)
         localASRService?.stop()
         localASRService = nil
-        deepgramService = nil
         localServerManager?.stop()
         localServerManager = nil
         localServerStatus = .stopped
@@ -247,30 +245,6 @@ final class AppState {
             if modelDownloadStatuses[engine] == nil {
                 modelDownloadStatuses[engine] = engine.requiresExternalModelDownload ? .notDownloaded : .downloaded
             }
-        }
-
-        if transcriptionEngine == .deepgram {
-            guard let apiKey = KeychainStorage.shared.loadString(account: StorageKey.deepgramApiKey.rawValue),
-                  !apiKey.isEmpty else {
-                statusMessage = String(localized: "Deepgram API キーが未設定です")
-                debugLog("Deepgram: no API key configured")
-                return
-            }
-
-            deepgramService = DeepgramService(
-                apiKey: apiKey,
-                languageMode: languageMode,
-                onTranscription: makeOnTranscription(engineLabel: "Deepgram"),
-                onFinalCompletion: makeOnFinalCompletion(engineLabel: "Deepgram"),
-                onError: makeOnError(engineLabel: "Deepgram"),
-                onStatusChange: makeOnStatusChange(),
-                onAudioLevel: makeOnAudioLevel(),
-                onCaptureStarted: makeOnCaptureStarted()
-            )
-            isReady = true
-            statusMessage = String(localized: "準備完了 (Deepgram) - \(shortcutUsageDescription)")
-            debugLog("Using Deepgram Nova-3")
-            return
         }
 
         if transcriptionEngine.requiresLocalServer {
@@ -730,9 +704,6 @@ final class AppState {
         debugLog("🎙️ Recording started")
 
         switch transcriptionEngine {
-        case .deepgram:
-            deepgramService?.startRecording()
-            debugLog("[DEBUG] deepgramService.startRecording() called")
         case .voxtralLocal, .qwen3ASR:
             localASRService?.startRecording()
             debugLog("[DEBUG] localASRService.startRecording() called")
@@ -866,8 +837,6 @@ final class AppState {
             floatingPanel?.hide()
         }
         switch transcriptionEngine {
-        case .deepgram:
-            deepgramService?.stopRecording()
         case .voxtralLocal, .qwen3ASR:
             localASRService?.stopRecording()
         case .speechAnalyzer:
@@ -1139,8 +1108,6 @@ final class AppState {
     func cancelRecording() {
         cancelInlinePreview()
         switch transcriptionEngine {
-        case .deepgram:
-            deepgramService?.stop()
         case .voxtralLocal, .qwen3ASR:
             localASRService?.stop()
         case .speechAnalyzer:
@@ -1294,8 +1261,6 @@ final class AppState {
 
     private func getRecordedAudioDataFromActiveService(consuming: Bool) -> Data? {
         switch transcriptionEngine {
-        case .deepgram:
-            return deepgramService?.getRecordedAudioData(consuming: consuming)
         case .voxtralLocal, .qwen3ASR:
             return localASRService?.getRecordedAudioData(consuming: consuming)
         case .speechAnalyzer:

@@ -29,7 +29,6 @@ enum Constants {
 
     enum Timing {
         static let speechAnalyzerFinalResultTimeoutSeconds: Double = 3.0
-        static let cloudFinalResultTimeoutSeconds: Double = 10.0
         static let localASRFinalResultTimeoutSeconds: Double = 30.0
         static let pastePreDelaySeconds: Double = 0.1
         static let pastePostDelaySeconds: Double = 1.5
@@ -88,12 +87,4 @@ enum Constants {
         ]
     }
 
-    enum Deepgram {
-        static let wsEndpoint = "wss://api.deepgram.com/v1/listen"
-        static let restEndpoint = "https://api.deepgram.com/v1/listen"
-        static let sampleRate: Double = 16000
-        static let defaultModel = "nova-3"
-        static let defaultLanguage = "multi"
-        static let keepAliveIntervalSeconds: Double = 5.0
-    }
 }

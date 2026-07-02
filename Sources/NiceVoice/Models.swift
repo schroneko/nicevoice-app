@@ -79,7 +79,6 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
     case speechAnalyzer
     case voxtralLocal
     case qwen3ASR
-    case deepgram
 
     static let defaultEngine: TranscriptionEngine = .voxtralLocal
 
@@ -87,7 +86,7 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
         switch self {
         case .qwen3ASR:
             return true
-        case .speechAnalyzer, .voxtralLocal, .deepgram:
+        case .speechAnalyzer, .voxtralLocal:
             return false
         }
     }
@@ -97,7 +96,6 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
         case .speechAnalyzer: return "Apple SpeechAnalyzer"
         case .voxtralLocal: return "Voxtral Local"
         case .qwen3ASR: return "Qwen3 ASR"
-        case .deepgram: return "Deepgram Nova-3"
         }
     }
 
@@ -106,21 +104,13 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
         case .speechAnalyzer: return String(localized: "macOS 内蔵の音声認識。オフラインで動作し、遅延が少ない")
         case .voxtralLocal: return String(localized: "高精度な Voxtral のローカル推論。アプリ内ランタイムで動作")
         case .qwen3ASR: return String(localized: "Qwen3-ASR-1.7B (MLX, ローカル推論)")
-        case .deepgram: return String(localized: "Deepgram Nova-3 (クラウド API, 高精度)")
         }
     }
 
     var requiresLocalServer: Bool {
         switch self {
         case .voxtralLocal, .qwen3ASR: return true
-        case .speechAnalyzer, .deepgram: return false
-        }
-    }
-
-    var requiresApiKey: Bool {
-        switch self {
-        case .deepgram: return true
-        case .speechAnalyzer, .voxtralLocal, .qwen3ASR: return false
+        case .speechAnalyzer: return false
         }
     }
 
@@ -128,8 +118,6 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
         switch self {
         case .speechAnalyzer:
             return Constants.Timing.speechAnalyzerFinalResultTimeoutSeconds
-        case .deepgram:
-            return Constants.Timing.cloudFinalResultTimeoutSeconds
         case .voxtralLocal, .qwen3ASR:
             return Constants.Timing.localASRFinalResultTimeoutSeconds
         }
@@ -141,8 +129,6 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
             return String(localized: "音声認識がタイムアウトしました。もう一度試してください")
         case .voxtralLocal, .qwen3ASR:
             return String(localized: "\(displayName) の文字起こし処理がタイムアウトしました。もう一度試してください")
-        case .deepgram:
-            return String(localized: "Deepgram の文字起こし処理がタイムアウトしました。もう一度試してください")
         }
     }
 
@@ -150,7 +136,7 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
         switch self {
         case .qwen3ASR:
             return true
-        case .speechAnalyzer, .voxtralLocal, .deepgram:
+        case .speechAnalyzer, .voxtralLocal:
             return false
         }
     }
@@ -159,7 +145,7 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
         switch self {
         case .voxtralLocal: return "voxmlx-serve"
         case .qwen3ASR: return "qwen3asr-serve"
-        case .speechAnalyzer, .deepgram: return nil
+        case .speechAnalyzer: return nil
         }
     }
 
@@ -167,7 +153,7 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
         switch self {
         case .voxtralLocal: return "voxmlx.server"
         case .qwen3ASR: return "qwen3asr.server"
-        case .speechAnalyzer, .deepgram: return nil
+        case .speechAnalyzer: return nil
         }
     }
 
@@ -175,7 +161,7 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
         switch self {
         case .voxtralLocal: return ""
         case .qwen3ASR: return "qwen3asr"
-        case .speechAnalyzer, .deepgram: return nil
+        case .speechAnalyzer: return nil
         }
     }
 
@@ -183,7 +169,7 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
         switch self {
         case .voxtralLocal: return "2.5 GB"
         case .qwen3ASR: return "1.6 GB"
-        case .speechAnalyzer, .deepgram: return nil
+        case .speechAnalyzer: return nil
         }
     }
 
@@ -191,7 +177,7 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
         switch self {
         case .voxtralLocal: return Constants.LocalASR.voxtralModel
         case .qwen3ASR: return Constants.LocalASR.qwen3Model
-        case .speechAnalyzer, .deepgram: return nil
+        case .speechAnalyzer: return nil
         }
     }
 
@@ -199,7 +185,7 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
         switch self {
         case .voxtralLocal: return "Voxtral Mini 4B Realtime 2602"
         case .qwen3ASR: return "Qwen3 ASR 1.7B"
-        case .speechAnalyzer, .deepgram: return nil
+        case .speechAnalyzer: return nil
         }
     }
 
@@ -207,7 +193,7 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
         switch self {
         case .voxtralLocal, .qwen3ASR:
             return "localServerPort.\(rawValue)"
-        case .speechAnalyzer, .deepgram:
+        case .speechAnalyzer:
             return nil
         }
     }
@@ -281,14 +267,6 @@ enum TranscriptionLanguageMode: String, CaseIterable, Codable {
             return String(localized: "英語の音声入力に固定します")
         case .multilingual:
             return String(localized: "Voxtral が対応する言語を自動判定します")
-        }
-    }
-
-    var deepgramLanguage: String {
-        switch self {
-        case .japanese: return "ja"
-        case .english: return "en"
-        case .japaneseEnglish, .multilingual: return "multi"
         }
     }
 
