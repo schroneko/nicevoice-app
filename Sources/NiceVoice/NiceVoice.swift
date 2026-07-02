@@ -1472,24 +1472,6 @@ final class AppState {
         }
     }
 
-    private func cleanupOrphanedParticles(_ text: String) -> String {
-        var result = text
-        let orphanedParticlePatterns = [
-            "^ね、", "^よ、", "^さ、", "^な、",
-            "^ね。", "^よ。", "^さ。", "^な。"
-        ]
-        for pattern in orphanedParticlePatterns {
-            if let regex = try? NSRegularExpression(pattern: pattern) {
-                result = regex.stringByReplacingMatches(
-                    in: result,
-                    range: NSRange(result.startIndex..., in: result),
-                    withTemplate: ""
-                )
-            }
-        }
-        return result.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
     private func addLocalPunctuation(_ text: String, isFinal: Bool = true) -> String {
         let processor = TextProcessor(fillerSettings: fillerSettings)
         return processor.process(text, isFinal: isFinal)
@@ -2240,22 +2222,6 @@ final class AppState {
     }
 }
 
-struct SpinningIcon: View {
-    @State private var rotation = 0.0
-
-    var body: some View {
-        Image(systemName: "arrow.trianglehead.2.clockwise")
-            .font(.system(size: 12, weight: .medium))
-            .foregroundStyle(.blue)
-            .rotationEffect(.degrees(rotation))
-            .onAppear {
-                withAnimation(.linear(duration: 1).repeatForever(autoreverses: false)) {
-                    rotation = 360
-                }
-            }
-    }
-}
-
 struct FloatingPanelView: View {
     var appState: AppState
     @State private var isVisible = false
@@ -2477,42 +2443,5 @@ struct ErrorIndicatorView: View {
         .onAppear {
             isPulsing = true
         }
-    }
-}
-
-struct MenuBarView: View {
-    var appState: AppState
-    @Environment(\.openWindow) private var openWindow
-
-    var body: some View {
-        VStack(spacing: 8) {
-            HStack {
-                Image(systemName: appState.isRecording ? "mic.fill" : "mic")
-                    .foregroundStyle(appState.isRecording ? .red : .primary)
-                Text("Nice Voice")
-                    .font(.headline)
-            }
-
-            Text(appState.statusMessage)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Divider()
-
-            Button("Nice Voice を開く...") {
-                NSApp.activate(ignoringOtherApps: true)
-                openWindow(id: "main")
-            }
-            .keyboardShortcut("o", modifiers: .command)
-
-            Divider()
-
-            Button("終了") {
-                NSApplication.shared.terminate(nil)
-            }
-            .keyboardShortcut("q", modifiers: .command)
-        }
-        .padding()
-        .frame(width: 200)
     }
 }
