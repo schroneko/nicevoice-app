@@ -143,6 +143,60 @@ final class AppState {
         }
     }
 
+    private func makeOnTranscription(engineLabel: String) -> (String, Bool) -> Void {
+        { [weak self] text, isFinal in
+            debugLog("📥 [\(engineLabel)] onTranscription: isFinal=\(isFinal), len=\(text.count)")
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.latestRawTranscription = text
+                self.currentTranscription = self.displayTextForPreview(text, isFinal: isFinal)
+                if self.isEnrolledSpeakerActive {
+                    self.updateInlinePreview(self.currentTranscription)
+                }
+            }
+        }
+    }
+
+    private func makeOnFinalCompletion(engineLabel: String) -> (String) -> Void {
+        { [weak self] text in
+            debugLog("📥 [\(engineLabel)] onFinalCompletion: len=\(text.count)")
+            self?.handleFinalResult(text)
+        }
+    }
+
+    private func makeOnError(engineLabel: String) -> (String) -> Void {
+        { [weak self] error in
+            debugLog("❌ [\(engineLabel)] error: \(error)")
+            DispatchQueue.main.async {
+                self?.handleServiceError(error)
+            }
+        }
+    }
+
+    private func makeOnStatusChange() -> (String) -> Void {
+        { [weak self] status in
+            DispatchQueue.main.async {
+                self?.statusMessage = status
+            }
+        }
+    }
+
+    private func makeOnAudioLevel() -> (Float) -> Void {
+        { [weak self] level in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.audioLevels.removeFirst()
+                self.audioLevels.append(level)
+            }
+        }
+    }
+
+    private func makeOnCaptureStarted() -> () -> Void {
+        { [weak self] in
+            self?.handleCaptureStarted()
+        }
+    }
+
     private func setupServices() {
         normalizeTranscriptionEngineSelection()
         setupTranscriptionService()
@@ -150,42 +204,12 @@ final class AppState {
         if #available(macOS 26.0, *) {
             speechAnalyzerService = SpeechAnalyzerService(
                 languageMode: transcriptionLanguageMode,
-                onTranscription: { [weak self] text, isFinal in
-                    debugLog("📥 onTranscription called: isFinal=\(isFinal), len=\(text.count), text='\(text.prefix(50))'")
-                    DispatchQueue.main.async {
-                        guard let self else { return }
-                        self.latestRawTranscription = text
-                        self.currentTranscription = self.displayTextForPreview(text, isFinal: isFinal)
-                        if self.isEnrolledSpeakerActive {
-                            self.updateInlinePreview(self.currentTranscription)
-                        }
-                    }
-                },
-                onFinalCompletion: { [weak self] text in
-                    debugLog("📥 onFinalCompletion called: len=\(text.count), text='\(text.prefix(50))'")
-                    self?.handleFinalResult(text)
-                },
-                onError: { [weak self] error in
-                    debugLog("❌ SpeechAnalyzer error: \(error)")
-                    DispatchQueue.main.async {
-                        self?.handleServiceError(error)
-                    }
-                },
-                onStatusChange: { [weak self] status in
-                    DispatchQueue.main.async {
-                        self?.statusMessage = status
-                    }
-                },
-                onAudioLevel: { [weak self] level in
-                    DispatchQueue.main.async {
-                        guard let self else { return }
-                        self.audioLevels.removeFirst()
-                        self.audioLevels.append(level)
-                    }
-                },
-                onCaptureStarted: { [weak self] in
-                    self?.handleCaptureStarted()
-                }
+                onTranscription: makeOnTranscription(engineLabel: "SpeechAnalyzer"),
+                onFinalCompletion: makeOnFinalCompletion(engineLabel: "SpeechAnalyzer"),
+                onError: makeOnError(engineLabel: "SpeechAnalyzer"),
+                onStatusChange: makeOnStatusChange(),
+                onAudioLevel: makeOnAudioLevel(),
+                onCaptureStarted: makeOnCaptureStarted()
             )
         }
 
@@ -241,42 +265,12 @@ final class AppState {
             deepgramService = DeepgramService(
                 apiKey: apiKey,
                 languageMode: languageMode,
-                onTranscription: { [weak self] text, isFinal in
-                    debugLog("[Deepgram] onTranscription: isFinal=\(isFinal), len=\(text.count)")
-                    DispatchQueue.main.async {
-                        guard let self else { return }
-                        self.latestRawTranscription = text
-                        self.currentTranscription = self.displayTextForPreview(text, isFinal: isFinal)
-                        if self.isEnrolledSpeakerActive {
-                            self.updateInlinePreview(self.currentTranscription)
-                        }
-                    }
-                },
-                onFinalCompletion: { [weak self] text in
-                    debugLog("[Deepgram] onFinalCompletion: len=\(text.count)")
-                    self?.handleFinalResult(text)
-                },
-                onError: { [weak self] error in
-                    debugLog("Deepgram error: \(error)")
-                    DispatchQueue.main.async {
-                        self?.handleServiceError(error)
-                    }
-                },
-                onStatusChange: { [weak self] status in
-                    DispatchQueue.main.async {
-                        self?.statusMessage = status
-                    }
-                },
-                onAudioLevel: { [weak self] level in
-                    DispatchQueue.main.async {
-                        guard let self else { return }
-                        self.audioLevels.removeFirst()
-                        self.audioLevels.append(level)
-                    }
-                },
-                onCaptureStarted: { [weak self] in
-                    self?.handleCaptureStarted()
-                }
+                onTranscription: makeOnTranscription(engineLabel: "Deepgram"),
+                onFinalCompletion: makeOnFinalCompletion(engineLabel: "Deepgram"),
+                onError: makeOnError(engineLabel: "Deepgram"),
+                onStatusChange: makeOnStatusChange(),
+                onAudioLevel: makeOnAudioLevel(),
+                onCaptureStarted: makeOnCaptureStarted()
             )
             isReady = true
             statusMessage = String(localized: "準備完了 (Deepgram) - \(shortcutUsageDescription)")
@@ -284,81 +278,35 @@ final class AppState {
             return
         }
 
-        if transcriptionEngine == .voxtralLocal || transcriptionEngine == .qwen3ASR {
-            let sampleRate: Double
-            let serverCommand: String
-            let serverModule: String
-            let serverPackagePath: String
-            let modelName: String
-            let httpRequestTimeout: Double
-            let startupTimeout: Double
-            let healthPollInterval: Double
-            let uvxSearchPaths: [String]
-            let engineLabel: String
-            let endpointFactory: (Int) -> LocalServerEndpoint
-
-            switch transcriptionEngine {
-            case .voxtralLocal:
-                sampleRate = Constants.VoxtralLocal.sampleRate
-                serverCommand = "voxmlx-serve"
-                serverModule = "voxmlx.server"
-                serverPackagePath = ""
-                modelName = Constants.VoxtralLocal.defaultModel
-                httpRequestTimeout = Constants.VoxtralLocal.httpRequestTimeoutSeconds
-                startupTimeout = Constants.VoxtralLocal.serverStartupTimeoutSeconds
-                healthPollInterval = Constants.VoxtralLocal.healthPollIntervalSeconds
-                uvxSearchPaths = Constants.VoxtralLocal.uvxSearchPaths
-                engineLabel = "Voxtral Local"
-                endpointFactory = { port in
-                    LocalServerEndpoint(
-                        port: port,
-                        wsEndpoint: Constants.VoxtralLocal.wsEndpoint(port: port),
-                        healthEndpoint: Constants.VoxtralLocal.healthEndpoint(port: port)
-                    )
-                }
-            case .qwen3ASR:
-                sampleRate = Constants.Qwen3ASR.sampleRate
-                serverCommand = "qwen3asr-serve"
-                serverModule = "qwen3asr.server"
-                serverPackagePath = "qwen3asr"
-                modelName = Constants.Qwen3ASR.defaultModel
-                httpRequestTimeout = Constants.Qwen3ASR.httpRequestTimeoutSeconds
-                startupTimeout = Constants.Qwen3ASR.serverStartupTimeoutSeconds
-                healthPollInterval = Constants.Qwen3ASR.healthPollIntervalSeconds
-                uvxSearchPaths = Constants.Qwen3ASR.uvxSearchPaths
-                engineLabel = "Qwen3 ASR"
-                endpointFactory = { port in
-                    LocalServerEndpoint(
-                        port: port,
-                        wsEndpoint: Constants.Qwen3ASR.wsEndpoint(port: port),
-                        healthEndpoint: Constants.Qwen3ASR.healthEndpoint(port: port)
-                    )
-                }
-            default:
+        if transcriptionEngine.requiresLocalServer {
+            guard let serverCommand = transcriptionEngine.serverCommandName,
+                  let serverModule = transcriptionEngine.localServerModule,
+                  let serverPackagePath = transcriptionEngine.localServerPackagePath,
+                  let modelName = transcriptionEngine.hfModelName else {
                 return
             }
+            let engineLabel = transcriptionEngine.displayName
+            let endpointFactory: (Int) -> LocalServerEndpoint = { port in
+                LocalServerEndpoint(
+                    port: port,
+                    wsEndpoint: Constants.LocalASR.wsEndpoint(port: port),
+                    healthEndpoint: Constants.LocalASR.healthEndpoint(port: port)
+                )
+            }
 
+            let onTranscription = makeOnTranscription(engineLabel: engineLabel)
+            let onFinalCompletion = makeOnFinalCompletion(engineLabel: engineLabel)
+            let onStatusChange = makeOnStatusChange()
+            let onAudioLevel = makeOnAudioLevel()
+            let onCaptureStarted = makeOnCaptureStarted()
             let makeLocalASRService: (LocalServerEndpoint) -> LocalASRService = { endpoint in
                 LocalASRService(
                     wsEndpoint: endpoint.wsEndpoint,
                     healthEndpoint: endpoint.healthEndpoint,
-                    sampleRate: sampleRate,
+                    sampleRate: Constants.LocalASR.sampleRate,
                     languageMode: languageMode,
-                    onTranscription: { [weak self] text, isFinal in
-                        debugLog("📥 [\(engineLabel)] onTranscription: isFinal=\(isFinal), len=\(text.count)")
-                        DispatchQueue.main.async {
-                            guard let self else { return }
-                            self.latestRawTranscription = text
-                            self.currentTranscription = self.displayTextForPreview(text, isFinal: isFinal)
-                            if self.isEnrolledSpeakerActive {
-                                self.updateInlinePreview(self.currentTranscription)
-                            }
-                        }
-                    },
-                    onFinalCompletion: { [weak self] text in
-                        debugLog("📥 [\(engineLabel)] onFinalCompletion: len=\(text.count)")
-                        self?.handleFinalResult(text)
-                    },
+                    onTranscription: onTranscription,
+                    onFinalCompletion: onFinalCompletion,
                     onError: { [weak self] error in
                         debugLog("❌ \(engineLabel) error: \(error)")
                         DispatchQueue.main.async {
@@ -367,21 +315,9 @@ final class AppState {
                             self.handleServiceError(error)
                         }
                     },
-                    onStatusChange: { [weak self] status in
-                        DispatchQueue.main.async {
-                            self?.statusMessage = status
-                        }
-                    },
-                    onAudioLevel: { [weak self] level in
-                        DispatchQueue.main.async {
-                            guard let self else { return }
-                            self.audioLevels.removeFirst()
-                            self.audioLevels.append(level)
-                        }
-                    },
-                    onCaptureStarted: { [weak self] in
-                        self?.handleCaptureStarted()
-                    }
+                    onStatusChange: onStatusChange,
+                    onAudioLevel: onAudioLevel,
+                    onCaptureStarted: onCaptureStarted
                 )
             }
 
@@ -392,10 +328,10 @@ final class AppState {
                 modelName: modelName,
                 requestedPort: 0,
                 endpointFactory: endpointFactory,
-                httpRequestTimeout: httpRequestTimeout,
-                startupTimeout: startupTimeout,
-                healthPollInterval: healthPollInterval,
-                uvxSearchPaths: uvxSearchPaths,
+                httpRequestTimeout: Constants.LocalASR.httpRequestTimeoutSeconds,
+                startupTimeout: Constants.LocalASR.serverStartupTimeoutSeconds,
+                healthPollInterval: Constants.LocalASR.healthPollIntervalSeconds,
+                uvxSearchPaths: Constants.LocalASR.uvxSearchPaths,
                 onEndpointResolved: { [weak self] endpoint in
                     guard let self else { return }
                     self.localASRService = makeLocalASRService(endpoint)
@@ -462,13 +398,12 @@ final class AppState {
 
     private func updateWarmCaptureConfiguration() {
         let shouldWarmCapture =
-            shortcutKey.usesLongPressBehavior &&
-            (transcriptionEngine == .voxtralLocal || transcriptionEngine == .qwen3ASR)
+            shortcutKey.usesLongPressBehavior && transcriptionEngine.requiresLocalServer
         localASRService?.setWarmCaptureEnabled(shouldWarmCapture)
     }
 
     private func restartLocalServerAfterLocalASRFailure(engineLabel: String, reason: String) {
-        guard transcriptionEngine == .voxtralLocal || transcriptionEngine == .qwen3ASR else { return }
+        guard transcriptionEngine.requiresLocalServer else { return }
         guard let manager = localServerManager else { return }
         guard localServerRecoveryTask == nil else {
             debugLog("♻️ \(engineLabel) recovery already in progress")
@@ -628,8 +563,8 @@ final class AppState {
             return
         }
 
-        if transcriptionEngine == .voxtralLocal || transcriptionEngine == .qwen3ASR {
-            let engineLabel = transcriptionEngine == .voxtralLocal ? "Voxtral Local" : "Qwen3 ASR"
+        if transcriptionEngine.requiresLocalServer {
+            let engineLabel = transcriptionEngine.displayName
             let modelStatus = modelDownloadStatus
             let shouldStartServer = !transcriptionEngine.requiresExternalModelDownload || {
                 if case .downloaded = modelStatus {
@@ -818,7 +753,7 @@ final class AppState {
     private func beginLongPressRecordingPreflight() {
         guard shortcutKey.usesLongPressBehavior else { return }
         guard !isRecording else { return }
-        guard transcriptionEngine == .voxtralLocal || transcriptionEngine == .qwen3ASR else { return }
+        guard transcriptionEngine.requiresLocalServer else { return }
         guard #available(macOS 26.0, *) else { return }
         guard !isDebuggerAttached() else { return }
         guard MicrophonePermission.hasAvailableInputDevice else {
@@ -1129,7 +1064,7 @@ final class AppState {
     }
 
     private func scheduleProvisionalFinalizationIfNeeded() {
-        guard transcriptionEngine == .voxtralLocal || transcriptionEngine == .qwen3ASR else { return }
+        guard transcriptionEngine.requiresLocalServer else { return }
         guard !(SpeakerVerificationService.shared.isEnrolled && SpeakerVerificationService.shared.isReady) else { return }
 
         let fallbackText = latestRawTranscription.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1249,7 +1184,7 @@ final class AppState {
         keyUp.flags = .maskCommand
 
         keyDown.post(tap: .cgAnnotatedSessionEventTap)
-        usleep(50000)
+        usleep(Constants.Timing.keyEventDelayMicroseconds)
         keyUp.post(tap: .cgAnnotatedSessionEventTap)
 
         debugLog("✅ Paste command sent via CGEvent")
@@ -1342,7 +1277,7 @@ final class AppState {
         keyUp.flags = .maskCommand
 
         keyDown.postToPid(pid)
-        usleep(50000)
+        usleep(Constants.Timing.keyEventDelayMicroseconds)
         keyUp.postToPid(pid)
 
         debugLog("✅ Paste sent to Spotlight PID \(pid) via postToPid")

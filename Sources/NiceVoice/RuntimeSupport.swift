@@ -47,7 +47,7 @@ enum CommandLineTool: String, CaseIterable {
     private var bundledSearchPaths: [String] {
         switch self {
         case .uvx:
-            return Constants.VoxtralLocal.uvxSearchPaths
+            return Constants.LocalASR.uvxSearchPaths
         case .hf:
             return Constants.HuggingFace.hfSearchPaths
         case .ytDlp:

@@ -163,6 +163,22 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
         }
     }
 
+    var localServerModule: String? {
+        switch self {
+        case .voxtralLocal: return "voxmlx.server"
+        case .qwen3ASR: return "qwen3asr.server"
+        case .speechAnalyzer, .deepgram: return nil
+        }
+    }
+
+    var localServerPackagePath: String? {
+        switch self {
+        case .voxtralLocal: return ""
+        case .qwen3ASR: return "qwen3asr"
+        case .speechAnalyzer, .deepgram: return nil
+        }
+    }
+
     var modelSize: String? {
         switch self {
         case .voxtralLocal: return "2.5 GB"
@@ -173,8 +189,8 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
 
     var hfModelName: String? {
         switch self {
-        case .voxtralLocal: return Constants.VoxtralLocal.defaultModel
-        case .qwen3ASR: return Constants.Qwen3ASR.defaultModel
+        case .voxtralLocal: return Constants.LocalASR.voxtralModel
+        case .qwen3ASR: return Constants.LocalASR.qwen3Model
         case .speechAnalyzer, .deepgram: return nil
         }
     }
@@ -197,22 +213,12 @@ enum TranscriptionEngine: String, CaseIterable, Codable {
     }
 
     func makeLocalServerEndpoint(port: Int) -> LocalServerEndpoint? {
-        switch self {
-        case .voxtralLocal:
-            return LocalServerEndpoint(
-                port: port,
-                wsEndpoint: Constants.VoxtralLocal.wsEndpoint(port: port),
-                healthEndpoint: Constants.VoxtralLocal.healthEndpoint(port: port)
-            )
-        case .qwen3ASR:
-            return LocalServerEndpoint(
-                port: port,
-                wsEndpoint: Constants.Qwen3ASR.wsEndpoint(port: port),
-                healthEndpoint: Constants.Qwen3ASR.healthEndpoint(port: port)
-            )
-        case .speechAnalyzer, .deepgram:
-            return nil
-        }
+        guard requiresLocalServer else { return nil }
+        return LocalServerEndpoint(
+            port: port,
+            wsEndpoint: Constants.LocalASR.wsEndpoint(port: port),
+            healthEndpoint: Constants.LocalASR.healthEndpoint(port: port)
+        )
     }
 
     var currentLocalServerEndpoint: LocalServerEndpoint? {
